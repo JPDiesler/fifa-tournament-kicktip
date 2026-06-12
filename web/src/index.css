@@ -1,0 +1,42 @@
+@import "tailwindcss";
+@import "@heroui/styles"; /* order matters: tailwindcss must be imported first */
+
+/*
+ * Black / dark-grey identity.
+ * HeroUI's dark theme tokens are overridden here in ONE place. These plain
+ * (unlayered) rules win over HeroUI's @layer rules, so this is the single knob
+ * to retune the whole chrome. Semantic status colors (success/warning/danger)
+ * are intentionally left at HeroUI defaults — they carry meaning in the app
+ * (point badges, champion highlights, admin accents).
+ */
+.dark,
+[data-theme="dark"] {
+  --background: oklch(0.15 0 0); /* near-black page */
+  --surface: oklch(0.205 0 0); /* dark-grey cards */
+  --overlay: oklch(0.24 0 0); /* menus / popovers */
+  --default: oklch(0.27 0 0); /* subtle controls */
+  --field-background: oklch(0.26 0 0); /* inputs: a touch lighter than surfaces … */
+  --field-border: oklch(0.44 0 0); /* … plus a clearly visible border for contrast */
+  --border: oklch(0.32 0 0);
+  --separator: oklch(0.3 0 0);
+  --muted: oklch(0.62 0 0); /* secondary text */
+  --accent: oklch(0.94 0 0); /* near-white → monochrome chrome */
+  --accent-foreground: oklch(0.17 0 0);
+  --focus: oklch(0.7 0 0);
+
+  /* App highlight (Weltmeister-Tipp, bracket path). Defaults to the leaderboard
+   * green; overridable at runtime via ACCENT_COLOR (set on :root by the app). */
+  --app-accent: var(--success);
+  --app-accent-foreground: var(--success-foreground);
+}
+
+/* Expose the highlight as Tailwind utilities (text/bg/border-app-accent). The
+ * `inline` mapping keeps the var reference so a runtime override propagates. */
+@theme inline {
+  --color-app-accent: var(--app-accent);
+  --color-app-accent-foreground: var(--app-accent-foreground);
+}
+
+body {
+  min-height: 100dvh;
+}

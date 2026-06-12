@@ -1,0 +1,332 @@
+import { useState, useEffect, useMemo, useRef } from "react";
+import { Trophy, Save, ShieldCheck, ListOrdered, GitBranch, CalendarDays, Check, X, RefreshCw } from "lucide-react";
+import { TEAMS, MATCHES, PLAYERS, CHAMP_BONUS } from "./data.js";
+
+const PHASES = [
+  ["A","Gruppe A"],["B","Gruppe B"],["C","Gruppe C"],["D","Gruppe D"],["E","Gruppe E"],["F","Gruppe F"],
+  ["G","Gruppe G"],["H","Gruppe H"],["I","Gruppe I"],["J","Gruppe J"],["K","Gruppe K"],["L","Gruppe L"],
+  ["R32","Sechzehntelfinale"],["R16","Achtelfinale"],["QF","Viertelfinale"],["SF","Halbfinale"],
+  ["P3","Spiel um Platz 3"],["FIN","Finale"],
+].map(([code,label]) => ({ code, label }));
+const KO = ["R32","R16","QF","SF","FIN"];
+const flagUrl = (code) => TEAMS[code] ? `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(TEAMS[code].wiki)}?width=80` : null;
+const known = (c) => !!TEAMS[c];
+
+const api = (p, opts = {}) =>
+  fetch("/api" + p, { headers: { "Content-Type": "application/json", ...(opts.headers || {}) }, ...opts }).then((r) => r.json());
+
+function score(tip, res) {
+  if (!res || res.h === "" || res.a === "" || !tip || tip.h === "" || tip.a === "") return null;
+  const th = +tip.h, ta = +tip.a, rh = +res.h, ra = +res.a;
+  if (th === rh && ta === ra) return 3;
+  if (th - ta === rh - ra) return 2;
+  if (Math.sign(th - ta) === Math.sign(rh - ra)) return 1;
+  return 0;
+}
+const PT = { 3:["bg-emerald-500","text-emerald-50"], 2:["bg-sky-500","text-sky-50"], 1:["bg-amber-500","text-amber-50"], 0:["bg-slate-600","text-slate-200"] };
+
+function Flag({ code, sm }) {
+  const u = flagUrl(code);
+  const cls = sm ? "h-3 w-5" : "h-4 w-6";
+  if (!u) return <span className={`inline-block ${cls} rounded-sm bg-slate-700`} />;
+  return <img src={u} alt="" loading="lazy" className={`${cls} rounded-sm object-cover ring-1 ring-black/20`} />;
+}
+function NumBox({ value, onChange, disabled }) {
+  return (
+    <input type="number" min="0" inputMode="numeric" value={value} disabled={disabled}
+      onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, "").slice(0, 2))}
+      className="h-9 w-9 rounded-md border border-slate-300 bg-white text-center text-base font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 disabled:bg-slate-100 disabled:text-slate-400" />
+  );
+}
+function PointsBadge({ p }) {
+  if (p === null) return null;
+  const [bg, tx] = PT[p];
+  return <span className={`ml-1 inline-flex h-6 w-8 items-center justify-center rounded-md text-xs font-bold ${bg} ${tx}`}>{p} P</span>;
+}
+
+export default function App() {
+  const [ready, setReady] = useState(false);
+  const [me, setMe] = useState(() => localStorage.getItem("wm_me") || null);
+  const [pin, setPin] = useState(() => localStorage.getItem("wm_pin") || "");
+  const [admin, setAdmin] = useState(false);
+  const [tab, setTab] = useState("spiele");
+  const [st, setSt] = useState({ tips: {}, champs: {}, results: {}, resolved: {}, championActual: "", meta: {} });
+  const [toast, setToast] = useState("");
+  const saveTimer = useRef({});
+
+  const load = async (keepMine = true) => {
+    try {
+      const s = await api("/state");
+      setSt((prev) => {
+        const tips = { ...s.tips };
+        if (keepMine && me && prev.tips[me]) tips[me] = prev.tips[me];
+        return { ...s, tips };
+      });
+    } catch {}
+  };
+  useEffect(() => { (async () => { await load(false); setReady(true); })(); }, []);
+  useEffect(() => { const t = setInterval(() => load(true), 30000); return () => clearInterval(t); }, [me]);
+
+  const flash = (m) => { setToast(m); setTimeout(() => setToast(""), 1600); };
+  const pickMe = (p) => { setMe(p); localStorage.setItem("wm_me", p); };
+  const savePin = (v) => { setPin(v); localStorage.setItem("wm_pin", v); };
+
+  // effective team code / label per match side (resolved by API for K.o.)
+  const teamCode = (m, side) => {
+    const r = st.resolved[m.n];
+    const rc = r && (side === "h" ? r.homeCode : r.awayCode);
+    if (rc) return rc;
+    const own = side === "h" ? m.h : m.a;
+    return known(own) ? own : null;
+  };
+  const teamLabel = (m, side) => {
+    const code = teamCode(m, side);
+    if (code) return TEAMS[code].name;
+    const r = st.resolved[m.n];
+    const rn = r && (side === "h" ? r.homeName : r.awayName);
+    return rn || (side === "h" ? m.h : m.a);
+  };
+
+  const setTip = (n, side, val) => {
+    setSt((prev) => {
+      const mine = { ...(prev.tips[me] || {}) };
+      mine[n] = { h: "", a: "", ...(mine[n] || {}), [side]: val };
+      const tips = { ...prev.tips, [me]: mine };
+      clearTimeout(saveTimer.current.tips);
+      saveTimer.current.tips = setTimeout(() => {
+        api("/tips", { method: "POST", body: JSON.stringify({ player: me, tips: mine }) }).then(() => flash("Tipp gespeichert"));
+      }, 500);
+      return { ...prev, tips };
+    });
+  };
+  const setChamp = (code) => {
+    setSt((prev) => ({ ...prev, champs: { ...prev.champs, [me]: code } }));
+    api("/champ", { method: "POST", body: JSON.stringify({ player: me, code }) }).then(() => flash("Weltmeister-Tipp gespeichert"));
+  };
+  const setResult = (n, side, val) => {
+    setSt((prev) => {
+      const cur = { h: "", a: "", ...(prev.results[n] || {}), [side]: val };
+      const results = { ...prev.results, [n]: cur };
+      clearTimeout(saveTimer.current["r" + n]);
+      saveTimer.current["r" + n] = setTimeout(() => {
+        api("/result", { method: "POST", headers: { "x-admin-pin": pin }, body: JSON.stringify({ n, h: cur.h, a: cur.a }) });
+      }, 400);
+      return { ...prev, results };
+    });
+  };
+  const setChampActual = (code) => {
+    setSt((prev) => ({ ...prev, championActual: code }));
+    api("/champ-actual", { method: "POST", headers: { "x-admin-pin": pin }, body: JSON.stringify({ code }) });
+  };
+  const doSync = async () => {
+    flash("Sync läuft …");
+    const r = await api("/sync", { method: "POST", headers: { "x-admin-pin": pin } });
+    if (r.error) flash(r.error); else { await load(true); flash("Synchronisiert"); }
+  };
+
+  const totals = useMemo(() => {
+    return PLAYERS.map((p) => {
+      let sum = 0, exact = 0;
+      for (const m of MATCHES) {
+        const pt = score((st.tips[p] || {})[m.n], st.results[m.n]);
+        if (pt !== null) { sum += pt; if (pt === 3) exact++; }
+      }
+      const champHit = st.championActual && st.champs[p] === st.championActual;
+      if (champHit) sum += CHAMP_BONUS;
+      return { p, sum, exact, champ: st.champs[p] || "", champHit };
+    }).sort((a, b) => b.sum - a.sum || b.exact - a.exact);
+  }, [st]);
+
+  if (!ready) return <div className="flex h-64 items-center justify-center text-slate-400">Lade Tippspiel …</div>;
+
+  return (
+    <div className="mx-auto max-w-3xl px-3 py-4 text-slate-100">
+      <div className="rounded-2xl bg-slate-900 p-4 ring-1 ring-white/10">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-slate-900"><Trophy size={22} /></div>
+          <div>
+            <h1 className="text-lg font-bold leading-tight">WM 2026 · Tippspiel</h1>
+            <p className="text-xs text-slate-400">USA · Kanada · Mexiko — Zeiten MESZ · klassisch 3/2/1 · Weltmeister +{CHAMP_BONUS} P</p>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-xs text-slate-400">Ich bin:</span>
+          {PLAYERS.map((p) => (
+            <button key={p} onClick={() => pickMe(p)}
+              className={`rounded-full px-3 py-1 text-sm font-semibold transition ${me === p ? "bg-emerald-500 text-slate-900" : "bg-slate-800 text-slate-300 hover:bg-slate-700"}`}>{p}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="sticky top-0 z-10 mt-3 flex gap-1 rounded-xl bg-slate-900/95 p-1 ring-1 ring-white/10 backdrop-blur">
+        {[["spiele","Spiele",CalendarDays],["baum","Turnierbaum",GitBranch],["rang","Rangliste",ListOrdered]].map(([k,l,Icon]) => (
+          <button key={k} onClick={() => setTab(k)}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-sm font-semibold transition ${tab === k ? "bg-emerald-500 text-slate-900" : "text-slate-300 hover:bg-slate-800"}`}>
+            <Icon size={16} />{l}
+          </button>
+        ))}
+        <button onClick={() => setAdmin((a) => !a)}
+          className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition ${admin ? "bg-amber-500 text-slate-900" : "text-slate-400 hover:bg-slate-800"}`}>
+          <ShieldCheck size={16} />Admin
+        </button>
+      </div>
+
+      {admin && (
+        <div className="mt-3 rounded-xl bg-slate-900 p-3 ring-1 ring-amber-500/30">
+          <div className="flex flex-wrap items-center gap-2">
+            <input type="password" placeholder="Admin-PIN" value={pin} onChange={(e) => savePin(e.target.value)}
+              className="h-9 w-32 rounded-md border border-slate-700 bg-slate-800 px-2 text-sm text-slate-100 outline-none focus:border-amber-500" />
+            <button onClick={doSync} className="flex h-9 items-center gap-1.5 rounded-md bg-amber-500 px-3 text-sm font-semibold text-slate-900 hover:bg-amber-400">
+              <RefreshCw size={15} />Ergebnisse synchronisieren
+            </button>
+            <span className="text-xs text-slate-400">{st.meta.lastSyncMsg} {st.meta.lastSync ? "· " + new Date(st.meta.lastSync).toLocaleString("de-DE") : ""}</span>
+          </div>
+        </div>
+      )}
+
+      {!me && <div className="mt-3 rounded-xl bg-slate-800 p-4 text-center text-sm text-slate-300">Wähle oben deinen Namen, um zu tippen.</div>}
+
+      {tab === "spiele" && (
+        <div className="mt-3 space-y-4">
+          <div className="rounded-2xl bg-slate-900 p-4 ring-1 ring-amber-500/30">
+            <div className="mb-2 flex items-center gap-2 text-amber-400"><Trophy size={18} /><span className="font-bold">Weltmeister-Tipp <span className="font-normal text-slate-400">(+{CHAMP_BONUS} P)</span></span></div>
+            <select disabled={!me} value={me ? (st.champs[me] || "") : ""} onChange={(e) => setChamp(e.target.value)}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-amber-500 disabled:opacity-50">
+              <option value="">— Team wählen —</option>
+              {Object.keys(TEAMS).sort((a, b) => TEAMS[a].name.localeCompare(TEAMS[b].name)).map((c) => (<option key={c} value={c}>{TEAMS[c].name}</option>))}
+            </select>
+            {admin && (
+              <div className="mt-3 border-t border-white/10 pt-3">
+                <label className="text-xs text-amber-300">Admin · tatsächlicher Weltmeister (für Bonus-Auswertung)</label>
+                <select value={st.championActual} onChange={(e) => setChampActual(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-amber-500/40 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none">
+                  <option value="">— offen —</option>
+                  {Object.keys(TEAMS).sort((a, b) => TEAMS[a].name.localeCompare(TEAMS[b].name)).map((c) => (<option key={c} value={c}>{TEAMS[c].name}</option>))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {PHASES.map((ph) => {
+            const ms = MATCHES.filter((m) => m.ph === ph.code);
+            if (!ms.length) return null;
+            return (
+              <div key={ph.code}>
+                <div className="mb-1.5 px-1 text-xs font-bold uppercase tracking-wider text-slate-400">{ph.label}</div>
+                <div className="space-y-2">
+                  {ms.map((m) => {
+                    const myTip = (st.tips[me] || {})[m.n] || { h: "", a: "" };
+                    const res = st.results[m.n];
+                    const pts = score(myTip, res);
+                    return (
+                      <div key={m.n} className="rounded-xl bg-slate-900 p-3 ring-1 ring-white/10">
+                        <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
+                          <span>Spiel {m.n} · {m.disp}</span><span>{m.ven}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="flex flex-1 min-w-0 items-center justify-end gap-2 text-right text-sm font-semibold">
+                            <span className="truncate">{teamLabel(m, "h")}</span><Flag code={teamCode(m, "h")} />
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <NumBox value={myTip.h} disabled={!me} onChange={(v) => setTip(m.n, "h", v)} />
+                            <span className="text-slate-500">:</span>
+                            <NumBox value={myTip.a} disabled={!me} onChange={(v) => setTip(m.n, "a", v)} />
+                          </div>
+                          <div className="flex flex-1 min-w-0 items-center gap-2 text-left text-sm font-semibold">
+                            <Flag code={teamCode(m, "a")} /><span className="truncate">{teamLabel(m, "a")}</span>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-center gap-3 text-xs">
+                          {res && res.h !== "" && res.a !== "" ? (<span className="text-slate-300">Endstand <b className="text-white">{res.h}:{res.a}</b></span>) : <span className="text-slate-600">noch kein Endstand</span>}
+                          {pts !== null && <PointsBadge p={pts} />}
+                        </div>
+                        {admin && (
+                          <div className="mt-2 flex items-center justify-center gap-1 border-t border-white/10 pt-2">
+                            <span className="mr-1 text-xs text-amber-400">Ergebnis:</span>
+                            <NumBox value={(res && res.h) || ""} onChange={(v) => setResult(m.n, "h", v)} />
+                            <span className="text-slate-500">:</span>
+                            <NumBox value={(res && res.a) || ""} onChange={(v) => setResult(m.n, "a", v)} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {tab === "baum" && (
+        <div className="mt-3 overflow-x-auto rounded-2xl bg-slate-900 p-3 ring-1 ring-white/10">
+          <div className="flex gap-3" style={{ minWidth: "760px" }}>
+            {KO.map((k) => {
+              const lbl = PHASES.find((p) => p.code === k).label;
+              const ms = MATCHES.filter((m) => m.ph === k);
+              return (
+                <div key={k} className="flex w-40 flex-1 flex-col justify-around gap-2">
+                  <div className="text-center text-xs font-bold uppercase tracking-wider text-slate-400">{lbl}</div>
+                  {ms.map((m) => {
+                    const res = st.results[m.n];
+                    const pts = score((st.tips[me] || {})[m.n], res);
+                    return (
+                      <div key={m.n} className="rounded-lg bg-slate-800 p-2 text-xs ring-1 ring-white/5">
+                        <div className="mb-1 flex items-center justify-between text-xs text-slate-500"><span>Sp. {m.n}</span>{pts !== null && <PointsBadge p={pts} />}</div>
+                        <BracketRow label={teamLabel(m, "h")} code={teamCode(m, "h")} g={res ? res.h : ""} />
+                        <BracketRow label={teamLabel(m, "a")} code={teamCode(m, "a")} g={res ? res.a : ""} />
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-center text-xs text-slate-500">K.o.-Teams füllen sich automatisch aus den API-Ergebnissen, sobald sie feststehen.</p>
+        </div>
+      )}
+
+      {tab === "rang" && (
+        <div className="mt-3 overflow-hidden rounded-2xl bg-slate-900 ring-1 ring-white/10">
+          <table className="w-full text-sm">
+            <thead><tr className="bg-slate-800 text-left text-xs uppercase tracking-wider text-slate-400">
+              <th className="px-3 py-2">#</th><th className="px-3 py-2">Spieler</th><th className="px-2 py-2 text-center">Punkte</th>
+              <th className="px-2 py-2 text-center">Exakt</th><th className="px-3 py-2">WM-Tipp</th>
+            </tr></thead>
+            <tbody>
+              {totals.map((t, i) => (
+                <tr key={t.p} className={`border-t border-white/5 ${t.p === me ? "bg-emerald-500/10" : ""}`}>
+                  <td className="px-3 py-2 font-bold text-slate-400">{i + 1}</td>
+                  <td className="px-3 py-2 font-semibold">{t.p}</td>
+                  <td className="px-2 py-2 text-center text-base font-bold text-emerald-400">{t.sum}</td>
+                  <td className="px-2 py-2 text-center text-slate-300">{t.exact}</td>
+                  <td className="px-3 py-2">
+                    {t.champ ? (
+                      <span className="inline-flex items-center gap-1.5 text-slate-300">
+                        {known(t.champ) && <Flag code={t.champ} sm />}{TEAMS[t.champ] ? TEAMS[t.champ].name : t.champ}
+                        {st.championActual && (t.champHit ? <Check size={14} className="text-emerald-400" /> : <X size={14} className="text-slate-600" />)}
+                      </span>
+                    ) : <span className="text-slate-600">—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {toast && <div className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg">{toast}</div>}
+    </div>
+  );
+}
+
+function BracketRow({ label, code, g }) {
+  return (
+    <div className="flex items-center justify-between gap-1 py-0.5">
+      <span className="flex min-w-0 items-center gap-1.5">
+        <Flag code={code} sm /><span className="truncate text-slate-200">{label}</span>
+      </span>
+      <span className="font-bold text-white">{g !== "" && g !== undefined ? g : ""}</span>
+    </div>
+  );
+}

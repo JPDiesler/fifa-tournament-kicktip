@@ -1,0 +1,35 @@
+services:
+  wm-tippspiel:
+    build: .
+    container_name: wm-tippspiel
+    restart: unless-stopped
+    ports:
+      - "5173:8080"          # hinter deinen Reverse-Proxy hängen (it.wm.albertweil.de)
+    environment:
+      # --- bootstrap admin + session ---
+      SESSION_SECRET: "${SESSION_SECRET}"               # Pflicht: langes Zufalls-Secret für Session-Cookies
+      COOKIE_SECURE: "${COOKIE_SECURE:-auto}"           # auto = secure nur über HTTPS (lokal http + Prod https)
+      ACCENT_COLOR: "${ACCENT_COLOR:-}"                 # Akzentfarbe (WM-Tipp + Turnierbaum-Pfad); leer = Ranglisten-Grün
+      ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD}"               # Passwort des Bootstrap-Admins (Fallback: ADMIN_PIN)
+      ADMIN_PIN: "${ADMIN_PIN}"                         # Fallback-Passwort, falls ADMIN_PASSWORD leer
+      # Der ADMIN_USERNAME-Account ist immer Superadmin und KEIN Spieler (nicht in Rangliste/Tipps, kann nicht tippen).
+      APP_URL: "${APP_URL:-https://it.wm.albertweil.de}" # Link im Zugangsdaten-PDF
+      # --- Entra / MSAL (optional; leer = nur Basic-Login) ---
+      ENTRA_TENANT_ID: "${ENTRA_TENANT_ID:-}"
+      ENTRA_CLIENT_ID: "${ENTRA_CLIENT_ID:-}"           # SPA public client; kein Secret (Nutzerliste läuft delegiert im Browser)
+      # --- Ergebnis-Quelle ---
+      DATA_SOURCE: "${DATA_SOURCE:-footballdata}"        # footballdata (Default, kostenlos) | apifootball
+      FOOTBALL_DATA_TOKEN: "${FOOTBALL_DATA_TOKEN:-}"    # kostenloser Token von football-data.org
+      FOOTBALL_DATA_COMPETITION: "${FOOTBALL_DATA_COMPETITION:-WC}"
+      FOOTBALL_DATA_SEASON: "${FOOTBALL_DATA_SEASON:-}"
+      FOOTBALL_DATA_DAILY_LIMIT: "${FOOTBALL_DATA_DAILY_LIMIT:-50}"
+      API_FOOTBALL_KEY: "${API_FOOTBALL_KEY:-}"          # nur für DATA_SOURCE=apifootball (Plan mit Season 2026 nötig)
+      API_LEAGUE: "${API_LEAGUE:-1}"
+      API_SEASON: "${API_SEASON:-2026}"
+      API_DAILY_LIMIT: "${API_DAILY_LIMIT:-90}"
+      SYNC_CRON: "${SYNC_CRON:-0 */6 * * *}"            # Sicherheits-Sync; Ergebnisse kommen primär automatisch zu Spielende-Zeiten
+    volumes:
+      - wm_data:/data
+volumes:
+  wm_data:
