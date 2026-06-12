@@ -216,6 +216,7 @@ export function setResolved(n, rv) {
     ON CONFLICT(match_n) DO UPDATE SET home_name=excluded.home_name,away_name=excluded.away_name,home_code=excluded.home_code,away_code=excluded.away_code`)
     .run(Number(n), rv.homeName ?? null, rv.awayName ?? null, rv.homeCode ?? null, rv.awayCode ?? null);
 }
+export const clearResolved = (n) => db.prepare("DELETE FROM resolved WHERE match_n=?").run(Number(n));
 export const hasResult = (n) => {
   const r = db.prepare("SELECT h,a FROM results WHERE match_n=?").get(n);
   return !!(r && r.h !== "" && r.a !== "");

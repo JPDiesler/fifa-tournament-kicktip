@@ -8,7 +8,7 @@ import { countdown } from "../lib/matchtime.js";
 
 // Bottom-sheet detail for one match: final score, your tip (disabled when
 // locked), and the other players' tips (revealed only once the match is locked).
-export default function MatchDetail({ match, isOpen, onClose, st, board, me, teamLabel, teamCode, score, admin, onTip, onResult }) {
+export default function MatchDetail({ match, isOpen, onClose, st, board, me, teamLabel, teamCode, score, onTip }) {
   if (!match) {
     return <Drawer.Backdrop isOpen={false} onOpenChange={() => onClose()}><Drawer.Content placement="bottom"><Drawer.Dialog /></Drawer.Content></Drawer.Backdrop>;
   }
@@ -71,18 +71,6 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
               {!me && <p className="mt-2 text-center text-xs text-muted">Kein Kürzel zugewiesen.</p>}
               {me && !ready && <p className="mt-2 text-center text-xs text-muted">Paarung steht noch nicht fest – Tippen ab dann möglich.</p>}
             </div>
-
-            {/* admin result entry */}
-            {admin && (
-              <div className="rounded-xl border border-warning/40 p-3">
-                <div className="mb-2 text-xs font-bold text-warning">Admin · Ergebnis</div>
-                <div className="flex items-center justify-center gap-2">
-                  <ScoreInput value={(result && result.h) || ""} onChange={(v) => onResult(n, "h", v)} label="Ergebnis Heim" />
-                  <span className="text-muted">:</span>
-                  <ScoreInput value={(result && result.a) || ""} onChange={(v) => onResult(n, "a", v)} label="Ergebnis Gast" />
-                </div>
-              </div>
-            )}
 
             {/* other players' tips */}
             <div>

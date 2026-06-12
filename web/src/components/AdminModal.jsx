@@ -1,10 +1,11 @@
 import { Modal, Button } from "@heroui/react";
 import { RefreshCw } from "lucide-react";
-import TeamSelect from "./TeamSelect.jsx";
 import AdminUsersTab from "./AdminUsersTab.jsx";
 
-// All admin functionality in one modal: result sync, actual champion, user management.
-export default function AdminModal({ isOpen, onClose, teams, championActual, onSetChampActual, onSync, syncMsg, lastSync, entra, meId, onFlash, autoOpenEntra }) {
+// All admin functionality in one modal: result sync and user management.
+// Results and the actual champion are set automatically (end-time polling +
+// final-winner detection), so there is no manual entry here.
+export default function AdminModal({ isOpen, onClose, onSync, syncMsg, lastSync, entra, meId, onFlash, autoOpenEntra }) {
   return (
     <Modal.Backdrop isOpen={isOpen} onOpenChange={(o) => !o && onClose()}>
       <Modal.Container placement="center" size="lg" scroll="inside">
@@ -22,11 +23,9 @@ export default function AdminModal({ isOpen, onClose, teams, championActual, onS
                   {syncMsg} {lastSync ? "· " + new Date(lastSync).toLocaleString("de-DE") : ""}
                 </span>
               </div>
-            </section>
-
-            <section>
-              <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wider text-muted">Tatsächlicher Weltmeister</h3>
-              <TeamSelect label="Tatsächlicher Weltmeister" placeholder="— offen —" value={championActual} onChange={onSetChampActual} teams={teams} />
+              <p className="mt-1.5 text-xs text-muted">
+                Ergebnisse und Weltmeister werden automatisch zu den Spielende-Zeiten geholt – dieser Button erzwingt nur eine sofortige Aktualisierung.
+              </p>
             </section>
 
             <section>

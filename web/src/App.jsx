@@ -130,21 +130,6 @@ export default function App() {
     setSt((prev) => ({ ...prev, champs: { ...prev.champs, [me]: code } }));
     api("/champ", { method: "POST", body: JSON.stringify({ code }) }).then(() => flash("Weltmeister-Tipp gespeichert"));
   };
-  const setResult = (n, side, val) => {
-    setSt((prev) => {
-      const cur = { h: "", a: "", ...(prev.results[n] || {}), [side]: val };
-      const results = { ...prev.results, [n]: cur };
-      clearTimeout(saveTimer.current["r" + n]);
-      saveTimer.current["r" + n] = setTimeout(() => {
-        api("/result", { method: "POST", body: JSON.stringify({ n, h: cur.h, a: cur.a }) }).then(() => load(true));
-      }, 400);
-      return { ...prev, results };
-    });
-  };
-  const setChampActual = (code) => {
-    setSt((prev) => ({ ...prev, championActual: code }));
-    api("/champ-actual", { method: "POST", body: JSON.stringify({ code }) }).then(() => load(true));
-  };
   const doSync = async () => {
     flash("Sync läuft …");
     const r = await api("/sync", { method: "POST" });
@@ -272,18 +257,13 @@ export default function App() {
         teamLabel={teamLabel}
         teamCode={teamCode}
         score={score}
-        admin={user.isAdmin}
         onTip={setTip}
-        onResult={setResult}
       />
 
       {user.isAdmin && (
         <AdminModal
           isOpen={adminOpen}
           onClose={() => setAdminOpen(false)}
-          teams={TEAMS}
-          championActual={st.championActual}
-          onSetChampActual={setChampActual}
           onSync={doSync}
           syncMsg={st.meta.lastSyncMsg}
           lastSync={st.meta.lastSync}

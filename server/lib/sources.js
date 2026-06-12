@@ -1,7 +1,10 @@
 // Result data sources. Each provider returns a NORMALISED fixture list:
-//   { dateMs, finished, homeName, awayName, homeGoals, awayGoals }
-// so the sync logic (timestamp matching, result/pairing writing) stays
-// provider-agnostic. The active provider also defines its own daily call budget.
+//   { dateMs, finished, homeName, awayName, homeGoals, awayGoals, winner }
+// where winner is 'home' | 'away' | 'draw' | null (already accounts for extra
+// time / penalty shootouts). The sync logic (timestamp matching, result/pairing
+// writing) stays provider-agnostic. Each provider also declares its call budget:
+// a per-minute rate limit (the binding constraint on the free tiers) and an
+// optional per-day cap (null = none).
 
 // ---- API-Football (v3.football.api-sports.io) ----
 async function apiFootballFetch() {
@@ -23,6 +26,7 @@ async function apiFootballFetch() {
     awayName: f.teams?.away?.name || null,
     homeGoals: f.goals?.home,
     awayGoals: f.goals?.away,
+    winner: f.teams?.home?.winner ? "home" : f.teams?.away?.winner ? "away" : null,
   }));
 }
 
@@ -42,19 +46,22 @@ async function footballDataFetch() {
     awayName: m.awayTeam?.name || m.awayTeam?.shortName || null,
     homeGoals: m.score?.fullTime?.home,
     awayGoals: m.score?.fullTime?.away,
+    winner: m.score?.winner === "HOME_TEAM" ? "home" : m.score?.winner === "AWAY_TEAM" ? "away" : m.score?.winner === "DRAW" ? "draw" : null,
   }));
 }
 
 const SOURCES = {
   footballdata: {
     name: "football-data.org",
-    dailyLimit: () => Number(process.env.FOOTBALL_DATA_DAILY_LIMIT || 50),
+    rateLimit: () => Number(process.env.FOOTBALL_DATA_RATE_LIMIT || 10), // free tier: 10 calls/min
+    dailyLimit: () => (process.env.FOOTBALL_DATA_DAILY_LIMIT ? Number(process.env.FOOTBALL_DATA_DAILY_LIMIT) : null), // free tier: no daily cap
     configured: () => !!process.env.FOOTBALL_DATA_TOKEN,
     fetchFixtures: footballDataFetch,
   },
   apifootball: {
     name: "API-Football",
-    dailyLimit: () => Number(process.env.API_DAILY_LIMIT || 90),
+    rateLimit: () => Number(process.env.API_RATE_LIMIT || 10),
+    dailyLimit: () => Number(process.env.API_DAILY_LIMIT || 100),
     configured: () => !!process.env.API_FOOTBALL_KEY,
     fetchFixtures: apiFootballFetch,
   },

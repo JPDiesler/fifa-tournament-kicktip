@@ -4,10 +4,10 @@ import SqliteStoreFactory from "better-sqlite3-session-store";
 import cron from "node-cron";
 import path from "path";
 import { fileURLToPath } from "url";
-import { MATCHES, ALIASES } from "./data.js";
+import { MATCHES, ALIASES, TEAMS } from "./data.js";
 import {
-  db, stateForUser, leaderboard, matchdayBreakdown, setUserTips, setChamp, setResult, setResolved,
-  getMeta, setMeta, setChampionActual, hasResult,
+  db, stateForUser, leaderboard, matchdayBreakdown, setUserTips, setChamp, setResult, setResolved, clearResolved,
+  getMeta, setMeta, setChampionActual, getChampionActual, hasResult,
   getUserByUsername, getUserByEntraOid, getUserByEntraUpn, getUserByKuerzel,
   getUserById, listUsers, createUser, updateUser, deleteUser, countAdmins,
 } from "./db.js";
@@ -31,52 +31,116 @@ const COOKIE_SECURE = _cs === "true" ? true : _cs === "false" ? false : "auto";
 
 if (SESSION_SECRET === "dev-insecure-secret-change-me") console.warn("⚠  SESSION_SECRET nicht gesetzt — nur für lokale Entwicklung!");
 
-// ---------- timestamp index for matching API fixtures to our match numbers ----------
+// ---------- index for matching API fixtures to our match numbers ----------
 const tsOf = (dtLocal) => Date.parse(dtLocal + ":00+02:00"); // MESZ wall-clock -> epoch ms
-const MATCH_TS = MATCHES.map((m) => ({ n: m.n, ts: tsOf(m.dt) }));
+const known = (c) => Object.prototype.hasOwnProperty.call(TEAMS, c);
+// Group / already-decided matches are keyed by their (unordered) team pair, so
+// two matches that kick off at the same minute can never be confused. K.o.
+// matches carry placeholder "teams" ("Sieger Gruppe A" …) and are matched by
+// kickoff time alone until the API fills in the real qualified teams.
+const PAIR_INDEX = new Map(); // "AAA|BBB" (sorted) -> { n, ts, h }
+const TIME_ONLY = [];         // [{ n, ts }] for K.o. placeholder matches
+for (const m of MATCHES) {
+  const ts = tsOf(m.dt);
+  if (known(m.h) && known(m.a)) PAIR_INDEX.set([m.h, m.a].sort().join("|"), { n: m.n, ts, h: m.h });
+  else TIME_ONLY.push({ n: m.n, ts });
+}
+const PAIR_TOL = 6 * 60 * 60 * 1000; // same pairing, roughly the same day
+const TIME_TOL = 90 * 60 * 1000;     // K.o. fallback window
 const norm = (s) => (s || "").normalize("NFKD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const codeForName = (name) => {
   const x = norm(name);
   for (const c in ALIASES) if (ALIASES[c].includes(x)) return c;
   return null;
 };
-const matchNoForTs = (apiMs) => {
+// Map a normalised API fixture to one of our matches.
+// Returns { n, swap, ko } or null. `swap` means the fixture's home is our
+// match's away (so its goals must be flipped to match our home/away order).
+// `usedTimeOnly` guards against two simultaneous K.o. fixtures grabbing the
+// same match number.
+function matchForFixture(f, usedTimeOnly) {
+  const fh = codeForName(f.homeName), fa = codeForName(f.awayName);
+  if (fh && fa) {
+    const hit = PAIR_INDEX.get([fh, fa].sort().join("|"));
+    if (hit && Math.abs(hit.ts - f.dateMs) <= PAIR_TOL) return { n: hit.n, swap: fh !== hit.h, ko: false };
+  }
   let best = null, bestDiff = Infinity;
-  for (const { n, ts } of MATCH_TS) { const d = Math.abs(ts - apiMs); if (d < bestDiff) { bestDiff = d; best = n; } }
-  return bestDiff <= 90 * 60 * 1000 ? best : null; // 90-min tolerance
-};
+  for (const { n, ts } of TIME_ONLY) {
+    if (usedTimeOnly.has(n)) continue;
+    const d = Math.abs(ts - f.dateMs);
+    if (d < bestDiff) { bestDiff = d; best = n; }
+  }
+  return best != null && bestDiff <= TIME_TOL ? { n: best, swap: false, ko: true } : null;
+}
 
 // ---------- result sync (provider-agnostic; source chosen via DATA_SOURCE) ----------
-function checkBudget(meta, limit) {
+const FINAL_N = 104; // the World Cup final → its winner is the actual champion
+// Per-minute rate guard (the binding limit on the free tiers). In-memory ring of
+// recent call timestamps; resets on restart, which is harmless.
+const RATE_WINDOW_MS = 60_000;
+let recentCalls = [];
+function rateOk(perMin) {
+  const now = Date.now();
+  recentCalls = recentCalls.filter((t) => now - t < RATE_WINDOW_MS);
+  return recentCalls.length < perMin;
+}
+function dailyOk(meta, limit) {
+  if (limit == null) return true; // source has no daily cap (e.g. football-data free tier)
   const today = new Date().toISOString().slice(0, 10);
   if (meta.apiCallsDate !== today) { meta.apiCallsDate = today; meta.apiCallsToday = 0; }
-  return meta.apiCallsToday < limit;
+  return (meta.apiCallsToday || 0) < limit;
 }
 async function sync(reason = "cron") {
   const src = activeSource();
   const meta = getMeta();
-  const limit = src.dailyLimit();
+  const perMin = src.rateLimit();
+  const daily = src.dailyLimit();
   if (!src.configured()) { meta.lastSyncMsg = `${src.name}: kein Key/Token gesetzt`; setMeta(meta); return; }
-  if (!checkBudget(meta, limit)) { meta.lastSyncMsg = `${src.name}: Tageslimit (${limit}) erreicht`; setMeta(meta); return; }
+  if (!rateOk(perMin)) { meta.lastSyncMsg = `${src.name}: Rate-Limit (${perMin}/min) – kurz warten`; setMeta(meta); return; }
+  if (!dailyOk(meta, daily)) { meta.lastSyncMsg = `${src.name}: Tageslimit (${daily}) erreicht`; setMeta(meta); return; }
   try {
-    meta.apiCallsToday += 1;
+    recentCalls.push(Date.now());
+    if (daily != null) meta.apiCallsToday = (meta.apiCallsToday || 0) + 1;
     const list = await src.fetchFixtures(); // normalised fixtures
-    let updated = 0, resolvedCount = 0;
+    let updated = 0, resolvedCount = 0, championCode = null;
+    const usedTimeOnly = new Set();
     for (const f of list) {
       if (!f.dateMs) continue;
-      const n = matchNoForTs(f.dateMs);
-      if (!n) continue;
-      if (f.homeName && f.awayName) {
-        setResolved(n, { homeName: f.homeName, awayName: f.awayName, homeCode: codeForName(f.homeName), awayCode: codeForName(f.awayName) });
-        resolvedCount++;
+      const hit = matchForFixture(f, usedTimeOnly);
+      if (!hit) continue;
+      const { n, swap, ko } = hit;
+      if (ko) {
+        usedTimeOnly.add(n);
+        // K.o.: the API supplies the actual qualified teams — store them for display.
+        if (f.homeName && f.awayName) {
+          setResolved(n, { homeName: f.homeName, awayName: f.awayName, homeCode: codeForName(f.homeName), awayCode: codeForName(f.awayName) });
+          resolvedCount++;
+        }
+      } else {
+        // Group: our static pairing is authoritative — never override it with the
+        // API's home/away (which may be swapped). Drop any stale resolved row.
+        clearResolved(n);
       }
       if (f.finished && f.homeGoals != null && f.awayGoals != null) {
-        setResult(n, String(f.homeGoals), String(f.awayGoals));
+        const [h, a] = swap ? [f.awayGoals, f.homeGoals] : [f.homeGoals, f.awayGoals];
+        setResult(n, String(h), String(a));
         updated++;
       }
+      // The champion is whoever wins the final — derived from the winner flag so
+      // a penalty-shootout title still resolves (the fullTime score is a draw).
+      if (n === FINAL_N && f.finished && f.winner && f.winner !== "draw") {
+        championCode = codeForName(f.winner === "home" ? f.homeName : f.awayName);
+      }
+    }
+    // Set the actual champion automatically once the final is decided — no admin needed.
+    let champMsg = "";
+    if (championCode && getChampionActual() !== championCode) {
+      setChampionActual(championCode);
+      champMsg = `, Weltmeister: ${TEAMS[championCode]?.name || championCode}`;
     }
     meta.lastSync = new Date().toISOString();
-    meta.lastSyncMsg = `${reason} · ${src.name}: ${list.length} Spiele, ${updated} Ergebnisse, ${resolvedCount} Paarungen (Call ${meta.apiCallsToday}/${limit})`;
+    const callInfo = daily != null ? ` (Call ${meta.apiCallsToday}/${daily} heute)` : "";
+    meta.lastSyncMsg = `${reason} · ${src.name}: ${list.length} Spiele, ${updated} Ergebnisse, ${resolvedCount} Paarungen${champMsg}${callInfo}`;
     setMeta(meta);
     console.log(meta.lastSyncMsg);
   } catch (e) {
@@ -86,6 +150,11 @@ async function sync(reason = "cron") {
 
 // ---------- app ----------
 bootstrapAdmin();
+// One-off heal: earlier syncs could cross-assign API fixtures to the wrong match
+// when two games kicked off at the same minute, leaving bogus resolved rows on
+// group matches. Group pairings are static (authoritative), so drop them here;
+// only K.o. matches legitimately carry resolved teams.
+for (const m of MATCHES) if (known(m.h) && known(m.a)) clearResolved(m.n);
 const app = express();
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "1mb" }));
@@ -156,14 +225,9 @@ app.post("/api/champ", requireAuth, (req, res) => {
 });
 
 // ---------- admin (session-based) ----------
-app.post("/api/result", requireAdmin, (req, res) => {
-  const { n, h, a } = req.body || {};
-  if (n == null) return res.status(400).json({ error: "bad" });
-  setResult(n, h, a); res.json({ ok: true });
-});
-app.post("/api/champ-actual", requireAdmin, (req, res) => {
-  setChampionActual(req.body?.code || ""); res.json({ ok: true });
-});
+// Results and the actual champion are now fully automatic (end-time polling +
+// final-winner detection), so there is no manual result/champion entry. A manual
+// re-sync remains available to force a refresh.
 app.post("/api/sync", requireAdmin, async (req, res) => { await sync("manuell"); res.json({ meta: getMeta() }); });
 
 // ---------- admin: user management ----------
@@ -255,10 +319,12 @@ app.use(express.static(PUBLIC, {
 app.get("*", (req, res) =>
   res.sendFile(path.join(PUBLIC, "index.html"), { headers: { "Cache-Control": "no-cache" } }));
 
-// Result polling: check every 10 min, but only hit the API when a match is in
-// its expected-end window and still has no result — so calls cluster around
-// match end-times and naturally retry until the result lands (budget-guarded).
-cron.schedule("*/10 * * * *", () => {
+// Result polling: check every 2 min, but only hit the API when a match is in
+// its expected-end window and still has no result — so calls cluster tightly
+// around match end-times (incl. halftime, stoppage, extra time and penalties)
+// and retry every 2 min until the result lands. One call covers all matches and
+// stays far under the per-minute rate limit.
+cron.schedule("*/2 * * * *", () => {
   const due = matchDueForResult(hasResult);
   if (due) sync(`Spielende (Spiel ${due})`);
 });

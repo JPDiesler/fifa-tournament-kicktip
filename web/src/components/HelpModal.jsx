@@ -54,7 +54,7 @@ export default function HelpModal({ isOpen, onClose, champBonus, lockOffsetMin =
             {isAdmin && (
               <section>
                 <H>Admin</H>
-                <p className="text-muted">Das Schild-Icon öffnet die Verwaltung: Ergebnisse synchronisieren, tatsächlicher Weltmeister und Benutzerverwaltung.</p>
+                <p className="text-muted">Das Schild-Icon öffnet die Verwaltung. Ergebnisse und der Weltmeister werden automatisch zu den Spielende-Zeiten geholt; der Sync-Button erzwingt nur eine sofortige Aktualisierung. Dazu die Benutzerverwaltung.</p>
               </section>
             )}
           </Modal.Body>
