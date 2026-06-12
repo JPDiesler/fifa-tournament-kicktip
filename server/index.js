@@ -112,8 +112,11 @@ async function sync(reason = "cron") {
       if (ko) {
         usedTimeOnly.add(n);
         // K.o.: the API supplies the actual qualified teams — store them for display.
+        // Also store the winner side so the bracket can mark the advancing team
+        // even when the match was decided in a shootout (level fulltime score).
         if (f.homeName && f.awayName) {
-          setResolved(n, { homeName: f.homeName, awayName: f.awayName, homeCode: codeForName(f.homeName), awayCode: codeForName(f.awayName) });
+          const winner = f.winner === "home" || f.winner === "away" ? f.winner : null;
+          setResolved(n, { homeName: f.homeName, awayName: f.awayName, homeCode: codeForName(f.homeName), awayCode: codeForName(f.awayName), winner });
           resolvedCount++;
         }
       } else {

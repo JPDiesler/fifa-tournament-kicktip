@@ -50,7 +50,9 @@ CREATE TABLE IF NOT EXISTS results (
 );
 CREATE TABLE IF NOT EXISTS resolved (
   match_n   INTEGER PRIMARY KEY,
-  home_name TEXT, away_name TEXT, home_code TEXT, away_code TEXT
+  home_name TEXT, away_name TEXT, home_code TEXT, away_code TEXT,
+  winner    TEXT   -- 'home' | 'away' | null; set for K.o. matches so a
+                   -- penalty-shootout winner is known even when the score is level
 );
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
@@ -61,6 +63,10 @@ CREATE TABLE IF NOT EXISTS settings (
 // Migration for DBs created before is_superadmin existed.
 if (!db.prepare("PRAGMA table_info(users)").all().some((c) => c.name === "is_superadmin")) {
   db.exec("ALTER TABLE users ADD COLUMN is_superadmin INTEGER NOT NULL DEFAULT 0");
+}
+// Migration for DBs created before resolved.winner existed.
+if (!db.prepare("PRAGMA table_info(resolved)").all().some((c) => c.name === "winner")) {
+  db.exec("ALTER TABLE resolved ADD COLUMN winner TEXT");
 }
 
 // ---------- settings (kv, JSON-encoded) ----------
@@ -150,7 +156,7 @@ export function legacyState() {
   for (const row of db.prepare("SELECT match_n,h,a FROM results").all()) results[row.match_n] = { h: row.h, a: row.a };
   const resolved = {};
   for (const row of db.prepare("SELECT * FROM resolved").all())
-    resolved[row.match_n] = { homeName: row.home_name, awayName: row.away_name, homeCode: row.home_code, awayCode: row.away_code };
+    resolved[row.match_n] = { homeName: row.home_name, awayName: row.away_name, homeCode: row.home_code, awayCode: row.away_code, winner: row.winner };
   return { tips, champs, results, resolved, championActual: getSetting("championActual", ""), meta: getSetting("meta", {}) };
 }
 
@@ -176,7 +182,7 @@ export function stateForUser(meKuerzel) {
   for (const row of db.prepare("SELECT match_n,h,a FROM results").all()) results[row.match_n] = { h: row.h, a: row.a };
   const resolved = {};
   for (const row of db.prepare("SELECT * FROM resolved").all())
-    resolved[row.match_n] = { homeName: row.home_name, awayName: row.away_name, homeCode: row.home_code, awayCode: row.away_code };
+    resolved[row.match_n] = { homeName: row.home_name, awayName: row.away_name, homeCode: row.home_code, awayCode: row.away_code, winner: row.winner };
 
   return {
     me: meKuerzel,
@@ -212,9 +218,9 @@ export function setResult(n, h, a) {
     .run(Number(n), String(h ?? ""), String(a ?? ""));
 }
 export function setResolved(n, rv) {
-  db.prepare(`INSERT INTO resolved(match_n,home_name,away_name,home_code,away_code) VALUES(?,?,?,?,?)
-    ON CONFLICT(match_n) DO UPDATE SET home_name=excluded.home_name,away_name=excluded.away_name,home_code=excluded.home_code,away_code=excluded.away_code`)
-    .run(Number(n), rv.homeName ?? null, rv.awayName ?? null, rv.homeCode ?? null, rv.awayCode ?? null);
+  db.prepare(`INSERT INTO resolved(match_n,home_name,away_name,home_code,away_code,winner) VALUES(?,?,?,?,?,?)
+    ON CONFLICT(match_n) DO UPDATE SET home_name=excluded.home_name,away_name=excluded.away_name,home_code=excluded.home_code,away_code=excluded.away_code,winner=excluded.winner`)
+    .run(Number(n), rv.homeName ?? null, rv.awayName ?? null, rv.homeCode ?? null, rv.awayCode ?? null, rv.winner ?? null);
 }
 export const clearResolved = (n) => db.prepare("DELETE FROM resolved WHERE match_n=?").run(Number(n));
 export const hasResult = (n) => {

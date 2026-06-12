@@ -42,8 +42,11 @@ function TeamRow({ code, label, goal, win, lose }) {
 function Tile({ m, me, st, teamLabel, teamCode, score, onOpen, setRef }) {
   const r = st.results[m.n];
   const has = r && r.h !== "" && r.a !== "";
-  const homeWin = has && +r.h > +r.a;
-  const awayWin = has && +r.a > +r.h;
+  // K.o. winner side from the source — set even for a penalty shootout, where the
+  // fulltime score is level, so the advancing team is still highlighted.
+  const koWinner = st.resolved[m.n]?.winner;
+  const homeWin = has && (+r.h > +r.a || koWinner === "home");
+  const awayWin = has && (+r.a > +r.h || koWinner === "away");
   const decided = homeWin || awayWin;          // winner stands → green frame appears automatically
   const ready = !!(teamCode(m, "h") && teamCode(m, "a")); // pairing fixed → tippable
   const live = isLive(m.dt, has);
@@ -105,7 +108,11 @@ export default function Bracket({ matches, me, st, teamLabel, teamCode, score, o
         const r = el.getBoundingClientRect();
         return { l: r.left - base.left, r: r.right - base.left, cx: (r.left + r.right) / 2 - base.left, cy: (r.top + r.bottom) / 2 - base.top };
       };
-      const decided = (n) => { const r = st.results[n]; return !!(r && r.h !== "" && r.a !== "" && +r.h !== +r.a); };
+      const decided = (n) => {
+        const r = st.results[n];
+        if (!(r && r.h !== "" && r.a !== "")) return false;
+        return +r.h !== +r.a || !!st.resolved[n]?.winner; // a shootout winner counts too
+      };
       const ds = [];
       for (const m of matches) {
         if (!HAS_FEEDERS.has(m.ph)) continue;
