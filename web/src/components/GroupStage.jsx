@@ -64,8 +64,8 @@ export default function GroupStage({ groupCodes, matches, teams, st, me, teamLab
                   <MatchCard
                     key={m.n}
                     match={m}
-                    home={{ label: (teamCode(m, "h") || teamLabel(m, "h")).toUpperCase(), code: teamCode(m, "h") }}
-                    away={{ label: (teamCode(m, "a") || teamLabel(m, "a")).toUpperCase(), code: teamCode(m, "a") }}
+                    home={{ label: teamLabel(m, "h"), short: (teamCode(m, "h") || teamLabel(m, "h")).toUpperCase(), code: teamCode(m, "h") }}
+                    away={{ label: teamLabel(m, "a"), short: (teamCode(m, "a") || teamLabel(m, "a")).toUpperCase(), code: teamCode(m, "a") }}
                     result={result}
                     points={score(myTip, result)}
                     hasTip={!!(myTip && (myTip.h !== "" || myTip.a !== ""))}
