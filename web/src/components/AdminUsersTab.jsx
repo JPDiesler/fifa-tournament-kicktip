@@ -223,9 +223,9 @@ export default function AdminUsersTab({ entra, meId, onFlash, autoOpenEntra }) {
         <div className="flex justify-center py-8"><Spinner /></div>
       ) : (
         <Table variant="primary" aria-label="Benutzer">
-          <Table.ScrollContainer>
+          <Table.ScrollContainer className="max-h-[50vh] overflow-y-auto">
             <Table.Content aria-label="Benutzer">
-              <Table.Header>
+              <Table.Header className="sticky top-0 z-10 bg-surface">
                 <Table.Column isRowHeader>Kürzel</Table.Column>
                 <Table.Column>Name / Login</Table.Column>
                 <Table.Column>Typ</Table.Column>

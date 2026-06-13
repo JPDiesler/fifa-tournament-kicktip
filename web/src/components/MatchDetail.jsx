@@ -74,7 +74,9 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
 
             {/* other players' tips */}
             <div>
-              <div className="mb-1.5 px-1 text-xs font-bold uppercase tracking-wider text-muted">Tipps der anderen</div>
+              <div className="mb-1.5 px-1 text-xs font-bold uppercase tracking-wider text-muted">
+                Tipps der anderen{othersTipped.length > 0 ? ` (${othersTipped.length})` : ""}
+              </div>
               {!locked ? (
                 <p className="rounded-xl border border-border bg-overlay p-3 text-center text-xs text-muted">
                   Werden 5 Minuten vor Anpfiff sichtbar.
@@ -82,7 +84,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
               ) : othersTipped.length === 0 ? (
                 <p className="rounded-xl border border-border bg-overlay p-3 text-center text-xs text-muted">Niemand sonst hat getippt.</p>
               ) : (
-                <div className="overflow-hidden rounded-xl border border-border">
+                <div className="max-h-72 overflow-y-auto rounded-xl border border-border">
                   {othersTipped.map((o, i) => (
                     <div key={o.k} className={`flex items-center justify-between px-3 py-2 text-sm ${i ? "border-t border-border" : ""}`}>
                       <span className="font-semibold">{o.k}</span>
