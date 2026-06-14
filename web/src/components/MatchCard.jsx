@@ -3,15 +3,19 @@ import { Lock, Check } from "lucide-react";
 import Flag from "./Flag.jsx";
 import PointsBadge from "./PointsBadge.jsx";
 import BroadcastPill from "./BroadcastPill.jsx";
-import { countdown } from "../lib/matchtime.js";
+import { countdown, livePhase, hasLiveScore } from "../lib/matchtime.js";
 
 // Compact, clickable match summary. Tip entry happens in the detail drawer.
 // `inactive` = pairing not yet set (K.o.) → not clickable, can't be tipped.
 // `broadcasts` = service keys for "where to watch (DE)"; a tiny pill (bottom-left,
 // sm+ only) opens the broadcast drawer. On mobile the services live in the detail.
+// `live` = delayed in-play state ({ h,a,phase,minute,injury }) from st.live[n];
+// shown (score + phase) once a match has kicked off, until the final result lands.
 export default function MatchCard({ match, home, away, result, points, hasTip, locked, onOpen, onOpenBroadcasts, compact, inactive, live, broadcasts }) {
   const hasResult = result && result.h !== "" && result.a !== "";
   const cd = !hasResult ? countdown(match.dt) : null;
+  const phase = !hasResult ? livePhase(live, true) : null; // short label for the narrow card
+  const liveScore = !hasResult && hasLiveScore(live);
 
   const inner = (
     <Card variant="default" className={`h-full ${inactive ? "" : "transition hover:bg-overlay"} ${live ? "border-app-accent/70" : ""}`}>
@@ -40,10 +44,15 @@ export default function MatchCard({ match, home, away, result, points, hasTip, l
             <div className="shrink-0 text-right tabular-nums">
               {hasResult ? (
                 <div className="flex flex-col items-end font-extrabold"><span>{result.h}</span><span>{result.a}</span></div>
+              ) : liveScore ? (
+                <div className="flex flex-col items-end font-extrabold leading-tight">
+                  <span>{live.h}</span><span>{live.a}</span>
+                  <span className="text-[10px] font-bold text-app-accent">{phase}</span>
+                </div>
               ) : cd ? (
                 <span className="text-muted">{cd}</span>
               ) : (
-                <span className="font-bold text-app-accent">läuft</span>
+                <span className="font-bold text-app-accent">{phase || "läuft"}</span>
               )}
             </div>
           </div>
@@ -55,10 +64,15 @@ export default function MatchCard({ match, home, away, result, points, hasTip, l
           <div className={`text-center ${compact ? "min-w-10" : "min-w-14"}`}>
             {hasResult ? (
               <span className={`font-extrabold tabular-nums ${compact ? "text-sm" : "text-lg"}`}>{result.h} : {result.a}</span>
+            ) : liveScore ? (
+              <div className="flex flex-col items-center leading-tight">
+                <span className={`font-extrabold tabular-nums ${compact ? "text-sm" : "text-lg"}`}>{live.h} : {live.a}</span>
+                <span className="text-[10px] font-bold text-app-accent">{phase}</span>
+              </div>
             ) : cd ? (
               <span className="text-xs text-muted">{cd}</span>
             ) : (
-              <span className="text-xs font-bold text-app-accent">läuft</span>
+              <span className="text-xs font-bold text-app-accent">{phase || "läuft"}</span>
             )}
           </div>
           <div className="flex min-w-0 flex-1 items-center gap-1.5">

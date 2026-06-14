@@ -27,3 +27,17 @@ export function matchDueForResult(hasResult, now = Date.now()) {
   }
   return null;
 }
+
+// Like matchDueForResult, but the window opens at KICKOFF (not 95 min) so we also
+// pick up the live (delayed) scoreline and match phase while a game is running —
+// not just the final result. Returns the earliest such match or null. One sync
+// covers every active match at once, so polling every minute here costs 1 call/min
+// while matches run, far under the per-minute rate limit.
+export function anyMatchActive(hasResult, now = Date.now()) {
+  for (const w of WINDOWS) {
+    const sinceMin = (now - w.ts) / 60000;
+    const end = w.ko ? END_KO : END_GROUP;
+    if (sinceMin >= 0 && sinceMin <= end && !hasResult(w.n)) return w.n;
+  }
+  return null;
+}

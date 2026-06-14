@@ -5,7 +5,7 @@ import ScoreInput from "./ScoreInput.jsx";
 import PointsBadge from "./PointsBadge.jsx";
 import BroadcastButtons from "./BroadcastButtons.jsx";
 import { PHASES } from "../lib/scoring.js";
-import { countdown } from "../lib/matchtime.js";
+import { countdown, livePhase, hasLiveScore } from "../lib/matchtime.js";
 
 // Bottom-sheet detail for one match: final score, your tip (disabled when
 // locked), and the other players' tips (revealed only once the match is locked).
@@ -25,6 +25,9 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   const ready = !!(home.code && away.code); // pairing fixed (both teams known)?
   const phaseLabel = PHASES.find((p) => p.code === match.ph)?.label || "";
   const cd = !hasResult ? countdown(match.dt) : null;
+  const live = st.live?.[n];
+  const liveScore = !hasResult && hasLiveScore(live);
+  const livePhaseLabel = !hasResult ? livePhase(live) : null; // full label — the sheet has room
 
   const others = (board || [])
     .filter((b) => b.p !== me)
@@ -46,9 +49,16 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
                 <Flag code={home.code} /><span className="truncate text-sm font-semibold">{home.label}</span>
               </div>
               <div className="shrink-0 text-center">
-                {hasResult
-                  ? <div className="text-3xl font-extrabold tabular-nums">{result.h}:{result.a}</div>
-                  : <div className="text-xs text-muted">{cd || "läuft"}</div>}
+                {hasResult ? (
+                  <div className="text-3xl font-extrabold tabular-nums">{result.h}:{result.a}</div>
+                ) : liveScore ? (
+                  <>
+                    <div className="text-3xl font-extrabold tabular-nums">{live.h}:{live.a}</div>
+                    <div className="text-[11px] font-bold text-app-accent">{livePhaseLabel}</div>
+                  </>
+                ) : (
+                  <div className={`text-xs ${cd ? "text-muted" : "font-bold text-app-accent"}`}>{livePhaseLabel || cd || "läuft"}</div>
+                )}
                 <div className="mt-0.5 text-[11px] text-muted">{match.disp}</div>
               </div>
               <div className="flex min-w-0 flex-1 flex-col items-center gap-1 text-center">

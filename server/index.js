@@ -7,12 +7,12 @@ import { fileURLToPath } from "url";
 import { MATCHES, ALIASES, TEAMS } from "./data.js";
 import {
   db, stateForUser, legacyState, leaderboard, matchdayBreakdown, setUserTips, setChamp, setResult, setResolved, clearResolved,
-  replaceBroadcasts, mergeBroadcasts, getMeta, setMeta, setChampionActual, getChampionActual, hasResult,
+  replaceBroadcasts, mergeBroadcasts, replaceLive, getMeta, setMeta, setChampionActual, getChampionActual, hasResult,
   getUserByUsername, getUserByEntraOid, getUserByEntraUpn, getUserByKuerzel,
   getUserById, listUsers, createUser, updateUser, deleteUser, countAdmins,
 } from "./db.js";
 import { isChampLocked } from "./lib/locks.js";
-import { matchDueForResult } from "./lib/poller.js";
+import { anyMatchActive } from "./lib/poller.js";
 import { activeSource } from "./lib/sources.js";
 import { fetchEpgProgrammes, RIGHTS, TEAM_ALIASES_DE } from "./lib/broadcasts.js";
 import {
@@ -105,6 +105,7 @@ async function sync(reason = "cron") {
     const list = await src.fetchFixtures(); // normalised fixtures
     let updated = 0, resolvedCount = 0, championCode = null;
     const usedTimeOnly = new Set();
+    const liveMap = {}; // match_n → { h, a, phase, minute, injury } for in-play matches (display only)
     for (const f of list) {
       if (!f.dateMs) continue;
       const hit = matchForFixture(f, usedTimeOnly);
@@ -129,6 +130,12 @@ async function sync(reason = "cron") {
         const [h, a] = swap ? [f.awayGoals, f.homeGoals] : [f.homeGoals, f.awayGoals];
         setResult(n, String(h), String(a));
         updated++;
+      } else if (f.live) {
+        // In-play: capture the (delayed) scoreline + phase for display only. Goals
+        // may not have arrived yet → store "" so the UI can still show the phase.
+        const hasGoals = f.homeGoals != null && f.awayGoals != null;
+        const [h, a] = !hasGoals ? ["", ""] : swap ? [f.awayGoals, f.homeGoals] : [f.homeGoals, f.awayGoals];
+        liveMap[n] = { h: String(h), a: String(a), phase: f.phase, minute: f.minute, injury: f.injuryTime };
       }
       // The champion is whoever wins the final — derived from the winner flag so
       // a penalty-shootout title still resolves (the fullTime score is a draw).
@@ -136,6 +143,10 @@ async function sync(reason = "cron") {
         championCode = codeForName(f.winner === "home" ? f.homeName : f.awayName);
       }
     }
+    // In-play state is fully derived from this fetch — replacing it clears any
+    // match that has finished or stopped being live since the previous sync.
+    replaceLive(liveMap);
+    const liveCount = Object.keys(liveMap).length;
     // Set the actual champion automatically once the final is decided — no admin needed.
     let champMsg = "";
     if (championCode && getChampionActual() !== championCode) {
@@ -144,7 +155,8 @@ async function sync(reason = "cron") {
     }
     meta.lastSync = new Date().toISOString();
     const callInfo = daily != null ? ` (Call ${meta.apiCallsToday}/${daily} heute)` : "";
-    meta.lastSyncMsg = `${reason} · ${src.name}: ${list.length} Spiele, ${updated} Ergebnisse, ${resolvedCount} Paarungen${champMsg}${callInfo}`;
+    const liveInfo = liveCount ? `, ${liveCount} live` : "";
+    meta.lastSyncMsg = `${reason} · ${src.name}: ${list.length} Spiele, ${updated} Ergebnisse, ${resolvedCount} Paarungen${liveInfo}${champMsg}${callInfo}`;
     setMeta(meta);
     console.log(meta.lastSyncMsg);
   } catch (e) {
@@ -384,14 +396,15 @@ app.use(express.static(PUBLIC, {
 app.get("*", (req, res) =>
   res.sendFile(path.join(PUBLIC, "index.html"), { headers: { "Cache-Control": "no-cache" } }));
 
-// Result polling: check every 2 min, but only hit the API when a match is in
-// its expected-end window and still has no result — so calls cluster tightly
-// around match end-times (incl. halftime, stoppage, extra time and penalties)
-// and retry every 2 min until the result lands. One call covers all matches and
-// stays far under the per-minute rate limit.
-cron.schedule("*/2 * * * *", () => {
-  const due = matchDueForResult(hasResult);
-  if (due) sync(`Spielende (Spiel ${due})`);
+// Result + near-live polling: check every minute, but only hit the API while a
+// match is actually running (kickoff → expected end, incl. halftime, stoppage,
+// extra time and penalties) and still has no final result. That yields the
+// delayed live scoreline + phase during the game and the final result at the end.
+// One call covers all matches at once, so this is ~1 call/min while games run —
+// far under the per-minute rate limit; idle otherwise.
+cron.schedule("* * * * *", () => {
+  const due = anyMatchActive(hasResult);
+  if (due) sync(`live/Spielende (Spiel ${due})`);
 });
 // Sparse safety net to catch anything missed (e.g. K.o.-team resolution, late edits).
 cron.schedule(process.env.SYNC_CRON || "0 */6 * * *", () => sync("Sicherheits-Sync"));

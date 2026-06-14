@@ -64,6 +64,18 @@ CREATE TABLE IF NOT EXISTS broadcasts (
   source  TEXT NOT NULL DEFAULT 'epg', -- provenance: 'epg' (TV guide) | 'rights' (tournament config)
   PRIMARY KEY (match_n, service)
 );
+-- Transient in-play state (delayed scoreline + match phase) for running matches.
+-- DISPLAY ONLY — never used for scoring (that stays on the final results table).
+-- The whole table is replaced every sync from the latest fetch, so finished/idle
+-- matches drop out automatically.
+CREATE TABLE IF NOT EXISTS live (
+  match_n INTEGER PRIMARY KEY,
+  h      TEXT NOT NULL DEFAULT '',
+  a      TEXT NOT NULL DEFAULT '',
+  phase  TEXT,             -- 'LIVE' | 'HT' | 'ET' | 'PEN'
+  minute INTEGER,
+  injury INTEGER
+);
 `);
 
 // Migration for DBs created before is_superadmin existed.
@@ -163,7 +175,7 @@ export function legacyState() {
   const resolved = {};
   for (const row of db.prepare("SELECT * FROM resolved").all())
     resolved[row.match_n] = { homeName: row.home_name, awayName: row.away_name, homeCode: row.home_code, awayCode: row.away_code, winner: row.winner };
-  return { tips, champs, results, resolved, broadcasts: broadcastsByMatch(), championActual: getSetting("championActual", ""), meta: getSetting("meta", {}) };
+  return { tips, champs, results, resolved, live: liveByMatch(), broadcasts: broadcastsByMatch(), championActual: getSetting("championActual", ""), meta: getSetting("meta", {}) };
 }
 
 // ---------- per-user state (privacy: others' tips only once a match is locked) ----------
@@ -192,7 +204,7 @@ export function stateForUser(meKuerzel) {
 
   return {
     me: meKuerzel,
-    tips, champs, results, resolved, broadcasts: broadcastsByMatch(),
+    tips, champs, results, resolved, live: liveByMatch(), broadcasts: broadcastsByMatch(),
     championActual: getSetting("championActual", ""),
     meta: getSetting("meta", {}),
     locks: { offsetMin: TIP_LOCK_OFFSET_MIN, serverNow: now, champLocked, champLockTs, lockedMatches },
@@ -264,6 +276,28 @@ export function broadcastsByMatch() {
   const out = {};
   for (const r of db.prepare("SELECT DISTINCT match_n, service FROM broadcasts ORDER BY service").all())
     (out[r.match_n] ||= []).push(r.service);
+  return out;
+}
+
+// Replace the whole live table with the currently in-play matches.
+// `map` = { match_n: { h, a, phase, minute, injury } } (h/a may be "" before the
+// first delayed score arrives). Full replace = matches that finished or stopped
+// being live since the last sync simply disappear.
+export function replaceLive(map) {
+  const del = db.prepare("DELETE FROM live");
+  const ins = db.prepare("INSERT INTO live(match_n,h,a,phase,minute,injury) VALUES(?,?,?,?,?,?)");
+  const tx = db.transaction(() => {
+    del.run();
+    for (const [n, v] of Object.entries(map || {}))
+      ins.run(Number(n), String(v.h ?? ""), String(v.a ?? ""), v.phase ?? null, v.minute ?? null, v.injury ?? null);
+  });
+  tx();
+}
+// { match_n: { h, a, phase, minute, injury } } for matches currently in play.
+export function liveByMatch() {
+  const out = {};
+  for (const r of db.prepare("SELECT match_n,h,a,phase,minute,injury FROM live").all())
+    out[r.match_n] = { h: r.h, a: r.a, phase: r.phase, minute: r.minute, injury: r.injury };
   return out;
 }
 export const hasResult = (n) => {

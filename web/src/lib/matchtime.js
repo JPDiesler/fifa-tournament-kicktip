@@ -21,3 +21,22 @@ export function isLive(dt, hasResult, now = Date.now()) {
   const ms = kickoffMs(dt);
   return ms <= now && now - ms <= 4 * 60 * 60 * 1000;
 }
+
+// Does the (delayed) live state from the server carry an actual scoreline yet?
+export const hasLiveScore = (live) => !!(live && live.h !== "" && live.a !== "");
+
+// Label for the live match phase coming from st.live[n]
+// ({ phase:'LIVE'|'HT'|'ET'|'PEN', minute, injury }). Scores are DELAYED on the
+// free data tier, so this is "near-live". `short` gives compact labels for the
+// narrow match cards; the long form is for the detail sheet. Returns null when
+// there is no live state.
+export function livePhase(live, short = false) {
+  if (!live) return null;
+  const clock = live.minute != null ? `${live.minute}'${live.injury ? `+${live.injury}` : ""}` : null;
+  switch (live.phase) {
+    case "HT": return short ? "HZ" : "Halbzeit";
+    case "PEN": return short ? "Elfer" : "Elfmeterschießen";
+    case "ET": return clock ? (short ? `V.${clock}` : `Verl. ${clock}`) : (short ? "Verl." : "Verlängerung");
+    default: return clock || "läuft"; // 'LIVE'
+  }
+}

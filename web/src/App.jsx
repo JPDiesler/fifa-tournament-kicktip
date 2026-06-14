@@ -19,7 +19,7 @@ import MatchDetail from "./components/MatchDetail.jsx";
 import BroadcastDrawer from "./components/BroadcastDrawer.jsx";
 import LeaderboardTab from "./components/LeaderboardTab.jsx";
 
-const EMPTY_STATE = { tips: {}, champs: {}, results: {}, resolved: {}, broadcasts: {}, championActual: "", meta: {}, locks: {} };
+const EMPTY_STATE = { tips: {}, champs: {}, results: {}, resolved: {}, live: {}, broadcasts: {}, championActual: "", meta: {}, locks: {} };
 const GROUP_PHASES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
 
 export default function App() {
