@@ -23,7 +23,11 @@ services:
       FOOTBALL_DATA_TOKEN: "${FOOTBALL_DATA_TOKEN:-}"    # kostenloser Token von football-data.org
       FOOTBALL_DATA_COMPETITION: "${FOOTBALL_DATA_COMPETITION:-WC}"
       FOOTBALL_DATA_SEASON: "${FOOTBALL_DATA_SEASON:-}"
-      FOOTBALL_DATA_DAILY_LIMIT: "${FOOTBALL_DATA_DAILY_LIMIT:-50}"
+      # Free-Tier hat KEIN Tageslimit — bindend sind nur 10 Calls/min (greift über
+      # FOOTBALL_DATA_RATE_LIMIT, Default 10). Leer = kein Tages-Cap; sonst würde
+      # das Minuten-genaue Live-Polling den Cap in <1 h Spielzeit aufbrauchen.
+      FOOTBALL_DATA_DAILY_LIMIT: "${FOOTBALL_DATA_DAILY_LIMIT:-}"
+      FOOTBALL_DATA_RATE_LIMIT: "${FOOTBALL_DATA_RATE_LIMIT:-10}"
       API_FOOTBALL_KEY: "${API_FOOTBALL_KEY:-}"          # nur für DATA_SOURCE=apifootball (Plan mit Season 2026 nötig)
       API_LEAGUE: "${API_LEAGUE:-1}"
       API_SEASON: "${API_SEASON:-2026}"
