@@ -3,12 +3,14 @@ import { Lock } from "lucide-react";
 import Flag from "./Flag.jsx";
 import ScoreInput from "./ScoreInput.jsx";
 import PointsBadge from "./PointsBadge.jsx";
+import BroadcastButtons from "./BroadcastButtons.jsx";
 import { PHASES } from "../lib/scoring.js";
 import { countdown } from "../lib/matchtime.js";
 
 // Bottom-sheet detail for one match: final score, your tip (disabled when
 // locked), and the other players' tips (revealed only once the match is locked).
 export default function MatchDetail({ match, isOpen, onClose, st, board, me, teamLabel, teamCode, score, onTip }) {
+  const broadcasts = match ? (st.broadcasts?.[match.n] || []) : [];
   if (!match) {
     return <Drawer.Backdrop isOpen={false} onOpenChange={() => onClose()}><Drawer.Content placement="bottom"><Drawer.Dialog /></Drawer.Content></Drawer.Backdrop>;
   }
@@ -53,6 +55,14 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
                 <Flag code={away.code} /><span className="truncate text-sm font-semibold">{away.label}</span>
               </div>
             </div>
+
+            {/* where to watch (Germany) */}
+            {broadcasts.length > 0 && (
+              <div>
+                <div className="mb-1.5 px-1 text-xs font-bold uppercase tracking-wider text-muted">Wo zu sehen (DE)</div>
+                <BroadcastButtons keys={broadcasts} />
+              </div>
+            )}
 
             {/* my tip */}
             <div className="rounded-xl border border-border bg-overlay p-3">

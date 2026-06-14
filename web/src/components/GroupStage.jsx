@@ -5,7 +5,7 @@ import MatchCard from "./MatchCard.jsx";
 
 // "Gruppenphase" tab: per group a standings table (top 2 highlighted) plus the
 // group's matches in compact, clickable form.
-export default function GroupStage({ groupCodes, matches, teams, st, me, teamLabel, teamCode, score, onOpenMatch }) {
+export default function GroupStage({ groupCodes, matches, teams, st, me, teamLabel, teamCode, score, onOpenMatch, onOpenBroadcasts }) {
   return (
     <div className="space-y-6">
       {groupCodes.map((code) => {
@@ -70,7 +70,9 @@ export default function GroupStage({ groupCodes, matches, teams, st, me, teamLab
                     points={score(myTip, result)}
                     hasTip={!!(myTip && (myTip.h !== "" || myTip.a !== ""))}
                     locked={(st.locks?.lockedMatches || []).includes(m.n)}
+                    broadcasts={st.broadcasts?.[m.n] || []}
                     onOpen={() => onOpenMatch(m.n)}
+                    onOpenBroadcasts={() => onOpenBroadcasts(m.n)}
                     compact
                   />
                 );

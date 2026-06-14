@@ -2,11 +2,14 @@ import { Card, Chip } from "@heroui/react";
 import { Lock, Check } from "lucide-react";
 import Flag from "./Flag.jsx";
 import PointsBadge from "./PointsBadge.jsx";
+import BroadcastPill from "./BroadcastPill.jsx";
 import { countdown } from "../lib/matchtime.js";
 
 // Compact, clickable match summary. Tip entry happens in the detail drawer.
 // `inactive` = pairing not yet set (K.o.) → not clickable, can't be tipped.
-export default function MatchCard({ match, home, away, result, points, hasTip, locked, onOpen, compact, inactive, live }) {
+// `broadcasts` = service keys for "where to watch (DE)"; a tiny pill (bottom-left,
+// sm+ only) opens the broadcast drawer. On mobile the services live in the detail.
+export default function MatchCard({ match, home, away, result, points, hasTip, locked, onOpen, onOpenBroadcasts, compact, inactive, live, broadcasts }) {
   const hasResult = result && result.h !== "" && result.a !== "";
   const cd = !hasResult ? countdown(match.dt) : null;
 
@@ -62,10 +65,23 @@ export default function MatchCard({ match, home, away, result, points, hasTip, l
             <Flag code={away.code} sm={compact} /><span className="truncate">{compact ? (away.short || away.label) : away.label}</span>
           </div>
         </div>
+        {/* where to watch (DE) — tiny pill bottom-left, desktop/tablet only (mobile: in the detail drawer) */}
+        {onOpenBroadcasts && (
+          <div className="mt-1.5 hidden sm:flex">
+            <BroadcastPill keys={broadcasts} onOpen={onOpenBroadcasts} />
+          </div>
+        )}
       </Card.Content>
     </Card>
   );
 
   if (inactive) return <div className="block h-full w-full text-left opacity-50">{inner}</div>;
-  return <button type="button" onClick={onOpen} className="block h-full w-full text-left">{inner}</button>;
+  // div[role=button] (not <button>) so the broadcaster <a> links nest validly.
+  return (
+    <div role="button" tabIndex={0} onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      className="block h-full w-full cursor-pointer text-left">
+      {inner}
+    </div>
+  );
 }

@@ -58,6 +58,12 @@ CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT
 );
+CREATE TABLE IF NOT EXISTS broadcasts (
+  match_n INTEGER NOT NULL,
+  service TEXT NOT NULL,            -- service key (zdf, ard, magentatv, sky, dazn, prime, netflix, …)
+  source  TEXT NOT NULL DEFAULT 'epg', -- provenance: 'epg' (TV guide) | 'rights' (tournament config)
+  PRIMARY KEY (match_n, service)
+);
 `);
 
 // Migration for DBs created before is_superadmin existed.
@@ -157,7 +163,7 @@ export function legacyState() {
   const resolved = {};
   for (const row of db.prepare("SELECT * FROM resolved").all())
     resolved[row.match_n] = { homeName: row.home_name, awayName: row.away_name, homeCode: row.home_code, awayCode: row.away_code, winner: row.winner };
-  return { tips, champs, results, resolved, championActual: getSetting("championActual", ""), meta: getSetting("meta", {}) };
+  return { tips, champs, results, resolved, broadcasts: broadcastsByMatch(), championActual: getSetting("championActual", ""), meta: getSetting("meta", {}) };
 }
 
 // ---------- per-user state (privacy: others' tips only once a match is locked) ----------
@@ -186,7 +192,7 @@ export function stateForUser(meKuerzel) {
 
   return {
     me: meKuerzel,
-    tips, champs, results, resolved,
+    tips, champs, results, resolved, broadcasts: broadcastsByMatch(),
     championActual: getSetting("championActual", ""),
     meta: getSetting("meta", {}),
     locks: { offsetMin: TIP_LOCK_OFFSET_MIN, serverNow: now, champLocked, champLockTs, lockedMatches },
@@ -223,6 +229,43 @@ export function setResolved(n, rv) {
     .run(Number(n), rv.homeName ?? null, rv.awayName ?? null, rv.homeCode ?? null, rv.awayCode ?? null, rv.winner ?? null);
 }
 export const clearResolved = (n) => db.prepare("DELETE FROM resolved WHERE match_n=?").run(Number(n));
+
+// Replace ALL broadcast rows for one source with `map` ({ match_n: [serviceKey…] }).
+// Sources are independent (e.g. 'epg' and 'rights' are merged on read), so each
+// can be refreshed without touching the other. Use for fully-derivable sources
+// like 'rights' (computed from config every time).
+export function replaceBroadcasts(source, map) {
+  const del = db.prepare("DELETE FROM broadcasts WHERE source=?");
+  const ins = db.prepare("INSERT OR IGNORE INTO broadcasts(match_n,service,source) VALUES(?,?,?)");
+  const tx = db.transaction(() => {
+    del.run(source);
+    for (const [n, services] of Object.entries(map || {}))
+      for (const s of services) ins.run(Number(n), String(s), source);
+  });
+  tx();
+}
+// Merge `map` into one source PER MATCH: only matches present in `map` are touched,
+// the rest are left intact. This lets the EPG (a rolling ~few-day window) ACCUMULATE
+// over the tournament — once a match has been seen it stays, even after it drops out
+// of the guide window.
+export function mergeBroadcasts(source, map) {
+  const del = db.prepare("DELETE FROM broadcasts WHERE source=? AND match_n=?");
+  const ins = db.prepare("INSERT OR IGNORE INTO broadcasts(match_n,service,source) VALUES(?,?,?)");
+  const tx = db.transaction(() => {
+    for (const [n, services] of Object.entries(map || {})) {
+      del.run(source, Number(n));
+      for (const s of services) ins.run(Number(n), String(s), source);
+    }
+  });
+  tx();
+}
+// { match_n: [serviceKey…] } — union across all sources, deduped & sorted.
+export function broadcastsByMatch() {
+  const out = {};
+  for (const r of db.prepare("SELECT DISTINCT match_n, service FROM broadcasts ORDER BY service").all())
+    (out[r.match_n] ||= []).push(r.service);
+  return out;
+}
 export const hasResult = (n) => {
   const r = db.prepare("SELECT h,a FROM results WHERE match_n=?").get(n);
   return !!(r && r.h !== "" && r.a !== "");

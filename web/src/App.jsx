@@ -16,9 +16,10 @@ import UpcomingTab from "./components/UpcomingTab.jsx";
 import GroupStage from "./components/GroupStage.jsx";
 import Bracket from "./components/Bracket.jsx";
 import MatchDetail from "./components/MatchDetail.jsx";
+import BroadcastDrawer from "./components/BroadcastDrawer.jsx";
 import LeaderboardTab from "./components/LeaderboardTab.jsx";
 
-const EMPTY_STATE = { tips: {}, champs: {}, results: {}, resolved: {}, championActual: "", meta: {}, locks: {} };
+const EMPTY_STATE = { tips: {}, champs: {}, results: {}, resolved: {}, broadcasts: {}, championActual: "", meta: {}, locks: {} };
 const GROUP_PHASES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
 
 export default function App() {
@@ -34,6 +35,7 @@ export default function App() {
   const [loginError, setLoginError] = useState("");
   const [autoOpenEntra, setAutoOpenEntra] = useState(0);
   const [openMatchN, setOpenMatchN] = useState(null);
+  const [broadcastN, setBroadcastN] = useState(null);
   const [toast, setToast] = useState("");
   const saveTimer = useRef({});
 
@@ -212,6 +214,7 @@ export default function App() {
               teamCode={teamCode}
               score={score}
               onOpenMatch={setOpenMatchN}
+              onOpenBroadcasts={setBroadcastN}
             />
           </Tabs.Panel>
 
@@ -226,6 +229,7 @@ export default function App() {
               teamCode={teamCode}
               score={score}
               onOpenMatch={setOpenMatchN}
+              onOpenBroadcasts={setBroadcastN}
             />
           </Tabs.Panel>
 
@@ -258,6 +262,13 @@ export default function App() {
         teamCode={teamCode}
         score={score}
         onTip={setTip}
+      />
+
+      <BroadcastDrawer
+        isOpen={broadcastN != null}
+        onClose={() => setBroadcastN(null)}
+        keys={broadcastN != null ? (st.broadcasts?.[broadcastN] || []) : []}
+        title={broadcastN != null ? `Spiel ${broadcastN}` : ""}
       />
 
       {user.isAdmin && (

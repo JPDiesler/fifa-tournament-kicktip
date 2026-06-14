@@ -6,14 +6,15 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { MATCHES, ALIASES, TEAMS } from "./data.js";
 import {
-  db, stateForUser, leaderboard, matchdayBreakdown, setUserTips, setChamp, setResult, setResolved, clearResolved,
-  getMeta, setMeta, setChampionActual, getChampionActual, hasResult,
+  db, stateForUser, legacyState, leaderboard, matchdayBreakdown, setUserTips, setChamp, setResult, setResolved, clearResolved,
+  replaceBroadcasts, mergeBroadcasts, getMeta, setMeta, setChampionActual, getChampionActual, hasResult,
   getUserByUsername, getUserByEntraOid, getUserByEntraUpn, getUserByKuerzel,
   getUserById, listUsers, createUser, updateUser, deleteUser, countAdmins,
 } from "./db.js";
 import { isChampLocked } from "./lib/locks.js";
 import { matchDueForResult } from "./lib/poller.js";
 import { activeSource } from "./lib/sources.js";
+import { fetchEpgProgrammes, RIGHTS, TEAM_ALIASES_DE } from "./lib/broadcasts.js";
 import {
   requireAuth, requireAdmin, userDto, adminUserDto, publicConfig,
   hashPassword, verifyPassword, verifyEntraIdToken, bootstrapAdmin,
@@ -148,6 +149,67 @@ async function sync(reason = "cron") {
     console.log(meta.lastSyncMsg);
   } catch (e) {
     const m = getMeta(); m.lastSyncMsg = `Sync-Fehler (${src.name}): ` + e.message; setMeta(m); console.error("sync", e);
+  }
+}
+
+// ---------- "where to watch (Germany)" ----------
+// Accepted normalised team names for one side of a match: the static German name
+// (+ aliases) for group teams, or the API-resolved name for K.o. matches once the
+// pairing is known. null → can't be matched yet (e.g. unresolved K.o. placeholder).
+function acceptedNames(side, m, resolved) {
+  const code = side === "h" ? m.h : m.a;
+  if (known(code)) return [norm(TEAMS[code].name), ...(TEAM_ALIASES_DE[code] || [])].filter(Boolean);
+  const r = resolved[m.n];
+  const nm = r && (side === "h" ? r.homeName : r.awayName);
+  return nm ? [norm(nm)] : null;
+}
+
+// Materialise the per-tournament streaming/pay rights into broadcast rows.
+function applyRights() {
+  const map = {};
+  for (const rule of RIGHTS) {
+    const cov = rule.coverage;
+    for (const m of MATCHES) {
+      const hit = cov === "all"
+        || (cov && Array.isArray(cov.phase) && cov.phase.includes(m.ph))
+        || (cov && Array.isArray(cov.matches) && cov.matches.includes(m.n));
+      if (hit) (map[m.n] ||= []).push(rule.service);
+    }
+  }
+  replaceBroadcasts("rights", map);
+}
+
+// Pull the German EPG and map each live match block (channel airing both team names
+// across the kickoff window) to its match → linear broadcaster per fixture.
+async function syncBroadcasts(reason = "cron") {
+  try {
+    const progs = await fetchEpgProgrammes();
+    const resolved = legacyState().resolved;
+    const map = {};
+    let hits = 0;
+    for (const m of MATCHES) {
+      const home = acceptedNames("h", m, resolved);
+      const away = acceptedNames("a", m, resolved);
+      if (!home || !away) continue;
+      const ts = tsOf(m.dt);
+      const services = new Set();
+      for (const p of progs) {
+        // a live match block starts at/just before kickoff and runs past it
+        if (!(p.startMs <= ts + 15 * 60000 && p.stopMs >= ts + 30 * 60000)) continue;
+        const text = norm(`${p.title} ${p.sub}`);
+        if (home.some((n) => text.includes(n)) && away.some((n) => text.includes(n))) services.add(p.service);
+      }
+      if (services.size) { map[m.n] = [...services]; hits++; }
+    }
+    mergeBroadcasts("epg", map); // accumulate — the EPG window rolls, coverage must not
+    applyRights();
+    const meta = getMeta();
+    meta.broadcastSync = new Date().toISOString();
+    meta.broadcastMsg = `${reason}: EPG ${progs.length} Sendungen, ${hits} Spiele zugeordnet`;
+    setMeta(meta);
+    console.log(meta.broadcastMsg);
+  } catch (e) {
+    const meta = getMeta(); meta.broadcastMsg = "EPG-Fehler: " + e.message; setMeta(meta); console.error("broadcasts", e);
   }
 }
 
@@ -333,10 +395,15 @@ cron.schedule("*/2 * * * *", () => {
 });
 // Sparse safety net to catch anything missed (e.g. K.o.-team resolution, late edits).
 cron.schedule(process.env.SYNC_CRON || "0 */6 * * *", () => sync("Sicherheits-Sync"));
+// "Where to watch": the EPG only spans a few days and changes slowly, so a daily
+// refresh is plenty (it also re-applies the streaming rights config).
+cron.schedule(process.env.EPG_CRON || "30 4 * * *", () => syncBroadcasts("täglich"));
 
 app.listen(PORT, () => {
   console.log(`WM-Tippspiel läuft auf :${PORT}`);
   const src = activeSource();
   console.log(`Ergebnis-Quelle: ${src.name}${src.configured() ? "" : " (nicht konfiguriert)"}`);
   if (src.configured()) sync("start");
+  applyRights();              // streaming/pay rights are static — available immediately
+  syncBroadcasts("start");    // EPG download runs in the background, won't block boot
 });
