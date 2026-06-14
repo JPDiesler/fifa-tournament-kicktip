@@ -1,9 +1,10 @@
-import { Card, Chip } from "@heroui/react";
+import { Card } from "@heroui/react";
 import { Lock, Check } from "lucide-react";
 import Flag from "./Flag.jsx";
 import PointsBadge from "./PointsBadge.jsx";
 import BroadcastPill from "./BroadcastPill.jsx";
-import { countdown, livePhase, hasLiveScore } from "../lib/matchtime.js";
+import LiveBadge, { LiveTag, LivePhase } from "./LiveBadge.jsx";
+import { countdown } from "../lib/matchtime.js";
 
 // Compact, clickable match summary. Tip entry happens in the detail drawer.
 // `inactive` = pairing not yet set (K.o.) → not clickable, can't be tipped.
@@ -14,8 +15,10 @@ import { countdown, livePhase, hasLiveScore } from "../lib/matchtime.js";
 export default function MatchCard({ match, home, away, result, points, hasTip, locked, onOpen, onOpenBroadcasts, compact, inactive, live, broadcasts }) {
   const hasResult = result && result.h !== "" && result.a !== "";
   const cd = !hasResult ? countdown(match.dt) : null;
-  const phase = !hasResult ? livePhase(live, true) : null; // short label for the narrow card
-  const liveScore = !hasResult && hasLiveScore(live);
+  // A running match (st.live present) always shows a scoreline — defaulting to 0:0
+  // until the (delayed) score arrives — plus a live/phase badge.
+  const isLiveMatch = !hasResult && !!live;
+  const lh = live?.h || "0", la = live?.a || "0";
 
   const inner = (
     <Card variant="default" className={`h-full ${inactive ? "" : "transition hover:bg-overlay"} ${live ? "border-app-accent/70" : ""}`}>
@@ -24,9 +27,9 @@ export default function MatchCard({ match, home, away, result, points, hasTip, l
           <span className="truncate">Spiel {match.n} · {match.disp}{compact ? "" : ` · ${match.ven}`}</span>
           <span className="flex shrink-0 items-center gap-1.5">
             {hasTip && (
-              <Chip size="sm" className="border-0 bg-emerald-500/15 px-1.5 text-[11px] font-semibold text-emerald-400">
-                <Check size={11} /> getippt
-              </Chip>
+              <span title="getippt" aria-label="getippt" className="flex size-4 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+                <Check size={11} />
+              </span>
             )}
             {locked && <Lock size={12} className="text-muted" />}
             <PointsBadge points={points} />
@@ -44,41 +47,67 @@ export default function MatchCard({ match, home, away, result, points, hasTip, l
             <div className="shrink-0 text-right tabular-nums">
               {hasResult ? (
                 <div className="flex flex-col items-end font-extrabold"><span>{result.h}</span><span>{result.a}</span></div>
-              ) : liveScore ? (
+              ) : isLiveMatch ? (
                 <div className="flex flex-col items-end font-extrabold leading-tight">
-                  <span>{live.h}</span><span>{live.a}</span>
-                  <span className="text-[10px] font-bold text-app-accent">{phase}</span>
+                  <span>{lh}</span><span>{la}</span>
+                  <LiveBadge live={live} className="text-[10px]" />
                 </div>
               ) : cd ? (
                 <span className="text-muted">{cd}</span>
               ) : (
-                <span className="font-bold text-app-accent">{phase || "läuft"}</span>
+                <span className="font-bold text-app-accent">läuft</span>
               )}
             </div>
           </div>
         )}
-        <div className={`${compact ? "hidden sm:flex" : "flex"} items-center font-semibold ${compact ? "gap-1 text-xs" : "gap-2 text-sm"}`}>
-          <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5 text-right">
-            <span className="truncate">{compact ? (home.short || home.label) : home.label}</span><Flag code={home.code} sm={compact} />
+        {/* compact (group grid, ≥sm): teams + score on one line */}
+        {compact ? (
+          <div className="hidden items-center gap-1 text-xs font-semibold sm:flex">
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5 text-right">
+              <span className="truncate">{home.short || home.label}</span><Flag code={home.code} sm />
+            </div>
+            <div className="min-w-10 text-center">
+              {hasResult ? (
+                <span className="text-sm font-extrabold tabular-nums">{result.h} : {result.a}</span>
+              ) : isLiveMatch ? (
+                <div className="flex flex-col items-center leading-tight">
+                  <span className="text-sm font-extrabold tabular-nums">{lh} : {la}</span>
+                  <LiveBadge live={live} className="text-[10px]" />
+                </div>
+              ) : cd ? (
+                <span className="text-xs text-muted">{cd}</span>
+              ) : (
+                <span className="text-xs font-bold text-app-accent">läuft</span>
+              )}
+            </div>
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <Flag code={away.code} sm /><span className="truncate">{away.short || away.label}</span>
+            </div>
           </div>
-          <div className={`text-center ${compact ? "min-w-10" : "min-w-14"}`}>
-            {hasResult ? (
-              <span className={`font-extrabold tabular-nums ${compact ? "text-sm" : "text-lg"}`}>{result.h} : {result.a}</span>
-            ) : liveScore ? (
-              <div className="flex flex-col items-center leading-tight">
-                <span className={`font-extrabold tabular-nums ${compact ? "text-sm" : "text-lg"}`}>{live.h} : {live.a}</span>
-                <span className="text-[10px] font-bold text-app-accent">{phase}</span>
-              </div>
-            ) : cd ? (
-              <span className="text-xs text-muted">{cd}</span>
-            ) : (
-              <span className="text-xs font-bold text-app-accent">{phase || "läuft"}</span>
-            )}
+        ) : (
+          /* normal card: teams pinned to the edges, big score centered below */
+          <div className="flex flex-col items-center gap-1">
+            <div className="flex w-full items-center gap-3 text-sm font-semibold">
+              <span className="flex min-w-0 flex-1 items-center gap-1.5"><Flag code={home.code} /><span className="truncate">{home.label}</span></span>
+              <span className="flex min-w-0 flex-1 items-center justify-end gap-1.5"><span className="truncate">{away.label}</span><Flag code={away.code} /></span>
+            </div>
+            <div className="text-center">
+              {hasResult ? (
+                <span className="text-4xl font-extrabold tabular-nums">{result.h} : {result.a}</span>
+              ) : isLiveMatch ? (
+                <div className="flex flex-col items-center gap-1 leading-none">
+                  <LiveTag paused={live.phase === "HT"} className="text-[11px]" />
+                  <span className="text-4xl font-extrabold tabular-nums">{lh} : {la}</span>
+                  <LivePhase live={live} className="text-[11px]" />
+                </div>
+              ) : cd ? (
+                <span className="text-sm text-muted">{cd}</span>
+              ) : (
+                <span className="text-sm font-bold text-app-accent">läuft</span>
+              )}
+            </div>
           </div>
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            <Flag code={away.code} sm={compact} /><span className="truncate">{compact ? (away.short || away.label) : away.label}</span>
-          </div>
-        </div>
+        )}
         {/* where to watch (DE) — tiny pill bottom-left, desktop/tablet only (mobile: in the detail drawer) */}
         {onOpenBroadcasts && (
           <div className="mt-1.5 hidden sm:flex">

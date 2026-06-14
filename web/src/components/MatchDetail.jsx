@@ -4,8 +4,9 @@ import Flag from "./Flag.jsx";
 import ScoreInput from "./ScoreInput.jsx";
 import PointsBadge from "./PointsBadge.jsx";
 import BroadcastButtons from "./BroadcastButtons.jsx";
+import { LiveTag, LivePhase } from "./LiveBadge.jsx";
 import { PHASES } from "../lib/scoring.js";
-import { countdown, livePhase, hasLiveScore } from "../lib/matchtime.js";
+import { countdown, LIVE_DELAY_NOTE } from "../lib/matchtime.js";
 
 // Bottom-sheet detail for one match: final score, your tip (disabled when
 // locked), and the other players' tips (revealed only once the match is locked).
@@ -26,8 +27,8 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   const phaseLabel = PHASES.find((p) => p.code === match.ph)?.label || "";
   const cd = !hasResult ? countdown(match.dt) : null;
   const live = st.live?.[n];
-  const liveScore = !hasResult && hasLiveScore(live);
-  const livePhaseLabel = !hasResult ? livePhase(live) : null; // full label — the sheet has room
+  const isLiveMatch = !hasResult && !!live;             // running → show scoreline (0:0 default) + badge
+  const lh = live?.h || "0", la = live?.a || "0";
 
   const others = (board || [])
     .filter((b) => b.p !== me)
@@ -51,13 +52,15 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
               <div className="shrink-0 text-center">
                 {hasResult ? (
                   <div className="text-3xl font-extrabold tabular-nums">{result.h}:{result.a}</div>
-                ) : liveScore ? (
-                  <>
-                    <div className="text-3xl font-extrabold tabular-nums">{live.h}:{live.a}</div>
-                    <div className="text-[11px] font-bold text-app-accent">{livePhaseLabel}</div>
-                  </>
+                ) : isLiveMatch ? (
+                  <div className="flex flex-col items-center gap-1 leading-none">
+                    <LiveTag paused={live.phase === "HT"} className="text-[11px]" />
+                    <div className="text-3xl font-extrabold tabular-nums">{lh}:{la}</div>
+                    <LivePhase live={live} className="text-[11px]" />
+                    <span className="text-[10px] text-muted">{LIVE_DELAY_NOTE}</span>
+                  </div>
                 ) : (
-                  <div className={`text-xs ${cd ? "text-muted" : "font-bold text-app-accent"}`}>{livePhaseLabel || cd || "läuft"}</div>
+                  <div className={`text-xs ${cd ? "text-muted" : "font-bold text-app-accent"}`}>{cd || "läuft"}</div>
                 )}
                 <div className="mt-0.5 text-[11px] text-muted">{match.disp}</div>
               </div>

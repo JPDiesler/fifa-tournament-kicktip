@@ -1,7 +1,8 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import Flag from "./Flag.jsx";
 import PointsBadge from "./PointsBadge.jsx";
-import { isLive, livePhase, hasLiveScore } from "../lib/matchtime.js";
+import { isLive } from "../lib/matchtime.js";
+import LiveBadge from "./LiveBadge.jsx";
 import fwc from "../assets/fwc26.jpg";
 
 // Feeder match numbers parsed from a K.o. slot ("Sieger Spiel 73" → 73).
@@ -51,16 +52,17 @@ function Tile({ m, me, st, teamLabel, teamCode, score, onOpen, setRef }) {
   const ready = !!(teamCode(m, "h") && teamCode(m, "a")); // pairing fixed → tippable
   const live = isLive(m.dt, has);
   const lv = st.live?.[m.n];
-  const liveScore = !has && hasLiveScore(lv);
+  const isLiveMatch = !has && !!lv;          // running → show scoreline (0:0 default)
+  const lh = lv?.h || "0", la = lv?.a || "0";
   const pts = score((st.tips[me] || {})[m.n], r);
   const card = (
     <div className={`rounded-lg border bg-overlay p-1.5 text-[11px] ${decided ? "border-app-accent/70" : "border-border"} ${ready ? "transition hover:bg-surface" : "opacity-50"}`}>
       <div className="mb-0.5 flex items-center justify-between text-[10px] text-muted">
         <span>Sp. {m.n}</span>
-        {live ? <span className="font-bold text-app-accent">{livePhase(lv, true) || "läuft"}</span> : pts != null && <PointsBadge points={pts} />}
+        {live ? <LiveBadge live={lv || { phase: "LIVE" }} /> : pts != null && <PointsBadge points={pts} />}
       </div>
-      <TeamRow code={teamCode(m, "h")} label={teamLabel(m, "h")} goal={has ? r.h : liveScore ? lv.h : ""} win={homeWin} lose={has && !homeWin} />
-      <TeamRow code={teamCode(m, "a")} label={teamLabel(m, "a")} goal={has ? r.a : liveScore ? lv.a : ""} win={awayWin} lose={has && !awayWin} />
+      <TeamRow code={teamCode(m, "h")} label={teamLabel(m, "h")} goal={has ? r.h : isLiveMatch ? lh : ""} win={homeWin} lose={has && !homeWin} />
+      <TeamRow code={teamCode(m, "a")} label={teamLabel(m, "a")} goal={has ? r.a : isLiveMatch ? la : ""} win={awayWin} lose={has && !awayWin} />
     </div>
   );
   return (

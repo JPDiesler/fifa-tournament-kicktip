@@ -1,6 +1,10 @@
 // Kickoff time of a match (dt is MESZ wall-clock) → epoch ms.
 export const kickoffMs = (dt) => Date.parse(dt + ":00+02:00");
 
+// Free-tier live scores arrive delayed (measured ~3 min during the WC); shown as
+// a small, unobtrusive hint so the live score doesn't read as broken/real-time.
+export const LIVE_DELAY_NOTE = "ca. 3 Min verzögert";
+
 // Short relative countdown to kickoff, or null once it has started.
 export function countdown(dt, now = Date.now()) {
   const diff = kickoffMs(dt) - now;
@@ -22,14 +26,11 @@ export function isLive(dt, hasResult, now = Date.now()) {
   return ms <= now && now - ms <= 4 * 60 * 60 * 1000;
 }
 
-// Does the (delayed) live state from the server carry an actual scoreline yet?
-export const hasLiveScore = (live) => !!(live && live.h !== "" && live.a !== "");
-
 // Label for the live match phase coming from st.live[n]
 // ({ phase:'LIVE'|'HT'|'ET'|'PEN', minute, injury }). Scores are DELAYED on the
-// free data tier, so this is "near-live". `short` gives compact labels for the
-// narrow match cards; the long form is for the detail sheet. Returns null when
-// there is no live state.
+// free data tier (which also reports no minute), so plain in-play falls back to
+// "LIVE". `short` gives compact labels for the narrow match cards; the long form
+// is for the detail sheet. Returns null when there is no live state.
 export function livePhase(live, short = false) {
   if (!live) return null;
   const clock = live.minute != null ? `${live.minute}'${live.injury ? `+${live.injury}` : ""}` : null;
@@ -37,6 +38,6 @@ export function livePhase(live, short = false) {
     case "HT": return short ? "HZ" : "Halbzeit";
     case "PEN": return short ? "Elfer" : "Elfmeterschießen";
     case "ET": return clock ? (short ? `V.${clock}` : `Verl. ${clock}`) : (short ? "Verl." : "Verlängerung");
-    default: return clock || "läuft"; // 'LIVE'
+    default: return clock || (short ? "LIVE" : "läuft"); // plain in-play — no minute on the free tier
   }
 }

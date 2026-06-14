@@ -131,10 +131,11 @@ async function sync(reason = "cron") {
         setResult(n, String(h), String(a));
         updated++;
       } else if (f.live) {
-        // In-play: capture the (delayed) scoreline + phase for display only. Goals
-        // may not have arrived yet → store "" so the UI can still show the phase.
+        // In-play: capture the (delayed) scoreline + phase for display only. The
+        // delayed feed can report a match live before its score lands → default to
+        // 0:0 so the card always shows a running scoreline, never an empty " : ".
         const hasGoals = f.homeGoals != null && f.awayGoals != null;
-        const [h, a] = !hasGoals ? ["", ""] : swap ? [f.awayGoals, f.homeGoals] : [f.homeGoals, f.awayGoals];
+        const [h, a] = !hasGoals ? [0, 0] : swap ? [f.awayGoals, f.homeGoals] : [f.homeGoals, f.awayGoals];
         liveMap[n] = { h: String(h), a: String(a), phase: f.phase, minute: f.minute, injury: f.injuryTime };
       }
       // The champion is whoever wins the final — derived from the winner flag so

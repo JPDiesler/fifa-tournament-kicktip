@@ -1,5 +1,5 @@
 import MatchCard from "./MatchCard.jsx";
-import { kickoffMs, isLive } from "../lib/matchtime.js";
+import { kickoffMs, isLive, LIVE_DELAY_NOTE } from "../lib/matchtime.js";
 
 // "Anstehend" tab: live matches first (accent-bordered), a divider, then the
 // upcoming matches (soonest first). Tapping opens the drawer.
@@ -9,7 +9,7 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, scor
   const live = matches.filter((m) => isLive(m.dt, hasResult(m), now)).sort((a, b) => kickoffMs(a.dt) - kickoffMs(b.dt));
   const upcoming = matches.filter((m) => kickoffMs(m.dt) > now).sort((a, b) => kickoffMs(a.dt) - kickoffMs(b.dt));
 
-  const card = (m, extra) => {
+  const card = (m) => {
     const result = st.results[m.n];
     const myTip = (st.tips[me] || {})[m.n];
     return (
@@ -27,7 +27,6 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, scor
         broadcasts={st.broadcasts?.[m.n] || []}
         onOpen={() => onOpenMatch(m.n)}
         onOpenBroadcasts={() => onOpenBroadcasts(m.n)}
-        {...extra}
       />
     );
   };
@@ -38,8 +37,10 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, scor
     <div className="space-y-2">
       {live.length > 0 && (
         <>
-          <div className="px-1 text-xs font-bold uppercase tracking-wider text-app-accent">Live</div>
-          {live.map((m) => card(m, { live: true }))}
+          <div className="px-1 text-xs font-bold uppercase tracking-wider text-app-accent">
+            Live <span className="font-normal normal-case text-muted">· {LIVE_DELAY_NOTE}</span>
+          </div>
+          {live.map((m) => card(m))}
           <div className="my-3 border-t border-border" />
           {upcoming.length > 0 && <div className="px-1 text-xs font-bold uppercase tracking-wider text-muted">Anstehend</div>}
         </>
