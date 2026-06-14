@@ -1,4 +1,4 @@
-import { livePhase } from "../lib/matchtime.js";
+import { livePhase } from "@/lib/matchtime.js";
 
 // "🔴 LIVE" marker (pulsing red dot). At halftime the dot doesn't pulse — the
 // ball isn't rolling. Sits ABOVE the score on the big card / detail sheet.

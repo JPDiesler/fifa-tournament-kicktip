@@ -3,8 +3,8 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { MATCHES, CHAMP_BONUS } from "./data.js";
-import { score } from "./lib/scoring.js";
-import { isTipLocked, isChampLocked, champLockTs, TIP_LOCK_OFFSET_MIN } from "./lib/locks.js";
+import { score } from "./services/scoring.js";
+import { isTipLocked, isChampLocked, champLockTs, TIP_LOCK_OFFSET_MIN } from "./services/locks.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");

@@ -1,5 +1,5 @@
 import { ComboBox, Input, ListBox } from "@heroui/react";
-import Flag from "./Flag.jsx";
+import Flag from "@/components/Flag.jsx";
 
 const NONE = "__none__";
 

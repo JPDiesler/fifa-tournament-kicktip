@@ -1,0 +1,92 @@
+// Admin: manual re-sync + user management. Mounted at /api (all requireAdmin).
+// Results and the actual champion are fully automatic (end-time polling +
+// final-winner detection), so there is no manual result/champion entry.
+import { Router } from "express";
+import { APP_URL } from "../config.js";
+import {
+  getMeta, listUsers, createUser, updateUser, deleteUser,
+  getUserById, getUserByUsername, getUserByKuerzel, getUserByEntraOid, getUserByEntraUpn, countAdmins,
+} from "../db.js";
+import { requireAdmin, adminUserDto, hashPassword } from "../middleware/auth.js";
+import { sync } from "../services/sync.js";
+import { genPassword, cacheCredential, getCredential, streamCredentialsPdf } from "../services/credentials.js";
+
+const router = Router();
+const cleanKuerzel = (k) => ((k || "").trim().toUpperCase() || null);
+
+router.post("/sync", requireAdmin, async (req, res) => { await sync("manuell"); res.json({ meta: getMeta() }); });
+
+router.get("/admin/users", requireAdmin, (req, res) => res.json(listUsers().map(adminUserDto)));
+
+router.post("/admin/users/basic", requireAdmin, (req, res) => {
+  const username = (req.body?.username || "").trim();
+  const name = (req.body?.name || "").trim() || null;
+  const kuerzel = cleanKuerzel(req.body?.kuerzel);
+  if (!username) return res.status(400).json({ error: "Benutzername fehlt" });
+  if (getUserByUsername(username)) return res.status(409).json({ error: "Benutzername bereits vergeben" });
+  if (kuerzel && getUserByKuerzel(kuerzel)) return res.status(409).json({ error: "Kürzel bereits vergeben" });
+  const password = genPassword();
+  const u = createUser({ username, name, kuerzel, kind: "basic", pass_hash: hashPassword(password), is_active: 1 });
+  cacheCredential(u.id, { username, password, name, kuerzel });
+  res.json({ user: adminUserDto(u), password });
+});
+
+router.post("/admin/users/entra", requireAdmin, (req, res) => {
+  const oid = (req.body?.oid || "").trim() || null;
+  const upn = (req.body?.upn || "").trim() || null;
+  const name = (req.body?.name || "").trim() || null;
+  const kuerzel = cleanKuerzel(req.body?.kuerzel);
+  if (!oid && !upn) return res.status(400).json({ error: "UPN oder OID nötig" });
+  if (oid && getUserByEntraOid(oid)) return res.status(409).json({ error: "Nutzer bereits angelegt" });
+  if (upn && getUserByEntraUpn(upn)) return res.status(409).json({ error: "Nutzer bereits angelegt" });
+  if (kuerzel && getUserByKuerzel(kuerzel)) return res.status(409).json({ error: "Kürzel bereits vergeben" });
+  const u = createUser({ kind: "entra", entra_oid: oid, entra_upn: upn, name, kuerzel, is_active: 1 });
+  res.json({ user: adminUserDto(u) });
+});
+
+router.patch("/admin/users/:id", requireAdmin, (req, res) => {
+  const u = getUserById(+req.params.id);
+  if (!u) return res.status(404).json({ error: "nicht gefunden" });
+  const b = req.body || {};
+  const fields = {};
+  if ("kuerzel" in b) {
+    const k = cleanKuerzel(b.kuerzel);
+    if (k) { const other = getUserByKuerzel(k); if (other && other.id !== u.id) return res.status(409).json({ error: "Kürzel bereits vergeben" }); }
+    fields.kuerzel = k;
+  }
+  if ("name" in b) fields.name = (b.name || "").trim() || null;
+  if ("is_admin" in b) fields.is_admin = !!b.is_admin;
+  if ("is_active" in b) fields.is_active = !!b.is_active;
+  // Don't let the last active admin demote/deactivate into a lockout.
+  if (u.is_admin && (fields.is_admin === false || fields.is_active === false) && countAdmins() <= 1)
+    return res.status(400).json({ error: "Der letzte aktive Admin kann nicht entfernt werden" });
+  res.json({ user: adminUserDto(updateUser(u.id, fields)) });
+});
+
+router.post("/admin/users/:id/reset-password", requireAdmin, (req, res) => {
+  const u = getUserById(+req.params.id);
+  if (!u || u.kind !== "basic") return res.status(404).json({ error: "kein Basic-Nutzer" });
+  const password = genPassword();
+  updateUser(u.id, { pass_hash: hashPassword(password) });
+  cacheCredential(u.id, { username: u.username, password, name: u.name, kuerzel: u.kuerzel });
+  res.json({ password });
+});
+
+router.get("/admin/users/:id/credentials.pdf", requireAdmin, (req, res) => {
+  const u = getUserById(+req.params.id);
+  if (!u) return res.status(404).end();
+  const cred = getCredential(u.id);
+  if (!cred) return res.status(410).json({ error: "Passwort nicht mehr verfügbar – bitte zurücksetzen." });
+  streamCredentialsPdf(res, { appUrl: APP_URL, username: cred.username, password: cred.password, name: cred.name, kuerzel: cred.kuerzel });
+});
+
+router.delete("/admin/users/:id", requireAdmin, (req, res) => {
+  const u = getUserById(+req.params.id);
+  if (!u) return res.status(404).json({ error: "nicht gefunden" });
+  if (u.id === req.user.id) return res.status(400).json({ error: "Dich selbst kannst du nicht löschen" });
+  if (u.is_admin && countAdmins() <= 1) return res.status(400).json({ error: "Der letzte aktive Admin kann nicht gelöscht werden" });
+  deleteUser(u.id);
+  res.json({ ok: true });
+});
+
+export default router;

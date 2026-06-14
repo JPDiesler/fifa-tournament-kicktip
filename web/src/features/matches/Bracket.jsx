@@ -1,9 +1,9 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import Flag from "./Flag.jsx";
-import PointsBadge from "./PointsBadge.jsx";
-import { isLive } from "../lib/matchtime.js";
+import Flag from "@/components/Flag.jsx";
+import PointsBadge from "@/components/PointsBadge.jsx";
+import { isLive } from "@/lib/matchtime.js";
 import LiveBadge from "./LiveBadge.jsx";
-import fwc from "../assets/fwc26.jpg";
+import fwc from "@/assets/fwc26.jpg";
 
 // Feeder match numbers parsed from a K.o. slot ("Sieger Spiel 73" → 73).
 const feedersOf = (m) => [m.h, m.a].map((s) => { const x = /Spiel (\d+)/.exec(s || ""); return x ? +x[1] : null; });

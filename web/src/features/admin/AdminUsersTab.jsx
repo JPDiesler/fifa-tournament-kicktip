@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Table, Button, Switch, Chip, Modal, TextField, Input, Label, Spinner } from "@heroui/react";
 import { UserPlus, Users as UsersIcon, FileDown, KeyRound, Trash2, Pencil } from "lucide-react";
-import { listUsers, createBasic, createEntra, patchUser, resetPassword, deleteUser, downloadCredentialsPdf } from "../lib/admin.js";
-import { fetchEntraUsers } from "../lib/msal.js";
+import { listUsers, createBasic, createEntra, patchUser, resetPassword, deleteUser, downloadCredentialsPdf } from "./admin.js";
+import { fetchEntraUsers } from "@/features/auth/msal.js";
 
 function Field({ label, ...props }) {
   return (

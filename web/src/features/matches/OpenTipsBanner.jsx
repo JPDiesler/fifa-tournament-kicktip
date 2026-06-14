@@ -1,5 +1,5 @@
 import { AlertCircle } from "lucide-react";
-import { kickoffMs, countdown } from "../lib/matchtime.js";
+import { kickoffMs, countdown } from "@/lib/matchtime.js";
 
 // Nudge: how many still-tippable matches the user hasn't tipped, plus the time
 // to the literal next kickoff (the next match overall — not the next untipped one).

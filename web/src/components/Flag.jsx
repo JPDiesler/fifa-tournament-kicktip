@@ -1,4 +1,4 @@
-import { flagUrl } from "../lib/scoring.js";
+import { flagUrl } from "@/lib/scoring.js";
 
 // Flags are bundled locally (downloaded at build time into assets/flags) so we
 // never hotlink Wikimedia at runtime. Wikimedia stays only as a last-resort fallback.

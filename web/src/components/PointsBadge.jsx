@@ -1,5 +1,5 @@
 import { Chip } from "@heroui/react";
-import { PT } from "../lib/scoring.js";
+import { PT } from "@/lib/scoring.js";
 
 // Points earned for a match (3/2/1/0), color-coded. Renders nothing until the
 // match is scorable (tip + result both present).

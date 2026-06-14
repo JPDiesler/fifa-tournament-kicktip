@@ -1,4 +1,4 @@
-import { broadcasterFor, orderServices } from "../lib/broadcasters.js";
+import { broadcasterFor, orderServices } from "./broadcasters.js";
 
 // The services as clickable brand-colour buttons with the logo in white (CI
 // "logo on brand colour" lockup), no label. Opens the service in a new tab.

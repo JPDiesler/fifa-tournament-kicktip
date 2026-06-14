@@ -1,5 +1,5 @@
 import { Tv } from "lucide-react";
-import { orderServices } from "../lib/broadcasters.js";
+import { orderServices } from "./broadcasters.js";
 
 // Tiny black pill (bottom-left of a match card). Click opens the broadcast drawer.
 // stopPropagation so it doesn't also trigger the card's match-detail click.

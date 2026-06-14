@@ -1,21 +1,60 @@
 # WM 2026 Tippspiel — Albert Weil
 
 Selbst gehostetes Tippspiel: Vorrunde + K.o. mit Turnierbaum, Weltmeister-Bonus,
-automatische Auswertung (klassisch 3/2/1, Weltmeister +10) und automatischem
-Ergebnis-Abruf über **API-Football** (`v3.football.api-sports.io`).
+automatische Auswertung (klassisch 3/2/1, Weltmeister +10), **automatischer
+Ergebnis- & Weltmeister-Abruf** und **Near-Live-Anzeige** (verzögerter Zwischenstand
++ Spielphase) während laufender Spiele. Dazu „Wo zu sehen" pro Spiel (deutsche Sender).
 
-Ein Container: Express-Backend (API-Key bleibt serverseitig) + gebautes React-Frontend.
-Daten liegen in einer JSON-Datei im Volume `/data` — kein externer DB-Server nötig.
+Ein Container: Express-Backend (API-Token bleibt serverseitig) + gebautes React-Frontend.
+Daten liegen in **SQLite** im Volume `/data` — kein externer DB-Server nötig.
+
+## Stack
+- **Backend:** Express, better-sqlite3 (SQLite), node-cron; ESM. Session-Login
+  (Cookie) für Basic- **und** Microsoft/Entra-Anmeldung.
+- **Frontend:** React 19 + Vite 5, Tailwind v4, HeroUI v3 (beta).
+- **Ergebnisquelle:** football-data.org (v4, kostenloser Tier) — Default;
+  alternativ API-Football (`DATA_SOURCE=apifootball`).
 
 ## Schnellstart (Docker)
 
 ```bash
-cp .env.example .env          # ADMIN_PIN und API_FOOTBALL_KEY eintragen
+cp .env.example .env     # SESSION_SECRET, ADMIN_PASSWORD und FOOTBALL_DATA_TOKEN setzen
 docker compose up -d --build
 ```
 
-Läuft dann auf `http://<host>:8080`. Admin-Funktionen (Ergebnis-Eingabe, Sync,
-tatsächlicher Weltmeister) sind hinter dem `ADMIN_PIN` (Reiter „Admin").
+Läuft dann auf `http://<host>:5173` (Container-Port 8080 → Host 5173, siehe
+`docker-compose.yml`). **Wichtig:** Bei Code-Änderungen immer mit `--build`
+deployen — Frontend-Bundle und Backend werden ins Image gebaut; ein reines
+`up -d` startet nur das alte Image neu.
+
+Erst-Login als Admin mit `ADMIN_USERNAME` (Default `admin`) + `ADMIN_PASSWORD`.
+Der Admin-Account ist Superadmin und **kein** Spieler. Im Admin-Bereich werden
+Nutzer angelegt (Basic-Nutzer → Zugangsdaten-PDF, oder aus dem Entra-Verzeichnis
+gewählt) und Kürzel vergeben.
+
+## Authentifizierung
+- **Basic:** Benutzername + Passwort (vom Admin angelegt, Passwort einmalig als PDF).
+- **Microsoft/Entra (optional):** SPA-App-Registrierung (public client, PKCE),
+  `ENTRA_TENANT_ID` + `ENTRA_CLIENT_ID` in `.env`. Ohne diese Werte erscheint nur
+  der Basic-Login. Kein Client-Secret nötig (Login & Nutzerliste laufen delegiert).
+
+## Ergebnis-Abruf (automatisch)
+- Token bei football-data.org anlegen, in `.env` als `FOOTBALL_DATA_TOKEN` setzen
+  (`FOOTBALL_DATA_COMPETITION=WC`). Free-Tier-Limit: **10 Calls/min**, kein Tageslimit.
+- Der Sync holt **alle** Fixtures in **einem** Request. Gepollt wird **jede Minute**,
+  aber nur solange ein Spiel läuft (Anpfiff → erwartetes Ende inkl. Halbzeit,
+  Nachspielzeit, Verlängerung, Elfmeterschießen) → ~1 Call/min, weit unter dem Limit.
+- **Endergebnisse, K.o.-Paarungen und der Weltmeister** werden automatisch gesetzt
+  (kein Admin nötig). Zuordnung API-Spiel ↔ internes Spiel: Gruppenspiele über die
+  (ungeordnete) Team-Paarung, K.o.-Spiele über die Anstoßzeit.
+- **Near-Live:** Während des Spiels zeigt die App den (im Free-Tier **verzögerten**,
+  ~3 Min) Zwischenstand + Phase — reine Anzeige, getrennt von der Punktewertung.
+
+## „Wo zu sehen" (Deutschland)
+Lineare Sender (ARD/ZDF/RTL/Sky/DAZN/Eurosport) werden aus einem deutschen
+TV-Programm (XMLTV/EPG, `EPG_URL`) per Teamname + Anstoßzeit den Spielen zugeordnet;
+reine Streaming-Dienste ohne EPG (MagentaTV/Prime/Netflix) regelt der declarative
+Rechte-Layer `RIGHTS` in `server/services/broadcasts.js`. Täglicher Abgleich (`EPG_CRON`).
 
 ## Reverse Proxy → it.wm.albertweil.de
 
@@ -24,7 +63,7 @@ DNS: A/AAAA-Record `it.wm.albertweil.de` auf den Docker-Host. Dann z. B.:
 **Caddy** (automatisches HTTPS):
 ```
 it.wm.albertweil.de {
-    reverse_proxy localhost:8080
+    reverse_proxy localhost:5173
 }
 ```
 
@@ -32,42 +71,52 @@ it.wm.albertweil.de {
 ```nginx
 server {
     server_name it.wm.albertweil.de;
-    location / { proxy_pass http://127.0.0.1:8080; proxy_set_header Host $host; }
+    location / { proxy_pass http://127.0.0.1:5173; proxy_set_header Host $host; }
 }
 ```
 
-Tipp: Wenn echte Authentifizierung gewünscht ist, die Seite am Proxy hinter eure
-bestehende Auth hängen (Entra/Authentik etc.) — die App selbst bleibt simpel
-(Name-Auswahl + Admin-PIN). Der `/api/sync`-Schreibzugriff ist ohnehin PIN-geschützt.
+`COOKIE_SECURE=auto` (Default) setzt das Session-Cookie nur über HTTPS „secure" —
+lokal (http) und hinter dem HTTPS-Proxy funktioniert beides.
 
-## API-Football
+## Projektstruktur
 
-- Key bei api-sports.io anlegen, in `.env` als `API_FOOTBALL_KEY` setzen.
-- **Wichtig:** Liga-ID einmal verifizieren. Default ist `API_LEAGUE=1` (FIFA World Cup).
-  Test: `curl -s "https://v3.football.api-sports.io/leagues?search=world%20cup" -H "x-apisports-key: $KEY"`
-- Budget: Der Sync holt **alle** Fixtures in **einem** Request. Cron alle 30 Min
-  = max. 48 Calls/Tag, plus harter Stopp bei `API_DAILY_LIMIT` (Default 90). Bleibt
-  sicher unter dem 100/Tag-Limit.
-- Zuordnung API-Spiel ↔ internes Spiel läuft über den **Anstoß-Zeitstempel**
-  (±90 Min Toleranz) — robust, auch wenn Teamnamen abweichen. K.o.-Teams werden
-  zusätzlich automatisch aufgelöst (Bracket füllt sich von selbst).
+```
+server/
+  index.js            Entry: Boot, Cron-Schedules, listen
+  app.js              Express-App: Session, API-Router, Static/SPA
+  config.js           Env-Konfiguration
+  db.js               SQLite-Schema, Migrationen, Queries, Scoring-Aggregate
+  data.js             Teams, Spielplan, Aliase (identisch zu web/src/data.js)
+  routes/             auth · state · admin (Express-Router)
+  middleware/auth.js  requireAuth/requireAdmin, Login-Helfer, Entra-Verify
+  services/           sync · broadcasts · epg · poller · sources · locks · scoring · credentials · fixtures
+web/
+  src/
+    app/              App.jsx, main.jsx, index.css
+    features/         matches · broadcasts · leaderboard · champion · admin · auth
+    components/       geteilte UI (Flag, PointsBadge, Logo, Navbar, HelpModal)
+    lib/              api · scoring · matchtime  (cross-cutting; Import-Alias `@/…`)
+    data.js, assets/  (Flaggen & Sender-Logos werden beim Build geladen)
+  scripts/            download-flags.mjs, download-broadcasters.mjs (prebuild)
+```
+
+Frontend-Importe nutzen den `@/`-Alias (= `web/src/`, konfiguriert in `vite.config.js`
++ `jsconfig.json`).
 
 ## Spieler / Punkte anpassen
-
-- Spieler, Spielplan, Flaggen, Aliase: `server/data.js` **und** `web/src/data.js`
-  (identisch). Weltmeister-Bonus: `CHAMP_BONUS`.
-- Punktelogik: Funktion `score()` in `web/src/App.jsx`.
+- Spielplan, Teams, Flaggen, Aliase: `server/data.js` **und** `web/src/data.js`
+  (müssen identisch bleiben). Weltmeister-Bonus: `CHAMP_BONUS`.
+- Punktelogik: `score()` — serverseitig in `server/services/scoring.js` (maßgeblich
+  für die Rangliste), spiegelbildlich `web/src/lib/scoring.js` für die Anzeige.
 
 ## Lokal entwickeln
 
 ```bash
-cd server && npm install && DATA_DIR=./data ADMIN_PIN=test npm start   # :8080
-cd web && npm install && npm run dev                                   # :5173, /api proxyt auf :8080
+cd server && npm install && DATA_DIR=./data SESSION_SECRET=dev ADMIN_PASSWORD=test npm start  # :8080
+cd web && npm install && npm run dev                                                          # :5173, /api → :8080
 ```
 
-## Flaggen
-
-Werden zur Laufzeit von **Wikimedia Commons** geladen
-(`Special:FilePath/Flag of <Land>.svg?width=80`). Möchtest du sie lieber lokal
-ausliefern (kein Hotlink), kann ein kleiner Build-Step sie einmalig herunterladen
-und nach `web/public/flags/` legen — sag Bescheid.
+## Flaggen & Sender-Logos
+Werden **beim Build** heruntergeladen (`web/scripts/download-flags.mjs` und
+`download-broadcasters.mjs`, via `prebuild`) und lokal nach `web/src/assets/`
+gelegt — kein Hotlink zur Laufzeit.

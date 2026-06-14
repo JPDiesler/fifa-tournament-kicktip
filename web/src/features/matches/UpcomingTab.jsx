@@ -1,5 +1,5 @@
 import MatchCard from "./MatchCard.jsx";
-import { kickoffMs, isLive, LIVE_DELAY_NOTE } from "../lib/matchtime.js";
+import { kickoffMs, isLive, LIVE_DELAY_NOTE } from "@/lib/matchtime.js";
 
 // "Anstehend" tab: live matches first (accent-bordered), a divider, then the
 // upcoming matches (soonest first). Tapping opens the drawer.

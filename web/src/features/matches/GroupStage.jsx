@@ -1,6 +1,6 @@
-import { groupStandings } from "../lib/groups.js";
-import { PHASES } from "../lib/scoring.js";
-import Flag from "./Flag.jsx";
+import { groupStandings } from "./groups.js";
+import { PHASES } from "@/lib/scoring.js";
+import Flag from "@/components/Flag.jsx";
 import MatchCard from "./MatchCard.jsx";
 
 // "Gruppenphase" tab: per group a standings table (top 2 highlighted) plus the

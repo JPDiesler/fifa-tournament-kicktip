@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Card, Button, TextField, Label, Input, Spinner, Separator } from "@heroui/react";
-import { getConfig, loginBasic } from "../lib/auth.js";
-import { initMsal, loginRedirect } from "../lib/msal.js";
-import Logo from "./Logo.jsx";
+import { getConfig, loginBasic } from "./auth.js";
+import { initMsal, loginRedirect } from "./msal.js";
+import Logo from "@/components/Logo.jsx";
 
 function MicrosoftLogo() {
   return (

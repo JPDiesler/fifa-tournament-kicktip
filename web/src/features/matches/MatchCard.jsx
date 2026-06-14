@@ -1,10 +1,10 @@
 import { Card } from "@heroui/react";
 import { Lock, Check } from "lucide-react";
-import Flag from "./Flag.jsx";
-import PointsBadge from "./PointsBadge.jsx";
-import BroadcastPill from "./BroadcastPill.jsx";
+import Flag from "@/components/Flag.jsx";
+import PointsBadge from "@/components/PointsBadge.jsx";
+import BroadcastPill from "@/features/broadcasts/BroadcastPill.jsx";
 import LiveBadge, { LiveTag, LivePhase } from "./LiveBadge.jsx";
-import { countdown } from "../lib/matchtime.js";
+import { countdown } from "@/lib/matchtime.js";
 
 // Compact, clickable match summary. Tip entry happens in the detail drawer.
 // `inactive` = pairing not yet set (K.o.) → not clickable, can't be tipped.

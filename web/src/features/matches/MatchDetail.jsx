@@ -1,12 +1,12 @@
 import { Drawer, Chip } from "@heroui/react";
 import { Lock } from "lucide-react";
-import Flag from "./Flag.jsx";
+import Flag from "@/components/Flag.jsx";
 import ScoreInput from "./ScoreInput.jsx";
-import PointsBadge from "./PointsBadge.jsx";
-import BroadcastButtons from "./BroadcastButtons.jsx";
+import PointsBadge from "@/components/PointsBadge.jsx";
+import BroadcastButtons from "@/features/broadcasts/BroadcastButtons.jsx";
 import { LiveTag, LivePhase } from "./LiveBadge.jsx";
-import { PHASES } from "../lib/scoring.js";
-import { countdown, LIVE_DELAY_NOTE } from "../lib/matchtime.js";
+import { PHASES } from "@/lib/scoring.js";
+import { countdown, LIVE_DELAY_NOTE } from "@/lib/matchtime.js";
 
 // Bottom-sheet detail for one match: final score, your tip (disabled when
 // locked), and the other players' tips (revealed only once the match is locked).

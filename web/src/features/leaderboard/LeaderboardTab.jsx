@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Table } from "@heroui/react";
 import { Check, X } from "lucide-react";
-import { known } from "../lib/scoring.js";
-import Flag from "./Flag.jsx";
+import { known } from "@/lib/scoring.js";
+import Flag from "@/components/Flag.jsx";
 
 // "Rangliste" tab: overall standings + a per-matchday breakdown ("Spieltage").
 export default function LeaderboardTab({ totals, matchdays = [], me, teams, championActual }) {

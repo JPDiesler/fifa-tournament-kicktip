@@ -5,7 +5,7 @@
 // tournaments. Logos are downloaded at build time (web/scripts/download-broadcasters.mjs)
 // into assets/broadcasters/<key>.<ext> and resolved here by basename.
 
-const logoFiles = import.meta.glob("../assets/broadcasters/*.{svg,png,webp,jpg}", {
+const logoFiles = import.meta.glob("../../assets/broadcasters/*.{svg,png,webp,jpg}", {
   eager: true, query: "?url", import: "default",
 });
 const LOGOS = {};

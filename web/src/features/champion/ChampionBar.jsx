@@ -1,8 +1,8 @@
 import { Trophy, Lock, Check, X } from "lucide-react";
 import { Card, Chip } from "@heroui/react";
-import Flag from "./Flag.jsx";
+import Flag from "@/components/Flag.jsx";
 import TeamSelect from "./TeamSelect.jsx";
-import { known } from "../lib/scoring.js";
+import { known } from "@/lib/scoring.js";
 
 // Persistent Weltmeister-Tipp bar shown ABOVE the tabs. (The admin "actual
 // champion" control lives in the admin modal now.)

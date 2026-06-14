@@ -1,4 +1,4 @@
-import { TEAMS } from "../data.js";
+import { TEAMS } from "@/data";
 
 // Tournament phases in display order (group stage A–L, then the K.o. rounds).
 export const PHASES = [
