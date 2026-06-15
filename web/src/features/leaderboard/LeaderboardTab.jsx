@@ -1,40 +1,72 @@
 import { useState } from "react";
-import { Table, Pagination } from "@heroui/react";
-import { Check, X } from "lucide-react";
+import { Table, Pagination, Button } from "@heroui/react";
+import { Check, X, Share2 } from "lucide-react";
 import { known } from "@/lib/scoring.js";
 import Flag from "@/components/Flag.jsx";
 import ScoreTrend from "./ScoreTrend.jsx";
 import MyStatsTab from "@/features/stats/MyStatsTab.jsx";
 import PointsHistory from "@/features/stats/PointsHistory.jsx";
+import Head2Head from "@/features/stats/Head2Head.jsx";
+import { playerStats, head2head } from "@/features/stats/stats.js";
+import { shareStandings, shareBilanz, shareDuel } from "@/lib/shareImage.js";
 
 const PAGE_SIZES = [10, 25, 50, Infinity]; // Infinity = "Alle"
+const SUBTABS = [["gesamt", "Gesamt"], ["persoenlich", "Persönlich"], ["duell", "Duell"]];
 
-// "Punktstand" tab. Two sub-views:
-//   • Gesamt     — standings table of all players (paginated) + the trend chart.
-//   • Persönlich — the current player's Bilanz + an expandable points history.
+// "Punktstand" tab: Gesamt (table + chart), Persönlich (Bilanz + history), Duell
+// (head-to-head). One toolbar share button (next to the sub-tabs) exports the
+// active view as a PNG.
 export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, championActual, teamLabel }) {
   const [mode, setMode] = useState("gesamt");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [duelA, setDuelA] = useState(null);
+  const [duelB, setDuelB] = useState(null);
 
   const pageCount = Math.max(1, Math.ceil(totals.length / pageSize));
   const safePage = Math.min(page, pageCount);
   const start = (safePage - 1) * pageSize;
   const rows = pageSize === Infinity ? totals : totals.slice(start, start + pageSize);
-  const paged = totals.length > 10; // only bother with controls beyond the default page
+  const paged = totals.length > 10; // only show controls beyond the default page
+  const today = new Date().toLocaleDateString("de-DE");
+
+  // duel selection lives here so the toolbar share button can reuse it
+  const players = totals.map((t) => ({ p: t.p, name: t.name || t.p }));
+  const a = duelA || (me && totals.some((t) => t.p === me) ? me : totals[0]?.p);
+  const b = duelB || totals.find((t) => t.p !== a)?.p;
+  const pickA = (x) => { setDuelA(x); if (x === b) setDuelB(players.find((p) => p.p !== x)?.p); };
+  const pickB = (x) => { setDuelB(x); if (x === a) setDuelA(players.find((p) => p.p !== x)?.p); };
+
+  const canShare = (mode === "gesamt" && totals.length > 0) || (mode === "persoenlich" && !!me) || (mode === "duell" && totals.length >= 2);
+  const onShare = () => {
+    if (mode === "gesamt") shareStandings(totals, { me, date: today });
+    else if (mode === "persoenlich" && me) {
+      const s = playerStats(me, st);
+      const rank = totals.findIndex((r) => r.p === me) + 1;
+      const row = totals.find((r) => r.p === me);
+      shareBilanz(s, { name: row?.name || me, rank: rank || null, total: row ? row.sum : s.sum, boardLen: totals.length, date: today });
+    } else if (mode === "duell") shareDuel(head2head(a, b, st, totals), { date: today });
+  };
 
   return (
     <div>
-      <div className="mb-3 inline-flex rounded-lg border border-border bg-surface p-0.5 text-xs">
-        {[["gesamt", "Gesamt"], ["persoenlich", "Persönlich"]].map(([k, l]) => (
-          <button key={k} onClick={() => setMode(k)}
-            className={`rounded-md px-3 py-1 transition ${mode === k ? "bg-accent font-semibold text-accent-foreground" : "text-muted"}`}>
-            {l}
-          </button>
-        ))}
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="inline-flex rounded-lg border border-border bg-surface p-0.5 text-xs">
+          {SUBTABS.map(([k, l]) => (
+            <button key={k} onClick={() => setMode(k)}
+              className={`rounded-md px-3 py-1 transition ${mode === k ? "bg-accent font-semibold text-accent-foreground" : "text-muted"}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+        {canShare && (
+          <Button isIconOnly variant="secondary" size="sm" aria-label="Als Bild teilen" onPress={onShare}>
+            <Share2 size={15} />
+          </Button>
+        )}
       </div>
 
-      {mode === "gesamt" ? (
+      {mode === "gesamt" && (
         <div className="space-y-3">
           <Table variant="primary" aria-label="Rangliste">
             <Table.ScrollContainer>
@@ -115,11 +147,17 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
 
           <ScoreTrend matchdays={matchdays} totals={totals} me={me} />
         </div>
-      ) : (
+      )}
+
+      {mode === "persoenlich" && (
         <div className="space-y-3">
           <MyStatsTab me={me} st={st} board={totals} matchdays={matchdays} teams={teams} />
           {me && <PointsHistory me={me} st={st} teamLabel={teamLabel} />}
         </div>
+      )}
+
+      {mode === "duell" && (
+        <Head2Head st={st} board={totals} teamLabel={teamLabel} a={a} b={b} onA={pickA} onB={pickB} />
       )}
     </div>
   );
