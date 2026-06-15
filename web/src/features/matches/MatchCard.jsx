@@ -4,7 +4,7 @@ import Flag from "@/components/Flag.jsx";
 import PointsBadge from "@/components/PointsBadge.jsx";
 import BroadcastPill from "@/features/broadcasts/BroadcastPill.jsx";
 import LiveBadge, { LiveTag, LivePhase } from "./LiveBadge.jsx";
-import { countdown } from "@/lib/matchtime.js";
+import { countdown, kickoffMs } from "@/lib/matchtime.js";
 
 // Compact, clickable match summary. Tip entry happens in the detail drawer.
 // `inactive` = pairing not yet set (K.o.) → not clickable, can't be tipped.
@@ -15,6 +15,9 @@ import { countdown } from "@/lib/matchtime.js";
 export default function MatchCard({ match, home, away, result, points, hasTip, locked, onOpen, onOpenBroadcasts, compact, inactive, live, broadcasts }) {
   const hasResult = result && result.h !== "" && result.a !== "";
   const cd = !hasResult ? countdown(match.dt) : null;
+  // "Wo zu sehen?" only makes sense for upcoming/running matches — hide it once a
+  // match is over (final result, or kickoff long enough ago to be finished).
+  const past = hasResult || kickoffMs(match.dt) + 3 * 3600000 < Date.now();
   // A running match (st.live present) always shows a scoreline — defaulting to 0:0
   // until the (delayed) score arrives — plus a live/phase badge.
   const isLiveMatch = !hasResult && !!live;
@@ -108,8 +111,8 @@ export default function MatchCard({ match, home, away, result, points, hasTip, l
             </div>
           </div>
         )}
-        {/* where to watch (DE) — tiny pill bottom-left, desktop/tablet only (mobile: in the detail drawer) */}
-        {onOpenBroadcasts && (
+        {/* where to watch (DE) — tiny pill bottom-left, desktop/tablet only (mobile: in the detail drawer). Hidden once the match is over. */}
+        {onOpenBroadcasts && !past && (
           <div className="mt-1.5 hidden sm:flex">
             <BroadcastPill keys={broadcasts} onOpen={onOpenBroadcasts} />
           </div>

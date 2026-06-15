@@ -6,7 +6,7 @@ import PointsBadge from "@/components/PointsBadge.jsx";
 import BroadcastButtons from "@/features/broadcasts/BroadcastButtons.jsx";
 import { LiveTag, LivePhase } from "./LiveBadge.jsx";
 import { PHASES } from "@/lib/scoring.js";
-import { countdown, LIVE_DELAY_NOTE } from "@/lib/matchtime.js";
+import { countdown, kickoffMs, LIVE_DELAY_NOTE } from "@/lib/matchtime.js";
 
 // Bottom-sheet detail for one match: final score, your tip (disabled when
 // locked), and the other players' tips (revealed only once the match is locked).
@@ -26,6 +26,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   const ready = !!(home.code && away.code); // pairing fixed (both teams known)?
   const phaseLabel = PHASES.find((p) => p.code === match.ph)?.label || "";
   const cd = !hasResult ? countdown(match.dt) : null;
+  const past = hasResult || kickoffMs(match.dt) + 3 * 3600000 < Date.now(); // match over → hide "where to watch"
   const live = st.live?.[n];
   const isLiveMatch = !hasResult && !!live;             // running → show scoreline (0:0 default) + badge
   const lh = live?.h || "0", la = live?.a || "0";
@@ -69,8 +70,8 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
               </div>
             </div>
 
-            {/* where to watch (Germany) */}
-            {broadcasts.length > 0 && (
+            {/* where to watch (Germany) — hidden once the match is over */}
+            {broadcasts.length > 0 && !past && (
               <div>
                 <div className="mb-1.5 px-1 text-xs font-bold uppercase tracking-wider text-muted">Wo zu sehen (DE)</div>
                 <BroadcastButtons keys={broadcasts} />
