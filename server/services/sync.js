@@ -9,9 +9,24 @@ import { fetchMerged, fetchDetails, effectiveCapabilities } from "./coordinator.
 import {
   setResult, setResolved, clearResolved, replaceLive, liveByMatch,
   getMeta, setMeta, getChampionActual, setChampionActual, setCapabilities,
-  setMatchDetail, detailByMatch,
+  setMatchDetail, setMatchFinalTime, detailByMatch,
 } from "../db.js";
 import { notifyKickoff, notifyGoal, notifyFinal } from "./push.js";
+
+// Nominal final clock from the play length: regular → 90', extra time / penalties → 120'.
+function finalClockFromRecord(rec) {
+  const dur = rec.duration || "REGULAR";
+  if (dur === "PENALTY") return { minute: 120, injury: null, phase: "PEN" };
+  if (dur === "EXTRA_TIME") return { minute: 120, injury: null, phase: "ET" };
+  return { minute: 90, injury: null, phase: null };
+}
+// Best final clock: prefer the last observed live minute when it reached the nominal
+// boundary (gives real stoppage like 90+5); otherwise the bare nominal length.
+function finalClock(rec, prev) {
+  const nom = finalClockFromRecord(rec);
+  if (prev && prev.minute != null && prev.minute >= nom.minute) return { minute: prev.minute, injury: prev.injury ?? null, phase: nom.phase };
+  return nom;
+}
 
 export async function sync(reason = "cron") {
   try {
@@ -23,6 +38,7 @@ export async function sync(reason = "cron") {
 
     const events = [];
     const liveMap = {};
+    const have = detailByMatch(); // existing scorers/cards/final clock per match
     let updated = 0, resolvedCount = 0, championCode = null;
 
     for (const rec of fixtures) {
@@ -42,6 +58,9 @@ export async function sync(reason = "cron") {
       if (rec.finished && rec.homeGoals != null && rec.awayGoals != null) {
         setResult(n, String(rec.homeGoals), String(rec.awayGoals));
         updated++;
+        // Capture the real final match clock once (from the last live snapshot if we
+        // saw it, else nominal) so the detail card can show e.g. "90+5".
+        if (have[n]?.final == null) setMatchFinalTime(n, finalClock(rec, prevLive[n]));
         events.push(() => notifyFinal(n, rec.homeGoals, rec.awayGoals));
       } else if (rec.live) {
         const h = rec.homeGoals ?? 0, a = rec.awayGoals ?? 0; // default 0:0 so a running card always shows a score
@@ -72,8 +91,7 @@ export async function sync(reason = "cron") {
     // Scorers/cards for live + finished-without-detail matches — only fetched via a
     // provider whose caps support them (no extra calls on the football-data default).
     try {
-      const have = detailByMatch();
-      const need = new Set([...Object.keys(liveMap).map(Number), ...fixtures.filter((f) => f.finished && !have[f.n]).map((f) => f.n)]);
+      const need = new Set([...Object.keys(liveMap).map(Number), ...fixtures.filter((f) => f.finished && !(have[f.n]?.scorers?.length || have[f.n]?.cards?.length)).map((f) => f.n)]);
       if (need.size) {
         const { details, capped } = await fetchDetails(fixtures, byProvider, routing, need);
         for (const [n, d] of Object.entries(details)) setMatchDetail(n, d.scorers, d.cards);
@@ -98,4 +116,24 @@ export async function sync(reason = "cron") {
   } catch (e) {
     const m = getMeta(); m.lastSyncMsg = "Sync-Fehler: " + e.message; setMeta(m); console.error("sync", e);
   }
+}
+
+// One-shot detail backfill for matches that finished WITHOUT scorers/cards/final
+// clock yet (e.g. while the server was down). One fixtures fetch, then detail for as
+// many finished matches as the rate/daily budget allows this pass; the caller re-runs
+// it until drained. Writes a (nominal) final clock for every finished match.
+// Returns { remaining, fetched, capable } so the caller can stop when there's no
+// capable detail provider or no further progress is possible.
+export async function backfillDetails() {
+  const { fixtures, byProvider, routing } = await fetchMerged();
+  const have = detailByMatch();
+  for (const rec of fixtures) if (rec.finished && have[rec.n]?.final == null) setMatchFinalTime(rec.n, finalClockFromRecord(rec));
+
+  const need = new Set(fixtures.filter((f) => f.finished && !(have[f.n]?.scorers?.length || have[f.n]?.cards?.length)).map((f) => f.n));
+  if (!need.size) return { remaining: 0, fetched: 0, capable: true };
+
+  const { details, capable } = await fetchDetails(fixtures, byProvider, routing, need, { max: need.size });
+  let fetched = 0;
+  for (const [n, d] of Object.entries(details)) { setMatchDetail(n, d.scorers, d.cards); fetched++; }
+  return { remaining: [...need].filter((n) => !details[n]).length, fetched, capable };
 }

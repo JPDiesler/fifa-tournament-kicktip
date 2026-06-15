@@ -10,7 +10,7 @@ import { known } from "./services/fixtures.js";
 import { bootstrapAdmin } from "./middleware/auth.js";
 import { activeSource } from "./services/sources/index.js";
 import { anyMatchActive } from "./services/poller.js";
-import { sync } from "./services/sync.js";
+import { sync, backfillDetails } from "./services/sync.js";
 import { liveDelayMs } from "./services/coordinator.js";
 import { applyRights, syncBroadcasts } from "./services/broadcasts.js";
 import { runTipReminders, runChampReminder, runDailySummary } from "./services/push.js";
@@ -35,6 +35,16 @@ async function livePoll() {
   } catch (e) { console.error("livePoll", e); }
   setTimeout(livePoll, live ? liveDelayMs() : 60_000);
 }
+// On start, backfill scorers/cards/final-clock for already-finished matches. Spread
+// across the per-minute rate budget: each pass pulls what it can, then re-runs until
+// drained (or there's no capable detail provider / no further progress).
+async function backfillLoop() {
+  try {
+    const { remaining, fetched, capable } = await backfillDetails();
+    if (!capable || remaining === 0 || fetched === 0) return; // done / nothing to do
+  } catch (e) { console.error("backfill", e); return; }
+  setTimeout(backfillLoop, 60_000);
+}
 // Sparse safety net to catch anything missed (e.g. K.o.-team resolution, late edits).
 cron.schedule(process.env.SYNC_CRON || "0 */6 * * *", () => sync("Sicherheits-Sync"));
 // "Where to watch": the EPG only spans a few days and changes slowly, so a daily
@@ -53,7 +63,7 @@ app.listen(PORT, () => {
   console.log(`WM-Tippspiel läuft auf :${PORT}`);
   const src = activeSource();
   console.log(`Ergebnis-Quelle: ${src.name}${src.configured() ? "" : " (nicht konfiguriert)"}`);
-  if (src.configured()) sync("start");
+  if (src.configured()) { sync("start"); setTimeout(backfillLoop, 8_000); } // backfill past matches' detail after the start sync
   applyRights();              // streaming/pay rights are static — available immediately
   syncBroadcasts("start");    // EPG download runs in the background, won't block boot
   livePoll();                 // start the dynamic near-live polling loop
