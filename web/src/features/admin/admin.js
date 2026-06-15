@@ -10,6 +10,17 @@ const post = (url, body) =>
 export async function listUsers() {
   return j(await fetch("/api/admin/users"), "Konnte Nutzer nicht laden");
 }
+
+// ---- result source / API token ----
+export async function getSource() {
+  return j(await fetch("/api/admin/source"), "Quelle nicht ladbar");
+}
+export async function setSourceToken(token) {
+  return j(await post("/api/admin/source", { token }), "Speichern fehlgeschlagen"); // → status
+}
+export async function testSource() {
+  return j(await post("/api/admin/source/test"), "Test fehlgeschlagen"); // → { ok, client, availableMinute, … }
+}
 export async function createBasic(body) {
   return j(await post("/api/admin/users/basic", body), "Anlegen fehlgeschlagen"); // { user, password }
 }

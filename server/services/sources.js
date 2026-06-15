@@ -14,6 +14,8 @@
 // rate limit (the binding constraint on the free tiers) and an optional per-day
 // cap (null = none).
 
+import { getDataToken } from "../db.js";
+
 // ---- API-Football (v3.football.api-sports.io) ----
 // Pure mapper (exported for testing) — one raw fixture → normalised shape.
 export function mapApiFootballFixture(f) {
@@ -83,7 +85,7 @@ export function mapFootballDataMatch(m) {
   };
 }
 async function footballDataFetch() {
-  const token = process.env.FOOTBALL_DATA_TOKEN || "";
+  const token = getDataToken();
   const comp = process.env.FOOTBALL_DATA_COMPETITION || "WC";
   const season = process.env.FOOTBALL_DATA_SEASON || ""; // optional year, defaults to current
   const url = `https://api.football-data.org/v4/competitions/${comp}/matches` + (season ? `?season=${season}` : "");
@@ -93,12 +95,66 @@ async function footballDataFetch() {
   return j.matches.map(mapFootballDataMatch);
 }
 
+// Test the current football-data token and PROBE its capabilities, so the feature
+// set can adapt to the account's plan. Returns the account/budget the API exposes
+// (authenticated client + per-minute request headers) plus detected capabilities:
+//   caps.liveMinute – does a currently in-play match carry a `minute`? (bool|null:
+//                     null = no live match to test right now)
+//   caps.scorers    – finished-match detail carries goals/scorers? (bool|null)
+//   caps.cards      – finished-match detail carries bookings/cards? (bool|null)
+//   caps.{liveScore,phase,results} – base football-data features (always true)
+//   caps.realtime   – proxy for non-delayed live data (= liveMinute present)
+// The real-time-vs-delayed scoreline isn't directly exposed by the API.
+// Never throws — on failure returns { ok:false, error }. Costs up to 2 API calls.
+export async function probeSource() {
+  const token = getDataToken();
+  if (!token) return { ok: false, error: "Kein Token gesetzt" };
+  const comp = process.env.FOOTBALL_DATA_COMPETITION || "WC";
+  const H = { headers: { "X-Auth-Token": token } };
+  try {
+    const r = await fetch(`https://api.football-data.org/v4/competitions/${comp}/matches`, H);
+    const availableMinute = Number(r.headers.get("x-requests-available-minute"));
+    const resetSeconds = Number(r.headers.get("x-requestcounter-reset"));
+    const client = r.headers.get("x-authenticated-client") || null;
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      return { ok: false, status: r.status, error: d.message || `HTTP ${r.status}`, client, availableMinute, resetSeconds };
+    }
+    const j = await r.json();
+    const matches = Array.isArray(j.matches) ? j.matches : [];
+    const liveM = matches.find((m) => m.status === "IN_PLAY" || m.status === "PAUSED");
+    const liveMinute = liveM ? liveM.minute != null : null; // null = couldn't test (no live match)
+    let scorers = null, cards = null;
+    const fin = matches.find((m) => m.status === "FINISHED");
+    if (fin) {
+      try {
+        const d = await (await fetch(`https://api.football-data.org/v4/matches/${fin.id}`, H)).json();
+        scorers = Array.isArray(d.goals);
+        cards = Array.isArray(d.bookings);
+      } catch { scorers = null; cards = null; }
+    }
+    return {
+      ok: true, status: r.status, client, availableMinute, resetSeconds,
+      caps: {
+        // base capabilities football-data always provides (on free, the live score
+        // is delayed → the UI treats `realtime` separately):
+        liveScore: true, phase: true, results: true,
+        // tier-gated, probed live/from match detail:
+        liveMinute, scorers, cards,
+        realtime: liveMinute === true, // proxy for real-time (no delay) live data
+      },
+    };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 const SOURCES = {
   footballdata: {
     name: "football-data.org",
     rateLimit: () => Number(process.env.FOOTBALL_DATA_RATE_LIMIT || 10), // free tier: 10 calls/min
     dailyLimit: () => (process.env.FOOTBALL_DATA_DAILY_LIMIT ? Number(process.env.FOOTBALL_DATA_DAILY_LIMIT) : null), // free tier: no daily cap
-    configured: () => !!process.env.FOOTBALL_DATA_TOKEN,
+    configured: () => !!getDataToken(),
     fetchFixtures: footballDataFetch,
   },
   apifootball: {

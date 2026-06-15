@@ -6,15 +6,66 @@ import { APP_URL } from "../config.js";
 import {
   getMeta, listUsers, createUser, updateUser, deleteUser,
   getUserById, getUserByUsername, getUserByKuerzel, getUserByEntraOid, getUserByEntraUpn, countAdmins,
+  getDataToken, setDataToken, dataTokenFromDb, getCapabilities, setCapabilities,
 } from "../db.js";
 import { requireAdmin, adminUserDto, hashPassword } from "../middleware/auth.js";
 import { sync } from "../services/sync.js";
+import { activeSource, probeSource } from "../services/sources.js";
 import { genPassword, cacheCredential, getCredential, streamCredentialsPdf } from "../services/credentials.js";
 
 const router = Router();
 const cleanKuerzel = (k) => ((k || "").trim().toUpperCase() || null);
 
 router.post("/sync", requireAdmin, async (req, res) => { await sync("manuell"); res.json({ meta: getMeta() }); });
+
+// ---------- result source / API token ----------
+const SOURCE_KEY = (process.env.DATA_SOURCE || "footballdata").toLowerCase();
+// Traffic-light state from the last poll: green (ok), red (error), grey (no token),
+// amber (configured but never synced yet).
+function sourceState(configured, meta) {
+  if (!configured) return "unconfigured";
+  if (/Sync-Fehler|kein Key|Rate-Limit|Tageslimit/.test(meta.lastSyncMsg || "")) return "error";
+  return meta.lastSync ? "ok" : "idle";
+}
+function sourceStatus() {
+  const src = activeSource();
+  const token = getDataToken();
+  const configured = src.configured();
+  const meta = getMeta();
+  return {
+    name: src.name,
+    tokenEditable: SOURCE_KEY === "footballdata",            // token mgmt via web only for football-data
+    tokenSource: dataTokenFromDb() ? "db" : (process.env.FOOTBALL_DATA_TOKEN ? "env" : "none"),
+    tokenMasked: token ? `••••${token.slice(-4)}` : null,
+    rateLimitPerMin: src.rateLimit(),
+    dailyLimit: src.dailyLimit(),
+    lastSync: meta.lastSync || null,
+    lastSyncMsg: meta.lastSyncMsg || "",
+    state: sourceState(configured, meta),
+    capabilities: getCapabilities(),
+  };
+}
+
+router.get("/admin/source", requireAdmin, (req, res) => res.json(sourceStatus()));
+
+router.post("/admin/source", requireAdmin, (req, res) => {
+  if (SOURCE_KEY !== "footballdata") return res.status(400).json({ error: "Token-Verwaltung nur für football-data.org" });
+  setDataToken(req.body?.token ?? "");   // "" clears the DB override → falls back to FOOTBALL_DATA_TOKEN
+  res.json(sourceStatus());
+});
+
+router.post("/admin/source/test", requireAdmin, async (req, res) => {
+  const result = await probeSource();
+  if (result.ok && result.caps) {
+    setCapabilities({
+      ...result.caps,
+      rateLimit: activeSource().rateLimit(),
+      client: result.client || null,
+      checkedAt: new Date().toISOString(),
+    });
+  }
+  res.json(result);
+});
 
 router.get("/admin/users", requireAdmin, (req, res) => res.json(listUsers().map(adminUserDto)));
 

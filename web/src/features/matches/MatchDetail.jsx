@@ -57,7 +57,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
                     <LiveTag paused={live.phase === "HT"} className="text-[11px]" />
                     <div className="text-3xl font-extrabold tabular-nums">{lh}:{la}</div>
                     <LivePhase live={live} className="text-[11px]" />
-                    <span className="text-[10px] text-muted">{LIVE_DELAY_NOTE}</span>
+                    {st.capabilities?.liveMinute !== true && <span className="text-[10px] text-muted">{LIVE_DELAY_NOTE}</span>}
                   </div>
                 ) : (
                   <div className={`text-xs ${cd ? "text-muted" : "font-bold text-app-accent"}`}>{cd || "läuft"}</div>

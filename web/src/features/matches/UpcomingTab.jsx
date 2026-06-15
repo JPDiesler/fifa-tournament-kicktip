@@ -38,7 +38,7 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, scor
       {live.length > 0 && (
         <>
           <div className="px-1 text-xs font-bold uppercase tracking-wider text-app-accent">
-            Live <span className="font-normal normal-case text-muted">· {LIVE_DELAY_NOTE}</span>
+            Live {st.capabilities?.liveMinute !== true && <span className="font-normal normal-case text-muted">· {LIVE_DELAY_NOTE}</span>}
           </div>
           {live.map((m) => card(m))}
           <div className="my-3 border-t border-border" />

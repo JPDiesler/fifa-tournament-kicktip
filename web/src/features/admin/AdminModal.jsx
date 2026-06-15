@@ -1,36 +1,45 @@
-import { Modal, Button } from "@heroui/react";
-import { RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Modal, Tabs } from "@heroui/react";
+import { Database, Users } from "lucide-react";
 import AdminUsersTab from "./AdminUsersTab.jsx";
+import SourcePanel from "./SourcePanel.jsx";
 
-// All admin functionality in one modal: result sync and user management.
-// Results and the actual champion are set automatically (end-time polling +
-// final-winner detection), so there is no manual entry here.
-export default function AdminModal({ isOpen, onClose, onSync, syncMsg, lastSync, entra, meId, onFlash, autoOpenEntra }) {
+// Admin in two tabs: "API & Ergebnisse" (result source, token, capabilities,
+// manual sync) and "Nutzer" (user management). Results and the actual champion
+// are set automatically, so there is no manual result entry.
+export default function AdminModal({ isOpen, onClose, onSync, entra, meId, onFlash, autoOpenEntra }) {
+  const [tab, setTab] = useState("api");
+  // Resuming the Entra picker after an MSAL redirect → jump to the Nutzer tab.
+  useEffect(() => { if (autoOpenEntra) setTab("users"); }, [autoOpenEntra]);
+
   return (
     <Modal.Backdrop isOpen={isOpen} onOpenChange={(o) => !o && onClose()}>
       <Modal.Container placement="center" size="lg" scroll="inside">
         <Modal.Dialog className="w-full max-w-2xl">
           <Modal.CloseTrigger />
           <Modal.Header><Modal.Heading>Administration</Modal.Heading></Modal.Header>
-          <Modal.Body className="flex flex-col gap-6 pb-6">
-            <section>
-              <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wider text-muted">Ergebnisse</h3>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="secondary" size="sm" onPress={onSync}>
-                  <RefreshCw size={15} /> Ergebnisse synchronisieren
-                </Button>
-                <span className="text-xs text-muted">
-                  {syncMsg} {lastSync ? "· " + new Date(lastSync).toLocaleString("de-DE") : ""}
-                </span>
-              </div>
-              <p className="mt-1.5 text-xs text-muted">
-                Ergebnisse und Weltmeister werden automatisch zu den Spielende-Zeiten geholt – dieser Button erzwingt nur eine sofortige Aktualisierung.
-              </p>
-            </section>
+          <Modal.Body className="pb-6">
+            <Tabs selectedKey={tab} onSelectionChange={(k) => setTab(String(k))}>
+              <Tabs.ListContainer>
+                <Tabs.List aria-label="Administration" className="w-full">
+                  <Tabs.Tab id="api" className="flex flex-1 items-center justify-center gap-1.5">
+                    <Database size={15} /> API &amp; Ergebnisse <Tabs.Indicator />
+                  </Tabs.Tab>
+                  <Tabs.Tab id="users" className="flex flex-1 items-center justify-center gap-1.5">
+                    <Users size={15} /> Nutzer <Tabs.Indicator />
+                  </Tabs.Tab>
+                </Tabs.List>
+              </Tabs.ListContainer>
 
-            <section>
-              <AdminUsersTab entra={entra} meId={meId} onFlash={onFlash} autoOpenEntra={autoOpenEntra} />
-            </section>
+              {/* Both panels share one fixed height + internal scroll so switching
+                  tabs never resizes the modal (no jump between the differing heights). */}
+              <Tabs.Panel id="api" className="h-[26rem] overflow-y-auto pr-1 pt-4">
+                {isOpen && <SourcePanel onFlash={onFlash} onSync={onSync} />}
+              </Tabs.Panel>
+              <Tabs.Panel id="users" className="h-[26rem] overflow-y-auto pr-1 pt-4">
+                <AdminUsersTab entra={entra} meId={meId} onFlash={onFlash} autoOpenEntra={autoOpenEntra} />
+              </Tabs.Panel>
+            </Tabs>
           </Modal.Body>
         </Modal.Dialog>
       </Modal.Container>

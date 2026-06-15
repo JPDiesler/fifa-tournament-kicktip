@@ -206,6 +206,7 @@ export function stateForUser(meKuerzel) {
     me: meKuerzel,
     tips, champs, results, resolved, live: liveByMatch(), broadcasts: broadcastsByMatch(),
     championActual: getSetting("championActual", ""),
+    capabilities: getSetting("capabilities", null),
     meta: getSetting("meta", {}),
     locks: { offsetMin: TIP_LOCK_OFFSET_MIN, serverNow: now, champLocked, champLockTs, lockedMatches },
   };
@@ -308,6 +309,17 @@ export const getMeta = () => getSetting("meta", {});
 export const setMeta = (m) => setSetting("meta", m);
 export const getChampionActual = () => getSetting("championActual", "");
 export const setChampionActual = (c) => setSetting("championActual", c || "");
+
+// Result-source API token: a DB override (set via the admin UI) wins over the
+// FOOTBALL_DATA_TOKEN env var, so it can be managed at runtime without a redeploy.
+export const getDataToken = () => getSetting("footballDataToken", "") || process.env.FOOTBALL_DATA_TOKEN || "";
+export const setDataToken = (t) => setSetting("footballDataToken", (t || "").trim());
+export const dataTokenFromDb = () => !!getSetting("footballDataToken", "");
+
+// Detected API capabilities (probed by the admin) — drive the feature set:
+// { liveMinute, scorers, rateLimit, client, checkedAt } (bools may be null = untested).
+export const getCapabilities = () => getSetting("capabilities", null);
+export const setCapabilities = (c) => setSetting("capabilities", c);
 
 // ---------- leaderboard (server-side scoring) ----------
 export function leaderboard() {
