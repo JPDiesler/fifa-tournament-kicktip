@@ -20,7 +20,6 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   const hasResult = result && result.h !== "" && result.a !== "";
   const locked = (st.locks?.lockedMatches || []).includes(n);
   const myTip = (st.tips[me] || {})[n] || { h: "", a: "" };
-  const myPoints = score(myTip, result);
   const home = { label: teamLabel(match, "h"), code: teamCode(match, "h") };
   const away = { label: teamLabel(match, "a"), code: teamCode(match, "a") };
   const ready = !!(home.code && away.code); // pairing fixed (both teams known)?
@@ -31,10 +30,16 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   const isLiveMatch = !hasResult && !!live;             // running → show scoreline (0:0 default) + badge
   const lh = live?.h || "0", la = live?.a || "0";
 
-  const others = (board || [])
-    .filter((b) => b.p !== me)
-    .map((b) => ({ k: b.p, tip: (st.tips[b.p] || {})[n], pts: score((st.tips[b.p] || {})[n], result) }));
-  const othersTipped = others.filter((o) => o.tip && (o.tip.h !== "" || o.tip.a !== ""));
+  // Points score against the final result, or — while a match runs — provisionally
+  // against the (delayed) live score. Powers the live tip comparison below.
+  const effRes = hasResult ? result : (isLiveMatch ? { h: String(lh), a: String(la) } : null);
+  const myPoints = score(myTip, effRes);
+  const tipped = (board || [])
+    .map((b) => ({ k: b.p, isMe: b.p === me, tip: (st.tips[b.p] || {})[n], pts: score((st.tips[b.p] || {})[n], effRes) }))
+    .filter((o) => o.tip && (o.tip.h !== "" || o.tip.a !== ""));
+  const displayList = effRes
+    ? [...tipped].sort((a, b) => (b.pts ?? -1) - (a.pts ?? -1)) // live/final → leader first (incl. me)
+    : tipped.filter((o) => !o.isMe);                           // pre-score → just the others' tips
 
   return (
     <Drawer.Backdrop isOpen={isOpen} onOpenChange={(o) => !o && onClose()}>
@@ -96,22 +101,28 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
               {me && !ready && <p className="mt-2 text-center text-xs text-muted">Paarung steht noch nicht fest – Tippen ab dann möglich.</p>}
             </div>
 
-            {/* other players' tips */}
+            {/* tip comparison — live (provisional points vs the delayed score) / final / pending */}
             <div>
-              <div className="mb-1.5 px-1 text-xs font-bold uppercase tracking-wider text-muted">
-                Tipps der anderen{othersTipped.length > 0 ? ` (${othersTipped.length})` : ""}
+              <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted">
+                  {isLiveMatch ? "Live-Tippvergleich" : hasResult ? "Tippvergleich" : "Tipps der anderen"}
+                </span>
+                {isLiveMatch && <span className="text-[10px] text-muted">Punkte vorläufig · Stand {lh}:{la}</span>}
               </div>
               {!locked ? (
                 <p className="rounded-xl border border-border bg-overlay p-3 text-center text-xs text-muted">
                   Werden 5 Minuten vor Anpfiff sichtbar.
                 </p>
-              ) : othersTipped.length === 0 ? (
-                <p className="rounded-xl border border-border bg-overlay p-3 text-center text-xs text-muted">Niemand sonst hat getippt.</p>
+              ) : displayList.length === 0 ? (
+                <p className="rounded-xl border border-border bg-overlay p-3 text-center text-xs text-muted">Niemand{effRes ? "" : " sonst"} hat getippt.</p>
               ) : (
                 <div className="max-h-72 overflow-y-auto rounded-xl border border-border">
-                  {othersTipped.map((o, i) => (
-                    <div key={o.k} className={`flex items-center justify-between px-3 py-2 text-sm ${i ? "border-t border-border" : ""}`}>
-                      <span className="font-semibold">{o.k}</span>
+                  {displayList.map((o, i) => (
+                    <div key={o.k} className={`flex items-center justify-between px-3 py-2 text-sm ${i ? "border-t border-border" : ""} ${o.isMe ? "bg-accent/10" : ""}`}>
+                      <span className="flex items-center gap-1.5 font-semibold">
+                        {effRes && <span className="w-4 text-right text-xs tabular-nums text-muted">{i + 1}</span>}
+                        {o.k}{o.isMe && <span className="text-[10px] text-app-accent">du</span>}
+                      </span>
                       <span className="flex items-center gap-2">
                         <span className="tabular-nums">{o.tip.h}:{o.tip.a}</span>
                         <PointsBadge points={o.pts} />
