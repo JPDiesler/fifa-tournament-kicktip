@@ -56,6 +56,25 @@ export function formatClock(totalSec, boundary) {
 // Whether the clock is running for this phase (paused at HT, stopped at PEN).
 export const clockRunning = (live) => live?.phase === "LIVE" || live?.phase === "ET";
 
+// --- match event display helpers (scorers / cards) ---
+// Minute label for a goal/card event: "23'" or "90+5'" (stoppage carried as injury).
+export function eventMinute(e) {
+  if (!e || e.minute == null) return "";
+  return e.injury ? `${e.minute}+${e.injury}'` : `${e.minute}'`;
+}
+// Suffix marking a goal's type: penalty "(E)", own goal "(ET)", else "".
+export const goalMark = (type) => (type === "penalty" ? "(E)" : type === "own" ? "(ET)" : "");
+// A card counts as red when its label mentions "red" (football-data: RED / YELLOW_RED;
+// api-football: "Red Card"). A second yellow stays yellow (it's still a yellow card).
+export const isRedCard = (card) => /red/i.test(card || "");
+// Final match clock for a finished match (from match_detail.final): "90+5'", "120'",
+// or "120' i.E." when decided on penalties. null when unknown.
+export function finalClockLabel(final) {
+  if (!final || final.minute == null) return null;
+  const t = `${final.minute}${final.injury ? `+${final.injury}` : ""}'`;
+  return final.phase === "PEN" ? `${t} i.E.` : t;
+}
+
 // Label for the live match phase coming from st.live[n]
 // ({ phase:'LIVE'|'HT'|'ET'|'PEN', minute, injury }). Scores are DELAYED on the
 // free data tier (which also reports no minute), so plain in-play falls back to
