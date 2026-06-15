@@ -91,6 +91,14 @@ CREATE TABLE IF NOT EXISTS sent_notifications (
   key TEXT PRIMARY KEY,
   at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- Per-match scorers/cards (display only), fed by a provider that supports them.
+-- JSON arrays; updated each sync for live/just-finished matches.
+CREATE TABLE IF NOT EXISTS match_detail (
+  match_n    INTEGER PRIMARY KEY,
+  scorers    TEXT,
+  cards      TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `);
 
 // Migration for DBs created before is_superadmin existed.
@@ -224,6 +232,7 @@ export function stateForUser(meKuerzel) {
   return {
     me: meKuerzel,
     tips, champs, results, resolved, live: liveByMatch(), broadcasts: broadcastsByMatch(),
+    details: detailByMatch(),
     championActual: getSetting("championActual", ""),
     capabilities: getSetting("capabilities", null),
     meta: getSetting("meta", {}),
@@ -320,6 +329,20 @@ export function liveByMatch() {
     out[r.match_n] = { h: r.h, a: r.a, phase: r.phase, minute: r.minute, injury: r.injury };
   return out;
 }
+// ---------- per-match scorers/cards (display only) ----------
+export function setMatchDetail(n, scorers, cards) {
+  db.prepare(`INSERT INTO match_detail(match_n,scorers,cards) VALUES(?,?,?)
+    ON CONFLICT(match_n) DO UPDATE SET scorers=excluded.scorers, cards=excluded.cards, updated_at=datetime('now')`)
+    .run(Number(n), JSON.stringify(scorers || []), JSON.stringify(cards || []));
+}
+export function detailByMatch() {
+  const out = {};
+  for (const r of db.prepare("SELECT match_n,scorers,cards FROM match_detail").all()) {
+    try { out[r.match_n] = { scorers: JSON.parse(r.scorers || "[]"), cards: JSON.parse(r.cards || "[]") }; } catch { /* skip */ }
+  }
+  return out;
+}
+
 export const hasResult = (n) => {
   const r = db.prepare("SELECT h,a FROM results WHERE match_n=?").get(n);
   return !!(r && r.h !== "" && r.a !== "");
@@ -370,10 +393,50 @@ export const getDataToken = () => getSetting("footballDataToken", "") || process
 export const setDataToken = (t) => setSetting("footballDataToken", (t || "").trim());
 export const dataTokenFromDb = () => !!getSetting("footballDataToken", "");
 
-// Detected API capabilities (probed by the admin) — drive the feature set:
-// { liveMinute, scorers, rateLimit, client, checkedAt } (bools may be null = untested).
+// EFFECTIVE capabilities (computed by the coordinator from the routing + each
+// provider's caps) — drive the frontend feature gating. Shape unchanged.
 export const getCapabilities = () => getSetting("capabilities", null);
 export const setCapabilities = (c) => setSetting("capabilities", c);
+
+// ---------- multi-provider sources ----------
+// Per-provider token. football-data keeps the legacy "footballDataToken" key for
+// backward compatibility; other providers use "token:<id>" with an env fallback.
+const ENV_TOKEN = { footballdata: () => process.env.FOOTBALL_DATA_TOKEN || "", apifootball: () => process.env.API_FOOTBALL_KEY || "" };
+export const getProviderToken = (id) =>
+  id === "footballdata" ? getDataToken() : (getSetting(`token:${id}`, "") || (ENV_TOKEN[id] ? ENV_TOKEN[id]() : ""));
+export const setProviderToken = (id, t) =>
+  id === "footballdata" ? setDataToken(t) : setSetting(`token:${id}`, (t || "").trim());
+export const providerTokenFromDb = (id) =>
+  id === "footballdata" ? dataTokenFromDb() : !!getSetting(`token:${id}`, "");
+
+// Per-provider probed capabilities (the effective caps above are derived from these).
+export const getProviderCaps = (id) => getSetting(`caps:${id}`, null);
+export const setProviderCaps = (id, c) => setSetting(`caps:${id}`, c);
+
+// Source config: { providers: { id: { enabled, rateLimit, dailyLimit } }, routing: { feature: [id, …] } }.
+// null = no config → coordinator falls back to the DATA_SOURCE provider for all features.
+export const getSourceConfig = () => getSetting("sourceConfig", null);
+export const setSourceConfig = (cfg) => setSetting("sourceConfig", cfg);
+
+// Per-provider rate/daily overrides (admin-set). undefined → adapter uses its env
+// default; dailyLimit === null → explicitly "no cap".
+export function getProviderLimits(id) {
+  const p = (getSourceConfig()?.providers || {})[id] || {};
+  return { rateLimit: p.rateLimit, dailyLimit: p.dailyLimit };
+}
+
+// Base live-poll interval (seconds) while a match runs. Default 60 (= prior cron).
+export const getLivePollSeconds = () => Number(getSetting("livePollSeconds", 60)) || 60;
+export const setLivePollSeconds = (s) => setSetting("livePollSeconds", Math.max(10, Math.min(600, Math.round(Number(s) || 60))));
+
+// Estimated inherent display delay (seconds) of a provider's LIVE data — shown to
+// users and used to gate "real-time" capabilities. Admin-set per provider; sensible
+// defaults (football-data free ~3 min; api-football ~15 s).
+const DEFAULT_DELAY = { footballdata: 180, apifootball: 15 };
+export const getProviderDelay = (id) => {
+  const d = (getSourceConfig()?.providers || {})[id]?.delaySeconds;
+  return Number.isFinite(d) ? d : (DEFAULT_DELAY[id] ?? 60);
+};
 
 // ---------- leaderboard (server-side scoring) ----------
 export function leaderboard() {

@@ -50,6 +50,18 @@ gewählt) und Kürzel vergeben.
 - **Near-Live:** Während des Spiels zeigt die App den (im Free-Tier **verzögerten**,
   ~3 Min) Zwischenstand + Phase — reine Anzeige, getrennt von der Punktewertung.
 
+### Mehrere Datenquellen (Multi-Provider)
+Pro **Provider** ein Adapter (`server/services/sources/*.adapter.js`), darüber ein
+**Koordinations-Layer** (`coordinator.js`), der **pro Feature** (Ergebnisse, Live-Score,
+Live-Spielminute, Spielphase, Torschützen, Karten) steuert, welche Quelle es liefert —
+mit Priorität + Fallback. So lässt sich eine Quelle nutzen **oder** mehrere kombinieren
+(z. B. Ergebnisse/Phase von football-data, Echtzeit-Minute/Torschützen/Karten von
+API-Football). Konfiguration im **Web-Admin → „API & Ergebnisse"**: pro Provider Token +
+Test, plus eine Feature-Routing-Matrix. Ohne Konfiguration = Einzel-Provider aus
+`DATA_SOURCE` (Verhalten wie zuvor). Jeder Provider hat ein eigenes Rate-Budget;
+Torschützen/Karten werden nur von einer **fähigen** Quelle und nur für laufende/gerade
+beendete Spiele geholt (Cap via `DETAIL_MAX_PER_SYNC`).
+
 ## „Wo zu sehen" (Deutschland)
 Lineare Sender (ARD/ZDF/RTL/Sky/DAZN/Eurosport) werden aus einem deutschen
 TV-Programm (XMLTV/EPG, `EPG_URL`) per Teamname + Anstoßzeit den Spielen zugeordnet;

@@ -11,15 +11,18 @@ export async function listUsers() {
   return j(await fetch("/api/admin/users"), "Konnte Nutzer nicht laden");
 }
 
-// ---- result source / API token ----
-export async function getSource() {
-  return j(await fetch("/api/admin/source"), "Quelle nicht ladbar");
+// ---- result sources (multi-provider) + feature routing ----
+export async function getSources() {
+  return j(await fetch("/api/admin/sources"), "Quellen nicht ladbar"); // → { sources, features, routing, default, lastSync, lastSyncMsg }
 }
-export async function setSourceToken(token) {
-  return j(await post("/api/admin/source", { token }), "Speichern fehlgeschlagen"); // → status
+export async function setProviderToken(id, token) {
+  return j(await post(`/api/admin/sources/${id}/token`, { token }), "Speichern fehlgeschlagen");
 }
-export async function testSource() {
-  return j(await post("/api/admin/source/test"), "Test fehlgeschlagen"); // → { ok, client, availableMinute, … }
+export async function testProvider(id) {
+  return j(await post(`/api/admin/sources/${id}/test`), "Test fehlgeschlagen"); // → { ok, client, availableMinute, caps, … }
+}
+export async function saveRouting(body) {
+  return j(await post("/api/admin/routing", body), "Speichern fehlgeschlagen"); // body: { routing, providers }
 }
 export async function createBasic(body) {
   return j(await post("/api/admin/users/basic", body), "Anlegen fehlgeschlagen"); // { user, password }

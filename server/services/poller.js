@@ -41,3 +41,32 @@ export function anyMatchActive(hasResult, now = Date.now()) {
   }
   return null;
 }
+
+// Remaining polling LOAD for the rest of today (until UTC midnight = the daily
+// budget boundary), used to size the live-poll interval against a daily cap:
+//   coverageSec  – union of all active match windows (one poll covers concurrent
+//                  matches → fixtures cost = 1 call per poll)
+//   sumActiveSec – sum over matches of their remaining active seconds (scorers/
+//                  cards cost = 1 detail call PER live match per poll)
+// So calls(interval) ≈ coverageSec/interval (+ sumActiveSec/interval if details).
+export function remainingLoadToday(now = Date.now()) {
+  const dayEnd = (Math.floor(now / 86400000) + 1) * 86400000; // next UTC midnight
+  const spans = [];
+  let sumActiveSec = 0;
+  for (const w of WINDOWS) {
+    const end = w.ts + (w.ko ? END_KO : END_GROUP) * 60000;
+    const start = Math.max(w.ts, now);
+    const clipEnd = Math.min(end, dayEnd);
+    if (clipEnd <= start) continue; // already over, or not until tomorrow
+    spans.push([start, clipEnd]);
+    sumActiveSec += (clipEnd - start) / 1000;
+  }
+  spans.sort((a, b) => a[0] - b[0]);
+  let coverageSec = 0, curStart = null, curEnd = null;
+  for (const [s, e] of spans) {
+    if (curEnd == null || s > curEnd) { if (curEnd != null) coverageSec += (curEnd - curStart) / 1000; curStart = s; curEnd = e; }
+    else curEnd = Math.max(curEnd, e);
+  }
+  if (curEnd != null) coverageSec += (curEnd - curStart) / 1000;
+  return { coverageSec, sumActiveSec };
+}

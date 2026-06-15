@@ -6,7 +6,7 @@ import PointsBadge from "@/components/PointsBadge.jsx";
 import BroadcastButtons from "@/features/broadcasts/BroadcastButtons.jsx";
 import { LiveTag, LivePhase } from "./LiveBadge.jsx";
 import { PHASES } from "@/lib/scoring.js";
-import { countdown, kickoffMs, LIVE_DELAY_NOTE } from "@/lib/matchtime.js";
+import { countdown, kickoffMs, delayLabel } from "@/lib/matchtime.js";
 
 // Bottom-sheet detail for one match: final score, your tip (disabled when
 // locked), and the other players' tips (revealed only once the match is locked).
@@ -29,6 +29,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   const live = st.live?.[n];
   const isLiveMatch = !hasResult && !!live;             // running → show scoreline (0:0 default) + badge
   const lh = live?.h || "0", la = live?.a || "0";
+  const detail = st.details?.[n]; // { scorers, cards } if a capable provider feeds them
 
   // Points score against the final result, or — while a match runs — provisionally
   // against the (delayed) live score. Powers the live tip comparison below.
@@ -63,7 +64,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
                     <LiveTag paused={live.phase === "HT"} className="text-[11px]" />
                     <div className="text-3xl font-extrabold tabular-nums">{lh}:{la}</div>
                     <LivePhase live={live} className="text-[11px]" />
-                    {st.capabilities?.liveMinute !== true && <span className="text-[10px] text-muted">{LIVE_DELAY_NOTE}</span>}
+                    {delayLabel(st.capabilities?.delaySeconds ?? 180) && <span className="text-[10px] text-muted">{delayLabel(st.capabilities?.delaySeconds ?? 180)}</span>}
                   </div>
                 ) : (
                   <div className={`text-xs ${cd ? "text-muted" : "font-bold text-app-accent"}`}>{cd || "läuft"}</div>
@@ -80,6 +81,37 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
               <div>
                 <div className="mb-1.5 px-1 text-xs font-bold uppercase tracking-wider text-muted">Wo zu sehen (DE)</div>
                 <BroadcastButtons keys={broadcasts} />
+              </div>
+            )}
+
+            {/* scorers & cards (only when a capable provider feeds them) */}
+            {detail && (detail.scorers?.length > 0 || detail.cards?.length > 0) && (
+              <div>
+                <div className="mb-1.5 px-1 text-xs font-bold uppercase tracking-wider text-muted">Tore &amp; Karten</div>
+                <div className="rounded-xl border border-border bg-overlay p-3 text-sm">
+                  {detail.scorers?.length > 0 && (
+                    <ul className="space-y-0.5">
+                      {detail.scorers.map((g, i) => (
+                        <li key={`g${i}`} className="flex items-center gap-2">
+                          <span>⚽</span>
+                          <span className="min-w-0 flex-1 truncate">{g.player || "—"}{g.team && <span className="text-muted"> · {g.team}</span>}</span>
+                          {g.minute != null && <span className="shrink-0 tabular-nums text-muted">{g.minute}&apos;</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {detail.cards?.length > 0 && (
+                    <ul className={`space-y-0.5 ${detail.scorers?.length ? "mt-2 border-t border-border pt-2" : ""}`}>
+                      {detail.cards.map((c, i) => (
+                        <li key={`c${i}`} className="flex items-center gap-2">
+                          <span>{/red/i.test(c.card || "") ? "🟥" : "🟨"}</span>
+                          <span className="min-w-0 flex-1 truncate">{c.player || "—"}{c.team && <span className="text-muted"> · {c.team}</span>}</span>
+                          {c.minute != null && <span className="shrink-0 tabular-nums text-muted">{c.minute}&apos;</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             )}
 

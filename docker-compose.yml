@@ -18,7 +18,12 @@ services:
       # --- Entra / MSAL (optional; leer = nur Basic-Login) ---
       ENTRA_TENANT_ID: "${ENTRA_TENANT_ID:-}"
       ENTRA_CLIENT_ID: "${ENTRA_CLIENT_ID:-}"           # SPA public client; kein Secret (Nutzerliste läuft delegiert im Browser)
-      # --- Ergebnis-Quelle ---
+      # --- Ergebnis-Quellen (Multi-Provider) ---
+      # DATA_SOURCE = Default-Primärquelle für ALLE Features, solange im Admin kein
+      # abweichendes Feature-Routing gesetzt ist. Tokens sind auch im Web-Admin
+      # verwaltbar (überschreiben die env-Werte). Mehrere Provider lassen sich pro
+      # Feature kombinieren (z. B. Ergebnisse von football-data, Live-Minute/Tor-
+      # schützen von api-football). Ohne Konfiguration = Einzel-Provider wie bisher.
       DATA_SOURCE: "${DATA_SOURCE:-footballdata}"        # footballdata (Default, kostenlos) | apifootball
       FOOTBALL_DATA_TOKEN: "${FOOTBALL_DATA_TOKEN:-}"    # kostenloser Token von football-data.org
       FOOTBALL_DATA_COMPETITION: "${FOOTBALL_DATA_COMPETITION:-WC}"
@@ -31,7 +36,9 @@ services:
       API_FOOTBALL_KEY: "${API_FOOTBALL_KEY:-}"          # nur für DATA_SOURCE=apifootball (Plan mit Season 2026 nötig)
       API_LEAGUE: "${API_LEAGUE:-1}"
       API_SEASON: "${API_SEASON:-2026}"
+      API_RATE_LIMIT: "${API_RATE_LIMIT:-10}"
       API_DAILY_LIMIT: "${API_DAILY_LIMIT:-90}"
+      DETAIL_MAX_PER_SYNC: "${DETAIL_MAX_PER_SYNC:-8}"   # max. Torschützen/Karten-Detail-Calls pro Sync (Budget-Schutz)
       SYNC_CRON: "${SYNC_CRON:-0 */6 * * *}"            # Sicherheits-Sync; Ergebnisse kommen primär automatisch zu Spielende-Zeiten
     volumes:
       - wm_data:/data

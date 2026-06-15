@@ -7,10 +7,13 @@ import {
   getMeta, listUsers, createUser, updateUser, deleteUser,
   getUserById, getUserByUsername, getUserByKuerzel, getUserByEntraOid, getUserByEntraUpn, countAdmins,
   getDataToken, setDataToken, dataTokenFromDb, getCapabilities, setCapabilities,
+  getProviderToken, setProviderToken, providerTokenFromDb, getProviderCaps, setProviderCaps,
+  getSourceConfig, setSourceConfig, getLivePollSeconds, setLivePollSeconds, getProviderDelay,
 } from "../db.js";
 import { requireAdmin, adminUserDto, hashPassword } from "../middleware/auth.js";
 import { sync } from "../services/sync.js";
-import { activeSource, probeSource } from "../services/sources.js";
+import { activeSource, probeSource, getAdapter, listAdapters, DEFAULT_SOURCE } from "../services/sources/index.js";
+import { effectiveCapabilities, effectiveConfig, FEATURES, liveDelayMs } from "../services/coordinator.js";
 import { genPassword, cacheCredential, getCredential, streamCredentialsPdf } from "../services/credentials.js";
 
 const router = Router();
@@ -57,14 +60,79 @@ router.post("/admin/source", requireAdmin, (req, res) => {
 router.post("/admin/source/test", requireAdmin, async (req, res) => {
   const result = await probeSource();
   if (result.ok && result.caps) {
-    setCapabilities({
+    // store per-provider caps; the effective (frontend) caps are derived from these
+    setProviderCaps(activeSource().id, {
       ...result.caps,
       rateLimit: activeSource().rateLimit(),
       client: result.client || null,
       checkedAt: new Date().toISOString(),
     });
+    setCapabilities(effectiveCapabilities());
   }
   res.json(result);
+});
+
+// ---------- multi-provider sources + feature routing ----------
+function providerState(ad) {
+  if (!ad.configured()) return "unconfigured";
+  return getProviderCaps(ad.id) ? "ok" : "idle"; // configured; "ok" once probed
+}
+router.get("/admin/sources", requireAdmin, (req, res) => {
+  const cfg = getSourceConfig() || {};
+  const meta = getMeta();
+  const today = new Date().toISOString().slice(0, 10);
+  const routing = cfg.routing || Object.fromEntries(FEATURES.map((f) => [f, [DEFAULT_SOURCE]]));
+  const feeds = {}; // provider id → features it is primary for (the combination view)
+  for (const f of FEATURES) { const p = routing[f]?.[0]; if (p) (feeds[p] ||= []).push(f); }
+  const sources = listAdapters().map((ad) => {
+    const tok = getProviderToken(ad.id);
+    const pc = meta.providerCalls?.[ad.id];
+    return {
+      id: ad.id, name: ad.name,
+      configured: ad.configured(),
+      enabled: cfg.providers?.[ad.id]?.enabled !== false,
+      tokenSource: providerTokenFromDb(ad.id) ? "db" : (tok ? "env" : "none"),
+      tokenMasked: tok ? `••••${tok.slice(-4)}` : null,
+      rateLimitPerMin: ad.rateLimit(), dailyLimit: ad.dailyLimit(),
+      usedToday: pc && pc.date === today ? pc.count : 0,
+      delaySeconds: getProviderDelay(ad.id),
+      feeds: feeds[ad.id] || [],
+      caps: getProviderCaps(ad.id) || ad.declaredCaps(),
+      tested: !!getProviderCaps(ad.id),
+      state: providerState(ad),
+    };
+  });
+  res.json({
+    sources, features: FEATURES, default: DEFAULT_SOURCE, routing,
+    providers: cfg.providers || {},
+    pollSeconds: getLivePollSeconds(),
+    effectivePollSeconds: Math.round(liveDelayMs() / 1000),
+    lastSync: meta.lastSync || null, lastSyncMsg: meta.lastSyncMsg || "",
+  });
+});
+router.post("/admin/sources/:id/token", requireAdmin, (req, res) => {
+  if (!getAdapter(req.params.id)) return res.status(404).json({ error: "Unbekannter Provider" });
+  setProviderToken(req.params.id, req.body?.token ?? "");
+  res.json({ ok: true });
+});
+router.post("/admin/sources/:id/test", requireAdmin, async (req, res) => {
+  const ad = getAdapter(req.params.id);
+  if (!ad) return res.status(404).json({ error: "Unbekannter Provider" });
+  const result = await ad.probe();
+  if (result.ok && result.caps) {
+    setProviderCaps(ad.id, { ...result.caps, rateLimit: ad.rateLimit(), client: result.client || null, checkedAt: new Date().toISOString() });
+    setCapabilities(effectiveCapabilities());
+  }
+  res.json(result);
+});
+router.post("/admin/routing", requireAdmin, (req, res) => {
+  const cfg = getSourceConfig() || {};
+  if (req.body?.providers) cfg.providers = req.body.providers;
+  if (req.body?.routing) cfg.routing = req.body.routing;
+  setSourceConfig(cfg);
+  if (req.body?.pollSeconds != null) setLivePollSeconds(req.body.pollSeconds);
+  setCapabilities(effectiveCapabilities());
+  res.json({ ok: true, routing: cfg.routing, providers: cfg.providers, pollSeconds: getLivePollSeconds() });
 });
 
 router.get("/admin/users", requireAdmin, (req, res) => res.json(listUsers().map(adminUserDto)));

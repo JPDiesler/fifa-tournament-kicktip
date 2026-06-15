@@ -3,7 +3,16 @@ export const kickoffMs = (dt) => Date.parse(dt + ":00+02:00");
 
 // Free-tier live scores arrive delayed (measured ~3 min during the WC); shown as
 // a small, unobtrusive hint so the live score doesn't read as broken/real-time.
-export const LIVE_DELAY_NOTE = "ca. 3 Min verzögert";
+export const LIVE_DELAY_NOTE = "ca. 3 Min verzögert"; // fallback when capabilities are unknown
+
+// Human label for the live-display delay (seconds, from capabilities.delaySeconds).
+// null = effectively live → show no note.
+export function delayLabel(sec) {
+  if (sec == null) return null;
+  if (sec <= 20) return null;
+  if (sec < 90) return `ca. ${Math.round(sec)} Sek verzögert`;
+  return `ca. ${Math.round(sec / 60)} Min verzögert`;
+}
 
 // Short relative countdown to kickoff, or null once it has started.
 export function countdown(dt, now = Date.now()) {

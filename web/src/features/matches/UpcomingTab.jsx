@@ -1,5 +1,5 @@
 import MatchCard from "./MatchCard.jsx";
-import { kickoffMs, isLive, LIVE_DELAY_NOTE } from "@/lib/matchtime.js";
+import { kickoffMs, isLive, delayLabel } from "@/lib/matchtime.js";
 
 // "Anstehend" tab: live matches first (accent-bordered), a divider, then the
 // upcoming matches (soonest first). Tapping opens the drawer.
@@ -38,7 +38,7 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, scor
       {live.length > 0 && (
         <>
           <div className="px-1 text-xs font-bold uppercase tracking-wider text-app-accent">
-            Live {st.capabilities?.liveMinute !== true && <span className="font-normal normal-case text-muted">· {LIVE_DELAY_NOTE}</span>}
+            Live {delayLabel(st.capabilities?.delaySeconds ?? 180) && <span className="font-normal normal-case text-muted">· {delayLabel(st.capabilities?.delaySeconds ?? 180)}</span>}
           </div>
           {live.map((m) => card(m))}
           <div className="my-3 border-t border-border" />
