@@ -72,23 +72,25 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
             <Table.ScrollContainer>
               <Table.Content aria-label="Rangliste">
                 <Table.Header>
-                  <Table.Column isRowHeader>#</Table.Column>
-                  <Table.Column>Spieler</Table.Column>
-                  <Table.Column>Punkte</Table.Column>
-                  <Table.Column>Exakt</Table.Column>
-                  <Table.Column>WM-Tipp</Table.Column>
+                  <Table.Column isRowHeader className="whitespace-nowrap px-2 sm:px-4">#</Table.Column>
+                  <Table.Column className="whitespace-nowrap px-2 sm:px-4">Spieler</Table.Column>
+                  <Table.Column className="whitespace-nowrap px-2 sm:px-4">
+                    <span className="sm:hidden">Pkt</span><span className="hidden sm:inline">Punkte</span>
+                  </Table.Column>
+                  <Table.Column className="whitespace-nowrap px-2 sm:px-4">Exakt</Table.Column>
+                  <Table.Column className="whitespace-nowrap px-2 sm:px-4">WM-Tipp</Table.Column>
                 </Table.Header>
                 <Table.Body>
                   {rows.map((t, i) => (
                     <Table.Row key={t.p} id={t.p} className={t.p === me ? "bg-accent/10" : ""}>
-                      <Table.Cell className="font-bold text-muted">{start + i + 1}</Table.Cell>
-                      <Table.Cell>
-                        <div className="font-semibold">{t.name || t.p}</div>
+                      <Table.Cell className="px-2 font-bold text-muted sm:px-4">{start + i + 1}</Table.Cell>
+                      <Table.Cell className="px-2 sm:px-4">
+                        <div className="max-w-[7.5rem] truncate font-semibold sm:max-w-none">{t.name || t.p}</div>
                         {t.name && t.name !== t.p && <div className="text-xs text-muted">{t.p}</div>}
                       </Table.Cell>
-                      <Table.Cell className="text-center text-base font-bold text-success">{t.sum}</Table.Cell>
-                      <Table.Cell className="text-center text-muted">{t.exact}</Table.Cell>
-                      <Table.Cell>
+                      <Table.Cell className="px-2 text-center text-base font-bold text-success sm:px-4">{t.sum}</Table.Cell>
+                      <Table.Cell className="px-2 text-center text-muted sm:px-4">{t.exact}</Table.Cell>
+                      <Table.Cell className="px-2 sm:px-4">
                         {t.champ ? (
                           <span className="inline-flex items-center gap-1.5">
                             {known(t.champ) && <Flag code={t.champ} sm />}

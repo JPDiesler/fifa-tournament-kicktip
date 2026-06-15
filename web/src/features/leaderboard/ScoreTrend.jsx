@@ -15,8 +15,9 @@ function niceTicks(max, count = 4) {
   const mag = Math.pow(10, Math.floor(Math.log10(step)));
   const n = step / mag;
   step = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
+  const top = Math.max(step, Math.ceil(max / step) * step); // round the top tick UP past max → no overflow
   const ticks = [];
-  for (let v = 0; v <= max + 1e-9; v += step) ticks.push(Math.round(v));
+  for (let v = 0; v <= top + 1e-9; v += step) ticks.push(Math.round(v));
   return ticks;
 }
 
