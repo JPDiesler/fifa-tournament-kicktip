@@ -32,7 +32,7 @@ export default function HelpModal({ isOpen, onClose, champBonus, lockOffsetMin =
               <H>Tippen</H>
               <p className="text-muted">
                 Tippe per Klick auf ein Spiel. Du kannst deinen Tipp jederzeit bis <b className="text-foreground">{lockOffsetMin} Minuten vor Anpfiff</b> ändern.
-                Danach ist das Spiel gesperrt – und erst dann werden die Tipps der anderen sichtbar.
+                Danach ist das Spiel gesperrt.
               </p>
             </section>
 
