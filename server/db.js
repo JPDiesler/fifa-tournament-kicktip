@@ -93,12 +93,16 @@ CREATE TABLE IF NOT EXISTS sent_notifications (
   at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 -- Per-match scorers/cards (display only), fed by a provider that supports them.
--- JSON arrays; updated each sync for live/just-finished matches.
+-- JSON arrays; updated each sync for live/just-finished matches. final_* hold the
+-- observed final match clock (e.g. 90+5 / 120 / penalties) for finished matches.
 CREATE TABLE IF NOT EXISTS match_detail (
-  match_n    INTEGER PRIMARY KEY,
-  scorers    TEXT,
-  cards      TEXT,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  match_n      INTEGER PRIMARY KEY,
+  scorers      TEXT,
+  cards        TEXT,
+  final_minute INTEGER,
+  final_injury INTEGER,
+  final_phase  TEXT,
+  updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `);
 
@@ -117,6 +121,13 @@ if (!db.prepare("PRAGMA table_info(users)").all().some((c) => c.name === "notif_
 // Migration for DBs created before live.as_of existed.
 if (!db.prepare("PRAGMA table_info(live)").all().some((c) => c.name === "as_of")) {
   db.exec("ALTER TABLE live ADD COLUMN as_of INTEGER");
+}
+// Migration for DBs created before match_detail held the final match clock.
+{
+  const cols = db.prepare("PRAGMA table_info(match_detail)").all().map((c) => c.name);
+  if (!cols.includes("final_minute")) db.exec("ALTER TABLE match_detail ADD COLUMN final_minute INTEGER");
+  if (!cols.includes("final_injury")) db.exec("ALTER TABLE match_detail ADD COLUMN final_injury INTEGER");
+  if (!cols.includes("final_phase")) db.exec("ALTER TABLE match_detail ADD COLUMN final_phase TEXT");
 }
 
 // ---------- settings (kv, JSON-encoded) ----------
@@ -335,16 +346,29 @@ export function liveByMatch() {
     out[r.match_n] = { h: r.h, a: r.a, phase: r.phase, minute: r.minute, injury: r.injury, asOf: r.as_of };
   return out;
 }
-// ---------- per-match scorers/cards (display only) ----------
+// ---------- per-match scorers/cards + final clock (display only) ----------
 export function setMatchDetail(n, scorers, cards) {
   db.prepare(`INSERT INTO match_detail(match_n,scorers,cards) VALUES(?,?,?)
     ON CONFLICT(match_n) DO UPDATE SET scorers=excluded.scorers, cards=excluded.cards, updated_at=datetime('now')`)
     .run(Number(n), JSON.stringify(scorers || []), JSON.stringify(cards || []));
 }
+// Observed final match clock (minute/injury/phase) — written once per match when it
+// finishes. Upserts only the final_* columns, leaving any scorers/cards intact.
+export function setMatchFinalTime(n, f) {
+  db.prepare(`INSERT INTO match_detail(match_n,final_minute,final_injury,final_phase) VALUES(?,?,?,?)
+    ON CONFLICT(match_n) DO UPDATE SET final_minute=excluded.final_minute, final_injury=excluded.final_injury, final_phase=excluded.final_phase, updated_at=datetime('now')`)
+    .run(Number(n), f?.minute ?? null, f?.injury ?? null, f?.phase ?? null);
+}
 export function detailByMatch() {
   const out = {};
-  for (const r of db.prepare("SELECT match_n,scorers,cards FROM match_detail").all()) {
-    try { out[r.match_n] = { scorers: JSON.parse(r.scorers || "[]"), cards: JSON.parse(r.cards || "[]") }; } catch { /* skip */ }
+  for (const r of db.prepare("SELECT match_n,scorers,cards,final_minute,final_injury,final_phase FROM match_detail").all()) {
+    try {
+      out[r.match_n] = {
+        scorers: JSON.parse(r.scorers || "[]"),
+        cards: JSON.parse(r.cards || "[]"),
+        final: r.final_minute != null ? { minute: r.final_minute, injury: r.final_injury, phase: r.final_phase } : null,
+      };
+    } catch { /* skip */ }
   }
   return out;
 }
