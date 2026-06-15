@@ -2,9 +2,33 @@ import { Card } from "@heroui/react";
 import { Lock, Check } from "lucide-react";
 import Flag from "@/components/Flag.jsx";
 import PointsBadge from "@/components/PointsBadge.jsx";
+import { GoalIcon, CardIcon } from "@/components/MatchIcons.jsx";
 import BroadcastPill from "@/features/broadcasts/BroadcastPill.jsx";
 import LiveBadge, { LiveTag, LivePhase } from "./LiveBadge.jsx";
-import { countdown, kickoffMs } from "@/lib/matchtime.js";
+import { countdown, kickoffMs, eventMinute, goalMark, isRedCard } from "@/lib/matchtime.js";
+
+// Goals + cards for one side ("h"/"a"), oldest first, for the live overview card.
+function sideEvents(detail, side) {
+  if (!detail) return [];
+  const t = (e) => (e.minute ?? 0) + (e.injury ?? 0) / 100;
+  const gs = (detail.scorers || []).filter((g) => g.side === side).map((g) => ({ kind: "goal", ...g }));
+  const cs = (detail.cards || []).filter((c) => c.side === side).map((c) => ({ kind: "card", ...c }));
+  return [...gs, ...cs].sort((a, b) => t(a) - t(b));
+}
+// One event line; mirrored (icon on the right) for the away column.
+function EventLine({ e, align }) {
+  return (
+    <li className={`flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
+      {e.kind === "goal"
+        ? <GoalIcon size={12} className="shrink-0 text-foreground" />
+        : <CardIcon red={isRedCard(e.card)} className="shrink-0" />}
+      <span className="min-w-0 truncate">
+        <span className="tabular-nums text-muted">{eventMinute(e)}</span> {e.player || "—"}
+        {e.kind === "goal" && goalMark(e.type) ? ` ${goalMark(e.type)}` : ""}
+      </span>
+    </li>
+  );
+}
 
 // Compact, clickable match summary. Tip entry happens in the detail drawer.
 // `inactive` = pairing not yet set (K.o.) → not clickable, can't be tipped.
@@ -12,7 +36,7 @@ import { countdown, kickoffMs } from "@/lib/matchtime.js";
 // sm+ only) opens the broadcast drawer. On mobile the services live in the detail.
 // `live` = delayed in-play state ({ h,a,phase,minute,injury }) from st.live[n];
 // shown (score + phase) once a match has kicked off, until the final result lands.
-export default function MatchCard({ match, home, away, result, points, hasTip, locked, onOpen, onOpenBroadcasts, compact, inactive, live, broadcasts, serverNow, liveMinuteOn }) {
+export default function MatchCard({ match, home, away, result, points, hasTip, locked, onOpen, onOpenBroadcasts, compact, inactive, live, detail, broadcasts, serverNow, liveMinuteOn }) {
   const hasResult = result && result.h !== "" && result.a !== "";
   const cd = !hasResult ? countdown(match.dt) : null;
   // "Wo zu sehen?" only makes sense for upcoming/running matches — hide it once a
@@ -109,6 +133,17 @@ export default function MatchCard({ match, home, away, result, points, hasTip, l
                 <span className="text-sm font-bold text-app-accent">läuft</span>
               )}
             </div>
+            {/* live scorers & cards, home on the left, away on the right */}
+            {isLiveMatch && detail && (sideEvents(detail, "h").length > 0 || sideEvents(detail, "a").length > 0) && (
+              <div className="mt-1.5 grid w-full grid-cols-2 gap-x-3 border-t border-border pt-1.5 text-[11px] leading-snug">
+                <ul className="space-y-0.5">
+                  {sideEvents(detail, "h").map((e, i) => <EventLine key={`h${i}`} e={e} align="left" />)}
+                </ul>
+                <ul className="space-y-0.5 text-right">
+                  {sideEvents(detail, "a").map((e, i) => <EventLine key={`a${i}`} e={e} align="right" />)}
+                </ul>
+              </div>
+            )}
           </div>
         )}
         {/* where to watch (DE) — tiny pill bottom-left, desktop/tablet only (mobile: in the detail drawer). Hidden once the match is over. */}

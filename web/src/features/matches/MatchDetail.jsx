@@ -5,8 +5,9 @@ import ScoreInput from "./ScoreInput.jsx";
 import PointsBadge from "@/components/PointsBadge.jsx";
 import BroadcastButtons from "@/features/broadcasts/BroadcastButtons.jsx";
 import { LiveTag, LivePhase } from "./LiveBadge.jsx";
+import { GoalIcon, CardIcon } from "@/components/MatchIcons.jsx";
 import { PHASES } from "@/lib/scoring.js";
-import { countdown, kickoffMs, delayLabel } from "@/lib/matchtime.js";
+import { countdown, kickoffMs, delayLabel, eventMinute, goalMark, isRedCard, finalClockLabel } from "@/lib/matchtime.js";
 
 // Bottom-sheet detail for one match: final score, your tip (disabled when
 // locked), and the other players' tips (revealed only once the match is locked).
@@ -58,7 +59,10 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
               </div>
               <div className="shrink-0 text-center">
                 {hasResult ? (
-                  <div className="text-3xl font-extrabold tabular-nums">{result.h}:{result.a}</div>
+                  <>
+                    <div className="text-3xl font-extrabold tabular-nums">{result.h}:{result.a}</div>
+                    {finalClockLabel(detail?.final) && <div className="text-[11px] text-muted">{finalClockLabel(detail.final)}</div>}
+                  </>
                 ) : isLiveMatch ? (
                   <div className="flex flex-col items-center gap-1 leading-none">
                     <LiveTag paused={live.phase === "HT"} className="text-[11px]" />
@@ -93,9 +97,13 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
                     <ul className="space-y-0.5">
                       {detail.scorers.map((g, i) => (
                         <li key={`g${i}`} className="flex items-center gap-2">
-                          <span>⚽</span>
-                          <span className="min-w-0 flex-1 truncate">{g.player || "—"}{g.team && <span className="text-muted"> · {g.team}</span>}</span>
-                          {g.minute != null && <span className="shrink-0 tabular-nums text-muted">{g.minute}&apos;</span>}
+                          <GoalIcon className="shrink-0 text-foreground" />
+                          <span className="min-w-0 flex-1 truncate">
+                            {g.player || "—"}
+                            {goalMark(g.type) && <span className="text-muted"> {goalMark(g.type)}</span>}
+                            {g.team && <span className="text-muted"> · {g.team}</span>}
+                          </span>
+                          {eventMinute(g) && <span className="shrink-0 tabular-nums text-muted">{eventMinute(g)}</span>}
                         </li>
                       ))}
                     </ul>
@@ -104,9 +112,9 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
                     <ul className={`space-y-0.5 ${detail.scorers?.length ? "mt-2 border-t border-border pt-2" : ""}`}>
                       {detail.cards.map((c, i) => (
                         <li key={`c${i}`} className="flex items-center gap-2">
-                          <span>{/red/i.test(c.card || "") ? "🟥" : "🟨"}</span>
+                          <CardIcon red={isRedCard(c.card)} className="shrink-0" />
                           <span className="min-w-0 flex-1 truncate">{c.player || "—"}{c.team && <span className="text-muted"> · {c.team}</span>}</span>
-                          {c.minute != null && <span className="shrink-0 tabular-nums text-muted">{c.minute}&apos;</span>}
+                          {eventMinute(c) && <span className="shrink-0 tabular-nums text-muted">{eventMinute(c)}</span>}
                         </li>
                       ))}
                     </ul>
