@@ -109,40 +109,42 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
           </Table>
 
           {paged && (
-            <div className="flex items-center justify-between gap-2">
-              <div className="inline-flex shrink-0 items-center gap-1 text-[11px] text-muted">
-                <span className="mr-1 hidden sm:inline">Pro Seite:</span>
-                <div className="inline-flex rounded-lg border border-border bg-surface p-0.5">
-                  {PAGE_SIZES.map((s) => (
-                    <button key={s} onClick={() => { setPageSize(s); setPage(1); }}
-                      className={`rounded-md px-2 py-0.5 transition ${pageSize === s ? "bg-accent font-semibold text-accent-foreground" : "text-muted"}`}>
-                      {s === Infinity ? "Alle" : s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {pageCount > 1 && (
-                <Pagination>
-                  <Pagination.Content>
-                    <Pagination.Item>
-                      <Pagination.Previous isDisabled={safePage === 1} onPress={() => setPage(safePage - 1)}>
-                        <Pagination.PreviousIcon />
-                      </Pagination.Previous>
-                    </Pagination.Item>
-                    {Array.from({ length: pageCount }, (_, i) => i + 1).map((p) => (
-                      <Pagination.Item key={p}>
-                        <Pagination.Link isActive={p === safePage} onPress={() => setPage(p)}>{p}</Pagination.Link>
-                      </Pagination.Item>
+            // Pagination root is w-full + justify-between → Summary (page size) sits
+            // left, Content (page links) right. flex-row keeps it on one line on mobile.
+            <Pagination className="mb-8 flex-row items-center">
+              <Pagination.Summary>
+                <div className="inline-flex items-center gap-1 text-[11px] text-muted">
+                  <span className="mr-1 hidden sm:inline">Pro Seite:</span>
+                  <div className="inline-flex rounded-lg border border-border bg-surface p-0.5">
+                    {PAGE_SIZES.map((s) => (
+                      <button key={s} onClick={() => { setPageSize(s); setPage(1); }}
+                        className={`rounded-md px-2 py-0.5 transition ${pageSize === s ? "bg-accent font-semibold text-accent-foreground" : "text-muted"}`}>
+                        {s === Infinity ? "Alle" : s}
+                      </button>
                     ))}
-                    <Pagination.Item>
-                      <Pagination.Next isDisabled={safePage === pageCount} onPress={() => setPage(safePage + 1)}>
-                        <Pagination.NextIcon />
-                      </Pagination.Next>
+                  </div>
+                </div>
+              </Pagination.Summary>
+              {pageCount > 1 && (
+                <Pagination.Content>
+                  <Pagination.Item>
+                    <Pagination.Previous isDisabled={safePage === 1} onPress={() => setPage(safePage - 1)}>
+                      <Pagination.PreviousIcon />
+                    </Pagination.Previous>
+                  </Pagination.Item>
+                  {Array.from({ length: pageCount }, (_, i) => i + 1).map((p) => (
+                    <Pagination.Item key={p}>
+                      <Pagination.Link isActive={p === safePage} onPress={() => setPage(p)}>{p}</Pagination.Link>
                     </Pagination.Item>
-                  </Pagination.Content>
-                </Pagination>
+                  ))}
+                  <Pagination.Item>
+                    <Pagination.Next isDisabled={safePage === pageCount} onPress={() => setPage(safePage + 1)}>
+                      <Pagination.NextIcon />
+                    </Pagination.Next>
+                  </Pagination.Item>
+                </Pagination.Content>
               )}
-            </div>
+            </Pagination>
           )}
 
           <ScoreTrend matchdays={matchdays} totals={totals} me={me} />
