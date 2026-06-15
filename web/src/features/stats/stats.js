@@ -33,6 +33,26 @@ export function playerStats(kuerzel, st) {
   };
 }
 
+// Direct comparison of two players: their records + per-match duel (matches both
+// tipped, scored) + the head-to-head win count. Reused by the duel view and the
+// share image. `sum` falls back to playerStats if a leaderboard row is missing.
+export function head2head(a, b, st, board = []) {
+  const find = (k) => board.find((r) => r.p === k);
+  const SA = playerStats(a, st), SB = playerStats(b, st);
+  const duels = MATCHES
+    .map((m) => ({ m, pa: score(st.tips?.[a]?.[m.n], st.results?.[m.n]), pb: score(st.tips?.[b]?.[m.n], st.results?.[m.n]) }))
+    .filter((d) => d.pa !== null && d.pb !== null)
+    .sort((x, y) => kickoffMs(y.m.dt) - kickoffMs(x.m.dt));
+  let aw = 0, bw = 0, tie = 0;
+  for (const d of duels) { if (d.pa > d.pb) aw++; else if (d.pb > d.pa) bw++; else tie++; }
+  return {
+    a, b,
+    aName: find(a)?.name || a, bName: find(b)?.name || b,
+    sumA: find(a)?.sum ?? SA.sum, sumB: find(b)?.sum ?? SB.sum,
+    SA, SB, aw, bw, tie, duels,
+  };
+}
+
 // Best / worst matchday for a player (from the per-day breakdown).
 export function bestWorstDay(kuerzel, matchdays = []) {
   const mine = matchdays
