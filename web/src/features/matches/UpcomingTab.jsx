@@ -24,6 +24,8 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, scor
         locked={(st.locks?.lockedMatches || []).includes(m.n)}
         inactive={!(teamCode(m, "h") && teamCode(m, "a"))}
         live={st.live?.[m.n]}
+        serverNow={st.locks?.serverNow}
+        liveMinuteOn={st.capabilities?.liveMinute === true}
         broadcasts={st.broadcasts?.[m.n] || []}
         onOpen={() => onOpenMatch(m.n)}
         onOpenBroadcasts={() => onOpenBroadcasts(m.n)}

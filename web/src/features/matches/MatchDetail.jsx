@@ -63,7 +63,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
                   <div className="flex flex-col items-center gap-1 leading-none">
                     <LiveTag paused={live.phase === "HT"} className="text-[11px]" />
                     <div className="text-3xl font-extrabold tabular-nums">{lh}:{la}</div>
-                    <LivePhase live={live} className="text-[11px]" />
+                    <LivePhase live={live} serverNow={st.locks?.serverNow} liveMinuteOn={st.capabilities?.liveMinute === true} className="text-[11px]" />
                     {delayLabel(st.capabilities?.delaySeconds ?? 180) && <span className="text-[10px] text-muted">{delayLabel(st.capabilities?.delaySeconds ?? 180)}</span>}
                   </div>
                 ) : (

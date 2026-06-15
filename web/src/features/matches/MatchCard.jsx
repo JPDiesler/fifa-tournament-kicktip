@@ -12,7 +12,7 @@ import { countdown, kickoffMs } from "@/lib/matchtime.js";
 // sm+ only) opens the broadcast drawer. On mobile the services live in the detail.
 // `live` = delayed in-play state ({ h,a,phase,minute,injury }) from st.live[n];
 // shown (score + phase) once a match has kicked off, until the final result lands.
-export default function MatchCard({ match, home, away, result, points, hasTip, locked, onOpen, onOpenBroadcasts, compact, inactive, live, broadcasts }) {
+export default function MatchCard({ match, home, away, result, points, hasTip, locked, onOpen, onOpenBroadcasts, compact, inactive, live, broadcasts, serverNow, liveMinuteOn }) {
   const hasResult = result && result.h !== "" && result.a !== "";
   const cd = !hasResult ? countdown(match.dt) : null;
   // "Wo zu sehen?" only makes sense for upcoming/running matches — hide it once a
@@ -53,7 +53,7 @@ export default function MatchCard({ match, home, away, result, points, hasTip, l
               ) : isLiveMatch ? (
                 <div className="flex flex-col items-end font-extrabold leading-tight">
                   <span>{lh}</span><span>{la}</span>
-                  <LiveBadge live={live} className="text-[10px]" />
+                  <LiveBadge live={live} serverNow={serverNow} liveMinuteOn={liveMinuteOn} className="text-[10px]" />
                 </div>
               ) : cd ? (
                 <span className="text-muted">{cd}</span>
@@ -75,7 +75,7 @@ export default function MatchCard({ match, home, away, result, points, hasTip, l
               ) : isLiveMatch ? (
                 <div className="flex flex-col items-center leading-tight">
                   <span className="text-sm font-extrabold tabular-nums">{lh} : {la}</span>
-                  <LiveBadge live={live} className="text-[10px]" />
+                  <LiveBadge live={live} serverNow={serverNow} liveMinuteOn={liveMinuteOn} className="text-[10px]" />
                 </div>
               ) : cd ? (
                 <span className="text-xs text-muted">{cd}</span>
@@ -101,7 +101,7 @@ export default function MatchCard({ match, home, away, result, points, hasTip, l
                 <div className="flex flex-col items-center gap-1 leading-none">
                   <LiveTag paused={live.phase === "HT"} className="text-[11px]" />
                   <span className="text-4xl font-extrabold tabular-nums">{lh} : {la}</span>
-                  <LivePhase live={live} className="text-[11px]" />
+                  <LivePhase live={live} serverNow={serverNow} liveMinuteOn={liveMinuteOn} className="text-[11px]" />
                 </div>
               ) : cd ? (
                 <span className="text-sm text-muted">{cd}</span>

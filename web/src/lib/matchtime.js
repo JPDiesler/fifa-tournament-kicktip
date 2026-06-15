@@ -35,14 +35,36 @@ export function isLive(dt, hasResult, now = Date.now()) {
   return ms <= now && now - ms <= 4 * 60 * 60 * 1000;
 }
 
+// ---- local match clock (skew-free): anchor to the server snapshot, tick locally ----
+// Nominal half boundary (minutes) for stoppage formatting, from phase + anchor minute.
+export function clockBoundary(live) {
+  if (live?.phase === "ET") return (live.minute ?? 0) <= 105 ? 105 : 120;
+  return (live?.minute ?? 0) <= 45 ? 45 : 90;
+}
+// Play-seconds already elapsed at fetch = the snapshot minute + how stale it is on
+// the server (serverNow − as_of). Uses only server-side deltas → no clock skew.
+export function liveBaseSeconds(live, serverNow) {
+  const stale = (serverNow != null && live?.asOf != null) ? Math.max(0, (serverNow - live.asOf) / 1000) : 0;
+  return (live?.minute ?? 0) * 60 + stale;
+}
+// Format running play-seconds against the boundary → "67'" or "45+2'" (stoppage,
+// capped at +15 so a stalled feed can't run away).
+export function formatClock(totalSec, boundary) {
+  const m = Math.max(0, Math.floor(totalSec / 60));
+  return m <= boundary ? `${m}'` : `${boundary}+${Math.min(m - boundary, 15)}'`;
+}
+// Whether the clock is running for this phase (paused at HT, stopped at PEN).
+export const clockRunning = (live) => live?.phase === "LIVE" || live?.phase === "ET";
+
 // Label for the live match phase coming from st.live[n]
 // ({ phase:'LIVE'|'HT'|'ET'|'PEN', minute, injury }). Scores are DELAYED on the
 // free data tier (which also reports no minute), so plain in-play falls back to
 // "LIVE". `short` gives compact labels for the narrow match cards; the long form
-// is for the detail sheet. Returns null when there is no live state.
-export function livePhase(live, short = false) {
+// is for the detail sheet. `clockOverride` is the locally-ticked clock string
+// (when liveMinute is supported). Returns null when there is no live state.
+export function livePhase(live, short = false, clockOverride = null) {
   if (!live) return null;
-  const clock = live.minute != null ? `${live.minute}'${live.injury ? `+${live.injury}` : ""}` : null;
+  const clock = clockOverride || (live.minute != null ? `${live.minute}'${live.injury ? `+${live.injury}` : ""}` : null);
   switch (live.phase) {
     case "HT": return short ? "HZ" : "Halbzeit";
     case "PEN": return short ? "Elfer" : "Elfmeterschießen";

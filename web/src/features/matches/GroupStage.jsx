@@ -71,6 +71,8 @@ export default function GroupStage({ groupCodes, matches, teams, st, me, teamLab
                     hasTip={!!(myTip && (myTip.h !== "" || myTip.a !== ""))}
                     locked={(st.locks?.lockedMatches || []).includes(m.n)}
                     live={st.live?.[m.n]}
+                    serverNow={st.locks?.serverNow}
+                    liveMinuteOn={st.capabilities?.liveMinute === true}
                     broadcasts={st.broadcasts?.[m.n] || []}
                     onOpen={() => onOpenMatch(m.n)}
                     onOpenBroadcasts={() => onOpenBroadcasts(m.n)}

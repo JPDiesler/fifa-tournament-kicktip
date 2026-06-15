@@ -74,7 +74,8 @@ CREATE TABLE IF NOT EXISTS live (
   a      TEXT NOT NULL DEFAULT '',
   phase  TEXT,             -- 'LIVE' | 'HT' | 'ET' | 'PEN'
   minute INTEGER,
-  injury INTEGER
+  injury INTEGER,
+  as_of  INTEGER           -- server epoch ms when this minute was captured (for the client's local clock)
 );
 -- Web Push (PWA notifications): one row per subscribed device/browser of a user.
 CREATE TABLE IF NOT EXISTS push_subscriptions (
@@ -112,6 +113,10 @@ if (!db.prepare("PRAGMA table_info(resolved)").all().some((c) => c.name === "win
 // Migration for DBs created before per-user notification prefs existed.
 if (!db.prepare("PRAGMA table_info(users)").all().some((c) => c.name === "notif_prefs")) {
   db.exec("ALTER TABLE users ADD COLUMN notif_prefs TEXT"); // JSON { kickoff, goal, … } booleans
+}
+// Migration for DBs created before live.as_of existed.
+if (!db.prepare("PRAGMA table_info(live)").all().some((c) => c.name === "as_of")) {
+  db.exec("ALTER TABLE live ADD COLUMN as_of INTEGER");
 }
 
 // ---------- settings (kv, JSON-encoded) ----------
@@ -313,20 +318,21 @@ export function broadcastsByMatch() {
 // first delayed score arrives). Full replace = matches that finished or stopped
 // being live since the last sync simply disappear.
 export function replaceLive(map) {
+  const asOf = Date.now(); // capture time → the client anchors its local match clock to this
   const del = db.prepare("DELETE FROM live");
-  const ins = db.prepare("INSERT INTO live(match_n,h,a,phase,minute,injury) VALUES(?,?,?,?,?,?)");
+  const ins = db.prepare("INSERT INTO live(match_n,h,a,phase,minute,injury,as_of) VALUES(?,?,?,?,?,?,?)");
   const tx = db.transaction(() => {
     del.run();
     for (const [n, v] of Object.entries(map || {}))
-      ins.run(Number(n), String(v.h ?? ""), String(v.a ?? ""), v.phase ?? null, v.minute ?? null, v.injury ?? null);
+      ins.run(Number(n), String(v.h ?? ""), String(v.a ?? ""), v.phase ?? null, v.minute ?? null, v.injury ?? null, asOf);
   });
   tx();
 }
-// { match_n: { h, a, phase, minute, injury } } for matches currently in play.
+// { match_n: { h, a, phase, minute, injury, asOf } } for matches currently in play.
 export function liveByMatch() {
   const out = {};
-  for (const r of db.prepare("SELECT match_n,h,a,phase,minute,injury FROM live").all())
-    out[r.match_n] = { h: r.h, a: r.a, phase: r.phase, minute: r.minute, injury: r.injury };
+  for (const r of db.prepare("SELECT match_n,h,a,phase,minute,injury,as_of FROM live").all())
+    out[r.match_n] = { h: r.h, a: r.a, phase: r.phase, minute: r.minute, injury: r.injury, asOf: r.as_of };
   return out;
 }
 // ---------- per-match scorers/cards (display only) ----------
