@@ -30,6 +30,20 @@
   --app-accent-foreground: var(--success-foreground);
 }
 
+/* Light theme: HeroUI's default light tokens, but with the same monochrome chrome
+ * (near-black accent) + green highlight as dark, so the identity carries across.
+ * :root provides the app-accent fallback for both themes; the runtime ACCENT_COLOR
+ * override sets --app-accent inline on <html> and still wins over all of this. */
+:root {
+  --app-accent: var(--success);
+  --app-accent-foreground: var(--success-foreground);
+}
+[data-theme="light"] {
+  --accent: oklch(0.22 0 0);              /* near-black monochrome chrome */
+  --accent-foreground: oklch(0.985 0 0);
+  --focus: oklch(0.45 0 0);
+}
+
 /* Expose the highlight as Tailwind utilities (text/bg/border-app-accent). The
  * `inline` mapping keeps the var reference so a runtime override propagates. */
 @theme inline {
