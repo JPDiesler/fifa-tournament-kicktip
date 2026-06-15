@@ -88,11 +88,19 @@ export default function App() {
       setAuthChecked(true);
     })();
   }, []);
-  // Background refresh while logged in.
+  // Background refresh while logged in (fallback / live-minute ticking).
   useEffect(() => {
     if (!user) return;
     const t = setInterval(() => load(true), 30000);
     return () => clearInterval(t);
+  }, [user, me]);
+  // Near-real-time: a Web Push (goal/kickoff/final) makes the service worker tell
+  // open windows to refresh immediately — no waiting for the 30s poll.
+  useEffect(() => {
+    if (!user || !("serviceWorker" in navigator)) return;
+    const onMsg = (e) => { if (e.data?.type === "wm-refresh") load(true); };
+    navigator.serviceWorker.addEventListener("message", onMsg);
+    return () => navigator.serviceWorker.removeEventListener("message", onMsg);
   }, [user, me]);
 
   const flash = (m) => { setToast(m); setTimeout(() => setToast(""), 1600); };
