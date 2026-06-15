@@ -51,7 +51,7 @@ export default function LoginScreen({ onLoggedIn, initialError }) {
       <Card variant="default" className="w-full max-w-sm">
         <Card.Content className="p-6">
           <div className="mb-5 flex flex-col items-center gap-3 text-center">
-            <Logo size="h-12" />
+            <Logo h={52} />
             <h1 className="text-lg font-bold">WM 2026 · Tippspiel</h1>
             <p className="text-xs text-muted">Bitte anmelden, um zu tippen.</p>
           </div>
