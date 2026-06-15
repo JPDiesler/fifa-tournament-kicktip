@@ -41,6 +41,18 @@ body {
   min-height: 100dvh;
 }
 
+/*
+ * iOS standalone (PWA launched from the home screen / "Zum Dock hinzufügen"):
+ * the web view runs edge-to-edge UNDER the status bar / Dynamic Island and the
+ * home indicator (viewport-fit=cover + black-translucent status bar). Without
+ * this, the sticky navbar slides under the Dynamic Island. These insets resolve
+ * to 0 in a normal browser tab, so the rules are a no-op there. Unlayered (like
+ * the theme block above) so they win over Tailwind's layered utilities.
+ */
+.pt-safe       { padding-top: env(safe-area-inset-top); }              /* push chrome below the island */
+.top-safe-nav  { top: calc(3.5rem + env(safe-area-inset-top)); }       /* sticky element below the h-14 navbar */
+.bottom-safe-4 { bottom: calc(1rem + env(safe-area-inset-bottom)); }   /* fixed UI above the home indicator */
+
 /* "Alla Google" indeterminate beam under the live phase label: an accent segment
  * that sweeps left→right across the width of the phase text. Used by LivePhase. */
 @keyframes live-beam {

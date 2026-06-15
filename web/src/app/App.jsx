@@ -194,7 +194,7 @@ export default function App() {
         </div>
 
         <Tabs selectedKey={tab} onSelectionChange={(k) => setTab(String(k))} className="mt-3">
-          <Tabs.ListContainer className="sticky top-14 z-20 -mx-3 bg-background/90 px-3 py-2 backdrop-blur">
+          <Tabs.ListContainer className="top-safe-nav sticky z-20 -mx-3 bg-background/90 px-3 py-2 backdrop-blur">
             <Tabs.List aria-label="Ansicht" className="w-full">
               {TABS.map(([id, label, Icon]) => (
                 <Tabs.Tab key={id} id={id} className="flex flex-1 items-center justify-center gap-1.5">
@@ -295,7 +295,7 @@ export default function App() {
       />
 
       {toast && (
-        <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground shadow-lg">
+        <div className="bottom-safe-4 fixed left-1/2 z-50 -translate-x-1/2 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground shadow-lg">
           {toast}
         </div>
       )}

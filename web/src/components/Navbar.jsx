@@ -7,7 +7,7 @@ import NotificationsButton from "@/features/notifications/NotificationsButton.js
 // button (opens the admin modal), logout.
 export default function Navbar({ user, onLogout, isAdmin, onOpenAdmin, onOpenHelp, onFlash }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur">
+    <header className="pt-safe sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-3xl items-center gap-3 px-3">
         <Logo size="h-8" />
         <div className="flex-1" />
