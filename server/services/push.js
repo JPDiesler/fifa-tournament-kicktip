@@ -7,10 +7,10 @@ import webpush from "web-push";
 import { MATCHES, TEAMS } from "../data.js";
 import { score } from "./scoring.js";
 import { kickoff, champLockTs, isChampLocked, isTipLocked } from "./locks.js";
+import { APP_URL } from "../config.js";
 import {
   getSetting, setSetting, markSentOnce, pushRecipients, subscriptionsForUser,
-  removePushSubscription, hasPushSubscription, getNotifPrefs, broadcastsByMatch,
-  legacyState, leaderboard,
+  removePushSubscription, broadcastsByMatch, legacyState, leaderboard,
 } from "../db.js";
 
 // The six opt-in event types — keys must match the frontend toggles.
@@ -32,30 +32,48 @@ function ensureVapid() {
     setSetting("vapidPublicKey", pub); setSetting("vapidPrivateKey", priv);
     console.log("Web-Push: VAPID-Schlüssel generiert.");
   }
-  webpush.setVapidDetails(process.env.VAPID_SUBJECT || "mailto:tippspiel@localhost", pub, priv);
+  webpush.setVapidDetails(vapidSubject(), pub, priv);
   _ready = true;
   return pub;
+}
+// VAPID "subject" (JWT contact claim). A real https URL is the most widely
+// accepted; some services (notably Apple) reject a mailto with "localhost".
+// Prefer the configured APP_URL, else a plausible mailto (override via env).
+function vapidSubject() {
+  if (process.env.VAPID_SUBJECT) return process.env.VAPID_SUBJECT;
+  if (APP_URL.startsWith("https://")) return APP_URL;
+  return "mailto:admin@wm-tippspiel.app";
 }
 export const pushPublicKey = () => ensureVapid();
 
 // Low level: deliver one payload to every device of a user; prune dead endpoints.
+// Returns { subs, sent, failed, lastError } so callers can report real outcomes.
 async function sendToUser(userId, payload) {
   ensureVapid();
   const body = JSON.stringify(payload);
-  await Promise.all(subscriptionsForUser(userId).map(async (s) => {
+  const subs = subscriptionsForUser(userId);
+  let sent = 0, failed = 0, lastError = null;
+  await Promise.all(subs.map(async (s) => {
     try {
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body);
+      sent++;
     } catch (e) {
+      failed++;
+      // The push service's response body usually explains a rejection — keep it.
+      lastError = e.body ? `HTTP ${e.statusCode}: ${String(e.body).trim().slice(0, 200)}` : (e.statusCode ? `HTTP ${e.statusCode}` : e.message);
       if (e.statusCode === 404 || e.statusCode === 410) removePushSubscription(s.endpoint); // gone — clean up
-      else console.error("push send", e.statusCode || e.message);
+      else console.error("push send", lastError);
     }
   }));
+  return { subs: subs.length, sent, failed, lastError };
 }
 
 // Send a test push to the caller's own devices (the bell panel's "Test senden").
+// Returns the delivery detail so the UI/log can show why a test didn't arrive.
 export async function sendTest(userId) {
-  await sendToUser(userId, { title: "🔔 Test", body: "Benachrichtigungen funktionieren!", tag: "test" });
-  return hasPushSubscription(userId);
+  const r = await sendToUser(userId, { title: "🔔 WM 2026 · Tippspiel", body: "Test-Benachrichtigung – alles eingerichtet! ⚽", tag: "test", renotify: true, vibrate: [80, 40, 80], actions: OPEN });
+  console.log(`push test user=${userId}: ${r.sent}/${r.subs} gesendet${r.failed ? `, ${r.failed} fehlgeschlagen (${r.lastError})` : ""}`);
+  return r;
 }
 
 // Fan one event out to every eligible recipient. `build(rcpt)` returns that user's
@@ -80,6 +98,9 @@ const sideName = (side, m, resolved) => {
   return (r && (side === "h" ? r.homeName : r.awayName)) || (side === "h" ? m.h : m.a);
 };
 const ptLabel = (pt) => (pt == null ? "kein Tipp" : pt === 1 ? "+1 Punkt" : `+${pt} Punkte`);
+// Tap targets (Android/desktop; iOS ignores actions and just opens the app).
+const OPEN = [{ action: "open", title: "Öffnen" }];
+const TIP = [{ action: "open", title: "Jetzt tippen" }];
 
 // ===== live/result events (called from the sync loop) =====
 // Kickoff — broadcast, enriched with the German broadcaster(s) if known.
@@ -92,7 +113,7 @@ export async function notifyKickoff(n) {
   await dispatch("kickoff", () => ({
     title: `⚽ Anpfiff: ${home} – ${away}`,
     body: where ? `Jetzt live · ${where}` : "Jetzt live",
-    tag: `match-${n}`, url: "/",
+    tag: `match-${n}`, url: "/", vibrate: [80, 40, 80], actions: OPEN,
   }));
 }
 // Goal — broadcast; the increased side tells us who scored (score is ~3 min delayed).
@@ -104,7 +125,7 @@ export async function notifyGoal(n, h, a, side) {
   await dispatch("goal", () => ({
     title: `⚽ Tor für ${side === "h" ? home : away}!`,
     body: `${home} ${h}:${a} ${away}`,
-    tag: `match-${n}`, renotify: true, url: "/",
+    tag: `match-${n}`, renotify: true, url: "/", vibrate: [120, 60, 120, 60, 200], actions: OPEN,
   }));
 }
 // Final whistle — personalised: each player gets the result plus their own points.
@@ -115,9 +136,10 @@ export async function notifyFinal(n, h, a) {
   const home = sideName("h", m, st.resolved), away = sideName("a", m, st.resolved);
   const res = { h: String(h), a: String(a) };
   await dispatch("fulltime", (r) => {
-    if (!r.kuerzel) return { title: `🏁 Endstand: ${home} ${h}:${a} ${away}`, tag: `match-${n}`, url: "/" };
+    const base = { tag: `match-${n}`, url: "/", requireInteraction: true, vibrate: [200, 100, 200], actions: OPEN };
+    if (!r.kuerzel) return { title: `🏁 Endstand: ${home} ${h}:${a} ${away}`, ...base };
     const pt = score((st.tips[r.kuerzel] || {})[n], res);
-    return { title: `🏁 ${home} ${h}:${a} ${away}`, body: `Dein Tipp: ${ptLabel(pt)}`, tag: `match-${n}`, url: "/" };
+    return { title: `🏁 ${home} ${h}:${a} ${away}`, body: `Dein Tipp: ${ptLabel(pt)}`, ...base };
   });
 }
 
@@ -140,7 +162,7 @@ export async function runTipReminders(now = Date.now()) {
       if (t && (t.h !== "" || t.a !== "")) continue;            // already tipped
       if (!markSentOnce(`tipReminder:${m.n}:${r.userId}`)) continue;
       const home = sideName("h", m, st.resolved), away = sideName("a", m, st.resolved);
-      await sendToUser(r.userId, { title: "⏰ Tipp nicht vergessen!", body: `${home} – ${away} startet bald – du hast noch keinen Tipp.`, tag: `tip-${m.n}`, url: "/" });
+      await sendToUser(r.userId, { title: "⏰ Tipp nicht vergessen!", body: `${home} – ${away} startet bald – du hast noch keinen Tipp.`, tag: `tip-${m.n}`, url: "/", requireInteraction: true, vibrate: [80, 40, 80], actions: TIP });
     }
   }
 }
@@ -152,7 +174,7 @@ export async function runChampReminder(now = Date.now()) {
   for (const r of pushRecipients()) {
     if (r.prefs.champReminder === false || !r.kuerzel || st.champs[r.kuerzel]) continue;
     if (!markSentOnce(`champReminder:${r.userId}`)) continue;
-    await sendToUser(r.userId, { title: "🏆 Weltmeister-Tipp", body: "Letzte Chance, deinen Weltmeister zu tippen — bald gesperrt!", tag: "champ", url: "/" });
+    await sendToUser(r.userId, { title: "🏆 Weltmeister-Tipp", body: "Letzte Chance, deinen Weltmeister zu tippen — bald gesperrt!", tag: "champ", url: "/", requireInteraction: true, actions: TIP });
   }
 }
 // Evening wrap-up: once a day's matches are all decided, push each player their
@@ -173,7 +195,7 @@ export async function runDailySummary(now = Date.now()) {
       let pts = 0;
       for (const m of ms) { const p = score((st.tips[r.kuerzel] || {})[m.n], st.results[m.n]); if (p != null) pts += p; }
       const rank = rankOf[r.kuerzel];
-      await sendToUser(r.userId, { title: "📊 Spieltag ausgewertet", body: `Heute ${pts === 1 ? "1 Punkt" : `${pts} Punkte`}${rank ? ` · Platz ${rank}` : ""}.`, tag: `day-${day}`, url: "/" });
+      await sendToUser(r.userId, { title: "📊 Spieltag ausgewertet", body: `Heute ${pts === 1 ? "1 Punkt" : `${pts} Punkte`}${rank ? ` · Platz ${rank}` : ""}.`, tag: `day-${day}`, url: "/", actions: OPEN });
     }
   }
 }

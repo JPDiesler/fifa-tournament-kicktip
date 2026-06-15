@@ -32,8 +32,12 @@ router.post("/push/unsubscribe", requireAuth, (req, res) => {
 });
 
 router.post("/push/test", requireAuth, async (req, res) => {
-  try { res.json({ ok: await sendTest(req.user.id) }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  try {
+    const r = await sendTest(req.user.id);
+    if (r.subs === 0) return res.status(400).json({ error: "Kein Gerät registriert – bitte zuerst aktivieren." });
+    if (r.sent === 0) return res.status(502).json({ error: r.lastError || "Push-Dienst hat die Nachricht abgelehnt." });
+    res.json({ ok: true, sent: r.sent });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 export default router;

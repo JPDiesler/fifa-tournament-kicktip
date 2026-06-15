@@ -44,7 +44,9 @@ export default function NotificationsButton({ onFlash }) {
     setPrefsState(next);
     try { await setPrefs(next); } catch (e) { onFlash?.(e.message); }
   };
-  const test = () => sendTest().then(() => onFlash?.("Test gesendet")).catch((e) => onFlash?.(e.message));
+  const test = () => sendTest()
+    .then((r) => onFlash?.(`Test gesendet (${r.sent} Gerät${r.sent === 1 ? "" : "e"})`))
+    .catch((e) => onFlash?.(e.message));
 
   const denied = supported && permission() === "denied";
 

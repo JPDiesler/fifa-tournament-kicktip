@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
+  <!-- Monochrome status-bar badge (Android tints by alpha): a clean football.
+       Reads as a ball in full colour and as a tidy disc when tinted. -->
+  <circle cx="48" cy="48" r="44" fill="#ffffff" stroke="#0d0d0d" stroke-width="3"/>
+  <g fill="none" stroke="#0d0d0d" stroke-width="3" stroke-linejoin="round">
+    <line x1="48" y1="38" x2="48" y2="6"/>
+    <line x1="57.5" y1="44.9" x2="88" y2="35"/>
+    <line x1="53.9" y1="56.1" x2="73" y2="82"/>
+    <line x1="42.1" y1="56.1" x2="23" y2="82"/>
+    <line x1="38.5" y1="44.9" x2="8" y2="35"/>
+  </g>
+  <polygon points="48,38 57.5,44.9 53.9,56.1 42.1,56.1 38.5,44.9" fill="#0d0d0d"/>
+</svg>

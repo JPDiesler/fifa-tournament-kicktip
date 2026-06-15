@@ -36,16 +36,25 @@ self.addEventListener("fetch", (e) => {
 });
 
 // ---- Web Push: show the notification the server sent (JSON payload) ----
+// Sensible brand defaults (app emblem as icon, clean monochrome ball as the
+// Android status-bar badge); the payload may add an image, action buttons,
+// vibration or requireInteraction. Unsupported fields are ignored per platform.
 self.addEventListener("push", (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data && e.data.text() }; }
-  const title = d.title || "WM-Tippspiel";
+  const title = d.title || "WM 2026 · Tippspiel";
   e.waitUntil(self.registration.showNotification(title, {
     body: d.body || "",
-    icon: "/icon.jpg",
-    badge: "/icon.jpg",
-    tag: d.tag,                 // same tag collapses/replaces an earlier one (e.g. per match)
-    renotify: !!d.renotify,     // re-alert even when replacing a same-tag notification
+    icon: d.icon || "/icon.jpg",
+    badge: d.badge || "/badge.svg",
+    image: d.image || undefined,        // large hero (Android/desktop)
+    tag: d.tag,                         // same tag collapses/replaces an earlier one (e.g. per match)
+    renotify: !!d.renotify,             // re-alert even when replacing a same-tag notification
+    requireInteraction: !!d.requireInteraction, // stay until dismissed (important events)
+    silent: !!d.silent,
+    vibrate: d.vibrate || undefined,
+    actions: Array.isArray(d.actions) ? d.actions : [],
+    lang: "de",
     data: { url: d.url || "/" },
   }));
 });
