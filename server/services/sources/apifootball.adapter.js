@@ -20,6 +20,7 @@ export function mapApiFootballFixture(f) {
     dateMs: Date.parse(f.fixture?.date),
     finished: ["FT", "AET", "PEN"].includes(short),
     live, phase,
+    duration: short === "PEN" ? "PENALTY" : short === "AET" ? "EXTRA_TIME" : short === "FT" ? "REGULAR" : null,
     minute: f.fixture?.status?.elapsed ?? null,
     injuryTime: null, // not provided
     homeName: f.teams?.home?.name || null,
@@ -28,6 +29,15 @@ export function mapApiFootballFixture(f) {
     awayGoals: f.goals?.away,
     winner: f.teams?.home?.winner ? "home" : f.teams?.away?.winner ? "away" : null,
   };
+}
+
+// Map a provider team name to the static "h"/"a" side (applying matchForFixture's
+// swap). ctx = { homeName, awayName, swap } from the matched fixture. null if unknown.
+function sideOf(team, ctx) {
+  if (!ctx || !team) return null;
+  const raw = team === ctx.homeName ? "h" : team === ctx.awayName ? "a" : null;
+  if (!raw) return null;
+  return ctx.swap ? (raw === "h" ? "a" : "h") : raw;
 }
 
 async function fetchFixtures() {
@@ -40,13 +50,26 @@ async function fetchFixtures() {
   return (j.response || []).map(mapApiFootballFixture);
 }
 
-// Per-fixture events → scorers + cards.
-async function fetchDetail(extId) {
+// Per-fixture events → scorers + cards, each tagged with the team SIDE ("h"/"a", via
+// ctx) and goals with a type ("penalty"/"own"/null). A "Missed Penalty" is a Goal
+// event that didn't score → dropped. api-football lists an own goal under the
+// OFFENDING player's team, so we flip its side to the team whose score it increased.
+async function fetchDetail(extId, ctx) {
   const r = await fetch(`${BASE}/fixtures/events?fixture=${extId}`, H());
   const j = await r.json();
   const ev = Array.isArray(j.response) ? j.response : [];
-  const scorers = ev.filter((e) => e.type === "Goal").map((e) => ({ team: e.team?.name || null, player: e.player?.name || null, minute: e.time?.elapsed ?? null }));
-  const cards = ev.filter((e) => e.type === "Card").map((e) => ({ team: e.team?.name || null, player: e.player?.name || null, minute: e.time?.elapsed ?? null, card: e.detail || null }));
+  const goalType = (d) => (d === "Penalty" ? "penalty" : d === "Own Goal" ? "own" : null);
+  const scorers = ev
+    .filter((e) => e.type === "Goal" && e.detail !== "Missed Penalty")
+    .map((e) => {
+      const type = goalType(e.detail);
+      let side = sideOf(e.team?.name, ctx);
+      if (type === "own" && side) side = side === "h" ? "a" : "h";
+      return { team: e.team?.name || null, player: e.player?.name || null, minute: e.time?.elapsed ?? null, injury: e.time?.extra ?? null, type, side };
+    });
+  const cards = ev
+    .filter((e) => e.type === "Card")
+    .map((e) => ({ team: e.team?.name || null, player: e.player?.name || null, minute: e.time?.elapsed ?? null, injury: e.time?.extra ?? null, card: e.detail || null, side: sideOf(e.team?.name, ctx) }));
   return { scorers, cards };
 }
 

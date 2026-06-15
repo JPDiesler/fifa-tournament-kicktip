@@ -107,11 +107,12 @@ export function mergeFixtures(byProvider, fetched, routing) {
     const idFx = resFx || lsFx || phFx || mnFx || anyFx(n);
     if (!idFx) continue;
     const idO = oriented(idFx);
-    const rec = { n, ko: idFx.ko, finished: false, live: false, homeGoals: null, awayGoals: null, phase: null, minute: null, injuryTime: null, winner: null, homeName: idO.homeName, awayName: idO.awayName, extIds: {} };
+    const rec = { n, ko: idFx.ko, finished: false, live: false, homeGoals: null, awayGoals: null, phase: null, minute: null, injuryTime: null, duration: null, winner: null, homeName: idO.homeName, awayName: idO.awayName, extIds: {} };
     for (const id of fetched) if (byProvider[id]?.[n]) rec.extIds[id] = byProvider[id][n].extId;
     if (resFx) {
       const o = oriented(resFx);
       rec.finished = true; rec.homeGoals = o.homeGoals; rec.awayGoals = o.awayGoals; rec.winner = o.winner; rec.homeName = o.homeName; rec.awayName = o.awayName;
+      rec.duration = resFx.duration || "REGULAR"; // play length (REGULAR | EXTRA_TIME | PENALTY) for the final clock
     } else if (lsFx) {
       const o = oriented(lsFx);
       rec.live = true;
@@ -133,11 +134,11 @@ export function mergeFixtures(byProvider, fetched, routing) {
 // whose caps declare scorers/cards true are used → no extra calls on the free
 // default (football-data, caps null). Returns { details:{n:{scorers,cards}}, capped }.
 const DETAIL_MAX = Number(process.env.DETAIL_MAX_PER_SYNC || 8);
-export async function fetchDetails(fixtures, byProvider, routing, matchNs) {
+export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max = DETAIL_MAX } = {}) {
   const capsOf = (id) => getProviderCaps(id) || getAdapter(id)?.declaredCaps() || {};
   const sProv = (routing.scorers || []).find((id) => capsOf(id).scorers === true);
   const cProv = (routing.cards || []).find((id) => capsOf(id).cards === true);
-  if (!sProv && !cProv) return { details: {}, capped: false };
+  if (!sProv && !cProv) return { details: {}, capped: false, capable: false };
 
   const targets = fixtures.filter((f) => (f.live || f.finished) && (!matchNs || matchNs.has(f.n)));
   const cache = new Map(); // `${id}:${n}` → {scorers,cards}|null
@@ -146,15 +147,16 @@ export async function fetchDetails(fixtures, byProvider, routing, matchNs) {
 
   const get = async (provId, n) => {
     if (!provId) return null;
-    const extId = byProvider[provId]?.[n]?.extId;
-    if (extId == null) return null;
+    const fx = byProvider[provId]?.[n];
+    if (fx?.extId == null) return null;
     const k = `${provId}:${n}`;
     if (cache.has(k)) return cache.get(k);
     const ad = getAdapter(provId);
     if (!ad?.fetchDetail) return null;
-    if (calls >= DETAIL_MAX) { capped = true; return null; }
-    if (!rateOk(provId, ad.rateLimit()) || !dailyOk(provId, ad.dailyLimit())) return null;
-    try { noteCall(provId); calls++; const d = await ad.fetchDetail(extId); cache.set(k, d); return d; }
+    if (calls >= max) { capped = true; return null; }
+    if (!rateOk(provId, ad.rateLimit()) || !dailyOk(provId, ad.dailyLimit())) { capped = true; return null; }
+    const ctx = { homeName: fx.homeName, awayName: fx.awayName, swap: fx.swap }; // for h/a side tagging
+    try { noteCall(provId); calls++; const d = await ad.fetchDetail(fx.extId, ctx); cache.set(k, d); return d; }
     catch { cache.set(k, null); return null; }
   };
 
@@ -164,7 +166,7 @@ export async function fetchDetails(fixtures, byProvider, routing, matchNs) {
     const scorers = sd?.scorers || [], cards = cd?.cards || [];
     if (scorers.length || cards.length) details[f.n] = { scorers, cards };
   }
-  return { details, capped };
+  return { details, capped, capable: true };
 }
 
 const RESERVE = Math.min(0.5, Math.max(0, Number(process.env.POLL_BUDGET_RESERVE || 0.15)));

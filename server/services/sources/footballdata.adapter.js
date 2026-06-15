@@ -24,6 +24,7 @@ export function mapFootballDataMatch(m) {
     dateMs: Date.parse(m.utcDate),
     finished: m.status === "FINISHED",
     live, phase,
+    duration: dur === "PENALTY_SHOOTOUT" ? "PENALTY" : dur === "EXTRA_TIME" ? "EXTRA_TIME" : dur ? "REGULAR" : null,
     minute: m.minute != null ? Number(m.minute) : null,
     injuryTime: m.injuryTime != null ? Number(m.injuryTime) : null,
     homeName: m.homeTeam?.name || m.homeTeam?.shortName || null,
@@ -32,6 +33,15 @@ export function mapFootballDataMatch(m) {
     awayGoals: m.score?.fullTime?.away,
     winner: m.score?.winner === "HOME_TEAM" ? "home" : m.score?.winner === "AWAY_TEAM" ? "away" : m.score?.winner === "DRAW" ? "draw" : null,
   };
+}
+
+// Map a provider team name to the static "h"/"a" side (applying matchForFixture's
+// swap). ctx = { homeName, awayName, swap } from the matched fixture. null if unknown.
+function sideOf(team, ctx) {
+  if (!ctx || !team) return null;
+  const raw = team === ctx.homeName ? "h" : team === ctx.awayName ? "a" : null;
+  if (!raw) return null;
+  return ctx.swap ? (raw === "h" ? "a" : "h") : raw;
 }
 
 async function fetchFixtures() {
@@ -44,10 +54,21 @@ async function fetchFixtures() {
 }
 
 // Per-match detail → scorers + cards (free tier may omit these → empty arrays).
-async function fetchDetail(extId) {
+// Each event carries its team SIDE ("h"/"a", via ctx) so the UI can place it on the
+// home/away side; goals carry a type ("penalty"/"own"/null). football-data attributes
+// an own goal to the benefiting team, so its side already matches the score.
+async function fetchDetail(extId, ctx) {
   const d = await (await fetch(`${BASE}/matches/${extId}`, H())).json();
-  const scorers = Array.isArray(d.goals) ? d.goals.map((g) => ({ team: g.team?.name || null, player: g.scorer?.name || null, minute: g.minute ?? null })) : [];
-  const cards = Array.isArray(d.bookings) ? d.bookings.map((b) => ({ team: b.team?.name || null, player: b.player?.name || null, minute: b.minute ?? null, card: b.card || null })) : [];
+  const goalType = (t) => (t === "PENALTY" ? "penalty" : t === "OWN" ? "own" : null);
+  const scorers = Array.isArray(d.goals) ? d.goals.map((g) => ({
+    team: g.team?.name || null, player: g.scorer?.name || null,
+    minute: g.minute ?? null, injury: g.injuryTime ?? null,
+    type: goalType(g.type), side: sideOf(g.team?.name, ctx),
+  })) : [];
+  const cards = Array.isArray(d.bookings) ? d.bookings.map((b) => ({
+    team: b.team?.name || null, player: b.player?.name || null,
+    minute: b.minute ?? null, card: b.card || null, side: sideOf(b.team?.name, ctx),
+  })) : [];
   return { scorers, cards };
 }
 
