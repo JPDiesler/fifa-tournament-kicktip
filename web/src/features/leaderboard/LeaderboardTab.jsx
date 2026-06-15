@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Table } from "@heroui/react";
+import { Table, Pagination } from "@heroui/react";
 import { Check, X } from "lucide-react";
 import { known } from "@/lib/scoring.js";
 import Flag from "@/components/Flag.jsx";
@@ -7,11 +7,21 @@ import ScoreTrend from "./ScoreTrend.jsx";
 import MyStatsTab from "@/features/stats/MyStatsTab.jsx";
 import PointsHistory from "@/features/stats/PointsHistory.jsx";
 
+const PAGE_SIZES = [10, 25, 50, Infinity]; // Infinity = "Alle"
+
 // "Punktstand" tab. Two sub-views:
-//   • Gesamt     — standings table of all players + the cumulative trend chart.
+//   • Gesamt     — standings table of all players (paginated) + the trend chart.
 //   • Persönlich — the current player's Bilanz + an expandable points history.
 export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, championActual, teamLabel }) {
   const [mode, setMode] = useState("gesamt");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const pageCount = Math.max(1, Math.ceil(totals.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const start = (safePage - 1) * pageSize;
+  const rows = pageSize === Infinity ? totals : totals.slice(start, start + pageSize);
+  const paged = totals.length > 10; // only bother with controls beyond the default page
 
   return (
     <div>
@@ -37,9 +47,9 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
                   <Table.Column>WM-Tipp</Table.Column>
                 </Table.Header>
                 <Table.Body>
-                  {totals.map((t, i) => (
+                  {rows.map((t, i) => (
                     <Table.Row key={t.p} id={t.p} className={t.p === me ? "bg-accent/10" : ""}>
-                      <Table.Cell className="font-bold text-muted">{i + 1}</Table.Cell>
+                      <Table.Cell className="font-bold text-muted">{start + i + 1}</Table.Cell>
                       <Table.Cell>
                         <div className="font-semibold">{t.name || t.p}</div>
                         {t.name && t.name !== t.p && <div className="text-xs text-muted">{t.p}</div>}
@@ -50,7 +60,9 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
                         {t.champ ? (
                           <span className="inline-flex items-center gap-1.5">
                             {known(t.champ) && <Flag code={t.champ} sm />}
-                            {teams[t.champ] ? teams[t.champ].name : t.champ}
+                            {/* mobile: flag + code only; from sm up the full team name */}
+                            <span className="sm:hidden">{t.champ}</span>
+                            <span className="hidden sm:inline">{teams[t.champ] ? teams[t.champ].name : t.champ}</span>
                             {championActual && (t.champHit ? <Check size={14} className="text-success" /> : <X size={14} className="text-muted" />)}
                           </span>
                         ) : (
@@ -63,6 +75,44 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
               </Table.Content>
             </Table.ScrollContainer>
           </Table>
+
+          {paged && (
+            <div className="flex items-center justify-between gap-2">
+              <div className="inline-flex shrink-0 items-center gap-1 text-[11px] text-muted">
+                <span className="mr-1 hidden sm:inline">Pro Seite:</span>
+                <div className="inline-flex rounded-lg border border-border bg-surface p-0.5">
+                  {PAGE_SIZES.map((s) => (
+                    <button key={s} onClick={() => { setPageSize(s); setPage(1); }}
+                      className={`rounded-md px-2 py-0.5 transition ${pageSize === s ? "bg-accent font-semibold text-accent-foreground" : "text-muted"}`}>
+                      {s === Infinity ? "Alle" : s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {pageCount > 1 && (
+                <Pagination>
+                  <Pagination.Content>
+                    <Pagination.Item>
+                      <Pagination.Previous isDisabled={safePage === 1} onPress={() => setPage(safePage - 1)}>
+                        <Pagination.PreviousIcon />
+                      </Pagination.Previous>
+                    </Pagination.Item>
+                    {Array.from({ length: pageCount }, (_, i) => i + 1).map((p) => (
+                      <Pagination.Item key={p}>
+                        <Pagination.Link isActive={p === safePage} onPress={() => setPage(p)}>{p}</Pagination.Link>
+                      </Pagination.Item>
+                    ))}
+                    <Pagination.Item>
+                      <Pagination.Next isDisabled={safePage === pageCount} onPress={() => setPage(safePage + 1)}>
+                        <Pagination.NextIcon />
+                      </Pagination.Next>
+                    </Pagination.Item>
+                  </Pagination.Content>
+                </Pagination>
+              )}
+            </div>
+          )}
+
           <ScoreTrend matchdays={matchdays} totals={totals} me={me} />
         </div>
       ) : (

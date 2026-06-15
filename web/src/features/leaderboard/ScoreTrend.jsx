@@ -1,4 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { Popover, Button } from "@heroui/react";
+import { ChevronDown, Search } from "lucide-react";
 
 // Distinct line colours for the players (the current user always uses the app
 // accent and is drawn on top). Cycles if there are more players than colours.
@@ -35,6 +37,8 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
   const [mode, setMode] = useState("punkte");
   const [highlight, setHighlight] = useState(null); // player key, or null
   const [active, setActive] = useState(null);       // hovered matchday index, or null
+  const [pickOpen, setPickOpen] = useState(false);  // player-picker popover
+  const [query, setQuery] = useState("");           // player-picker search
   useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -73,6 +77,16 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
   shown = [...shown].sort((a, b) => cum[b.p] - cum[a.p]); // legend high→low
   const idxOf = Object.fromEntries(shown.map((pl, i) => [pl.p, i]));
   const colorOf = (pl) => (pl.p === me ? "var(--app-accent)" : PALETTE[idxOf[pl.p] % PALETTE.length]);
+  // Readable text colour for a coloured Kürzel pill (luminance → black/white;
+  // the accent uses its paired foreground token).
+  const textOn = (c) => {
+    if (!c?.startsWith?.("#")) return "var(--app-accent-foreground)";
+    const r = parseInt(c.slice(1, 3), 16), g = parseInt(c.slice(3, 5), 16), b = parseInt(c.slice(5, 7), 16);
+    return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#0a0a0a" : "#fff";
+  };
+  const pill = (code, c, sz = "text-[11px]") => (
+    <span className={`rounded-full px-1.5 py-0.5 font-bold leading-none ${sz}`} style={{ background: c, color: textOn(c) }}>{code}</span>
+  );
   const focus = (highlight && idxOf[highlight] != null) ? highlight : me; // bars subject
   const focusName = players.find((pl) => pl.p === focus)?.name || focus;
 
@@ -122,15 +136,53 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
 
   return (
     <div className="rounded-xl border border-border bg-surface p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs font-bold uppercase tracking-wider text-muted">{title}</div>
-        <div className="inline-flex rounded-lg border border-border bg-overlay p-0.5 text-[11px]">
-          {MODES.map(([k, l]) => (
-            <button key={k} onClick={() => { setMode(k); setActive(null); }}
-              className={`rounded-md px-2 py-0.5 transition ${mode === k ? "bg-accent font-semibold text-accent-foreground" : "text-muted"}`}>
-              {l}
-            </button>
-          ))}
+        <div className="flex items-center gap-1.5">
+          {/* searchable picker — only when the legend would get crowded */}
+          {shown.length > 6 && (
+            <Popover isOpen={pickOpen} onOpenChange={setPickOpen}>
+              <Button size="sm" variant="secondary" className="h-7 gap-1 px-2 text-[11px]">
+                {highlight ? pill(highlight, colorOf({ p: highlight }), "text-[10px]") : "Hervorheben"}
+                <ChevronDown size={13} />
+              </Button>
+              <Popover.Content className="w-56">
+                <Popover.Dialog className="p-1.5">
+                  <div className="mb-1 flex items-center gap-1.5 rounded-md border border-border bg-overlay px-2">
+                    <Search size={13} className="shrink-0 text-muted" />
+                    <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Spieler suchen …"
+                      className="w-full bg-transparent py-1.5 text-sm outline-none" />
+                  </div>
+                  <ul className="max-h-56 overflow-y-auto">
+                    <li>
+                      <button onClick={() => { setHighlight(null); setPickOpen(false); setQuery(""); }}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-overlay">
+                        <span className="size-2.5 rounded-full bg-muted/40" /> Alle anzeigen
+                      </button>
+                    </li>
+                    {shown.filter((pl) => `${pl.name} ${pl.p}`.toLowerCase().includes(query.toLowerCase())).map((pl) => (
+                      <li key={pl.p}>
+                        <button onClick={() => { setHighlight(pl.p); setPickOpen(false); setQuery(""); }}
+                          className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-overlay ${highlight === pl.p ? "bg-accent/15 font-semibold" : ""}`}>
+                          <span className="shrink-0">{pill(pl.p, colorOf(pl), "text-[10px]")}</span>
+                          <span className="truncate">{pl.name}</span>
+                          {pl.p === me && <span className="ml-auto text-[10px] text-app-accent">du</span>}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </Popover.Dialog>
+              </Popover.Content>
+            </Popover>
+          )}
+          <div className="inline-flex rounded-lg border border-border bg-overlay p-0.5 text-[11px]">
+            {MODES.map(([k, l]) => (
+              <button key={k} onClick={() => { setMode(k); setActive(null); }}
+                className={`rounded-md px-2 py-0.5 transition ${mode === k ? "bg-accent font-semibold text-accent-foreground" : "text-muted"}`}>
+                {l}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -224,15 +276,16 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
         )}
       </div>
 
-      {/* legend — tap a name to highlight (in Spieltag mode it picks whose bars to show) */}
-      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+      {/* legend — coloured Kürzel pills (full names live in the table above). Tap to
+          highlight (in Spieltag mode it picks whose bars to show). */}
+      <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
         {shown.map((pl) => {
           const sel = highlight === pl.p;
           return (
             <button key={pl.p} onClick={() => setHighlight(sel ? null : pl.p)}
-              className={`inline-flex items-center gap-1.5 rounded px-1 transition ${sel ? "bg-accent/15" : ""} ${pl.p === me ? "font-bold text-app-accent" : "text-muted"} ${highlight && !sel ? "opacity-40" : ""}`}>
-              <span className="inline-block size-2 shrink-0 rounded-full" style={{ background: colorOf(pl) }} />
-              {pl.name} <span className="tabular-nums">{cum[pl.p]}</span>
+              className={`inline-flex items-center gap-1 rounded-full transition ${highlight && !sel ? "opacity-40" : ""}`}>
+              {pill(pl.p, colorOf(pl))}
+              <span className="pr-1 tabular-nums text-muted">{cum[pl.p]}</span>
             </button>
           );
         })}
