@@ -9,7 +9,7 @@ import PointsBadge from "@/components/PointsBadge.jsx";
 // scored tip (tip + result both present) grouped by tournament phase, with a
 // per-phase subtotal. Collapsed by default to keep the Persönlich view compact.
 export default function PointsHistory({ me, st, teamLabel }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const tips = st.tips?.[me] || {};
   const results = st.results || {};
 

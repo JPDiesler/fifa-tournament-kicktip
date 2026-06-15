@@ -134,6 +134,12 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
         </div>
       </div>
 
+      {mode === "spieltag" && (
+        <div className="mb-1 text-[11px] text-muted">
+          Punkte von <span className="font-semibold text-app-accent">{focusName}</span> pro Spieltag (nicht aufsummiert) · anderen Spieler in der Legende antippen
+        </div>
+      )}
+
       <div ref={wrapRef} className="relative w-full" onPointerMove={onMove} onPointerDown={onMove} onPointerLeave={() => setActive(null)}>
         {w > 0 && (
           <svg width={w} height={H} role="img" aria-label={title}>
@@ -166,9 +172,13 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
             {/* ----- content per mode ----- */}
             {mode === "spieltag" ? (
               daily[focus].map((v, i) => {
-                const bw = Math.max(2, bin * 0.6);
-                return <rect key={`b${i}`} x={Xbar(i) - bw / 2} y={Yb(v)} width={bw} height={Math.max(0, H - pad.b - Yb(v))}
-                  rx="2" fill="var(--app-accent)" opacity={active == null || active === i ? 1 : 0.45} />;
+                const bw = Math.max(2, bin * 0.6), y = Yb(v);
+                return (
+                  <g key={`b${i}`} opacity={active == null || active === i ? 1 : 0.45}>
+                    <rect x={Xbar(i) - bw / 2} y={y} width={bw} height={Math.max(0, H - pad.b - y)} rx="2" fill={colorOf({ p: focus })} />
+                    {v > 0 && <text x={Xbar(i)} y={y - 3} textAnchor="middle" fontSize="9" fill="var(--muted)">{v}</text>}
+                  </g>
+                );
               })
             ) : (
               <>
