@@ -163,6 +163,7 @@ export default function App() {
         isAdmin={user.isAdmin}
         onOpenAdmin={() => setAdminOpen(true)}
         onOpenHelp={() => setHelpOpen(true)}
+        onFlash={flash}
       />
 
       <main className="mx-auto max-w-3xl px-3 pb-16">

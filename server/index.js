@@ -12,6 +12,7 @@ import { activeSource } from "./services/sources.js";
 import { anyMatchActive } from "./services/poller.js";
 import { sync } from "./services/sync.js";
 import { applyRights, syncBroadcasts } from "./services/broadcasts.js";
+import { runTipReminders, runChampReminder, runDailySummary } from "./services/push.js";
 
 bootstrapAdmin();
 // One-off heal: earlier syncs could cross-assign API fixtures to the wrong match
@@ -35,6 +36,14 @@ cron.schedule(process.env.SYNC_CRON || "0 */6 * * *", () => sync("Sicherheits-Sy
 // "Where to watch": the EPG only spans a few days and changes slowly, so a daily
 // refresh is plenty (it also re-applies the streaming rights config).
 cron.schedule(process.env.EPG_CRON || "30 4 * * *", () => syncBroadcasts("täglich"));
+// Push reminders: tip nudges + the champion-tip reminder run a few times an hour;
+// the daily summary is checked on the same tick and fires once per finished day.
+// Each is idempotent, so the cadence only affects timeliness, never duplicates.
+cron.schedule(process.env.REMINDER_CRON || "*/10 * * * *", () => {
+  runTipReminders().catch((e) => console.error("tipReminders", e));
+  runChampReminder().catch((e) => console.error("champReminder", e));
+  runDailySummary().catch((e) => console.error("dailySummary", e));
+});
 
 app.listen(PORT, () => {
   console.log(`WM-Tippspiel läuft auf :${PORT}`);

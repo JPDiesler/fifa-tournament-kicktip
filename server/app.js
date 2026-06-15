@@ -9,6 +9,7 @@ import { SESSION_SECRET, COOKIE_SECURE } from "./config.js";
 import authRoutes from "./routes/auth.routes.js";
 import stateRoutes from "./routes/state.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import pushRoutes from "./routes/push.routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -29,6 +30,7 @@ app.use(session({
 app.use("/api", authRoutes);
 app.use("/api", stateRoutes);
 app.use("/api", adminRoutes);
+app.use("/api", pushRoutes);
 
 // ---------- built frontend ----------
 // hashed assets cache forever, but the index.html shell is always revalidated so
