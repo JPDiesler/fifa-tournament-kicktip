@@ -152,7 +152,7 @@ export default function App() {
     ["anstehend", "Anstehend", CalendarClock],
     ["gruppen", "Gruppenphase", CalendarDays],
     ["ko", "K.O.", GitBranch],
-    ["rang", "Rangliste", ListOrdered],
+    ["rang", "Punktstand", ListOrdered],
   ];
 
   return (
@@ -247,7 +247,7 @@ export default function App() {
           </Tabs.Panel>
 
           <Tabs.Panel id="rang" className="pt-3">
-            <LeaderboardTab totals={board} matchdays={matchdays} me={me} teams={TEAMS} championActual={st.championActual} />
+            <LeaderboardTab totals={board} matchdays={matchdays} me={me} st={st} teams={TEAMS} championActual={st.championActual} teamLabel={teamLabel} />
           </Tabs.Panel>
         </Tabs>
       </main>

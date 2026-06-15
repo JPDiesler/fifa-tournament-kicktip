@@ -18,14 +18,23 @@ function niceTicks(max, count = 4) {
   return ticks;
 }
 
-// Line chart of each player's CUMULATIVE points across the scored matchdays.
-// Built client-side from the per-day breakdown (`matchdays`, newest-first) and the
-// overall standings (`totals`, for the full player list + names). The champion
-// bonus is a one-off end bonus and is intentionally not part of this per-matchday
-// progression, so the final value can differ from the standings total by +10.
+const MODES = [["punkte", "Punkte"], ["platz", "Platz"], ["spieltag", "Spieltag"]];
+
+// Interactive chart of each player's progress across the scored matchdays. Built
+// client-side from the per-day breakdown (`matchdays`, newest-first) and the
+// standings (`totals`, for the player list + names). Three modes:
+//   • punkte   — cumulative points (line per player)
+//   • platz    — placement over time (bump chart, rank 1 on top)
+//   • spieltag — one player's points per matchday (bars; pick via the legend)
+// Hover/tap shows a tooltip for that matchday; tap a legend name to highlight.
+// The champion bonus is a one-off end bonus, intentionally not in this per-day
+// progression, so a final value can differ from the standings total by +10.
 export default function ScoreTrend({ matchdays = [], totals = [], me }) {
   const wrapRef = useRef(null);
   const [w, setW] = useState(0);
+  const [mode, setMode] = useState("punkte");
+  const [highlight, setHighlight] = useState(null); // player key, or null
+  const [active, setActive] = useState(null);       // hovered matchday index, or null
   useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -37,70 +46,186 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
 
   if (!matchdays.length) return <p className="p-6 text-center text-sm text-muted">Noch keine ausgewerteten Spieltage.</p>;
 
+  // ---- data ----
   const daysAsc = [...matchdays].reverse(); // server sends newest-first → oldest-first for the x-axis
   const labels = daysAsc.map((d) => d.label.replace(/^\S+,\s*/, "")); // "Do, 11.06." → "11.06."
   const players = totals.map((t) => ({ p: t.p, name: t.name || t.p }));
+  const n = labels.length;
+  const P = players.length;
 
-  const cum = Object.fromEntries(players.map((pl) => [pl.p, 0]));
-  const series = Object.fromEntries(players.map((pl) => [pl.p, []]));
-  for (const d of daysAsc) {
+  const cum = {}, series = {}, daily = {};
+  players.forEach((pl) => { cum[pl.p] = 0; series[pl.p] = []; daily[pl.p] = []; });
+  daysAsc.forEach((d) => {
     const byP = Object.fromEntries(d.rows.map((r) => [r.p, r.pts]));
-    for (const pl of players) { cum[pl.p] += byP[pl.p] || 0; series[pl.p].push(cum[pl.p]); }
+    players.forEach((pl) => { const dp = byP[pl.p] || 0; daily[pl.p].push(dp); cum[pl.p] += dp; series[pl.p].push(cum[pl.p]); });
+  });
+  // placement per day (1 = best) from cumulative points; tiebreak by name for stability
+  const rankSeries = {}; players.forEach((pl) => (rankSeries[pl.p] = []));
+  for (let i = 0; i < n; i++) {
+    const order = [...players].sort((a, b) => (series[b.p][i] - series[a.p][i]) || a.name.localeCompare(b.name));
+    order.forEach((pl, idx) => rankSeries[pl.p].push(idx + 1));
   }
+
   // Keep it readable: once anyone has scored, show only players with points (plus
   // you); before that (everyone at 0) show all so the legend isn't empty.
   const anyPoints = players.some((pl) => cum[pl.p] > 0);
   let shown = anyPoints ? players.filter((pl) => cum[pl.p] > 0 || pl.p === me) : players;
   shown = [...shown].sort((a, b) => cum[b.p] - cum[a.p]); // legend high→low
-  const colorOf = (pl, i) => (pl.p === me ? "var(--app-accent)" : PALETTE[i % PALETTE.length]);
+  const idxOf = Object.fromEntries(shown.map((pl, i) => [pl.p, i]));
+  const colorOf = (pl) => (pl.p === me ? "var(--app-accent)" : PALETTE[idxOf[pl.p] % PALETTE.length]);
+  const focus = (highlight && idxOf[highlight] != null) ? highlight : me; // bars subject
+  const focusName = players.find((pl) => pl.p === focus)?.name || focus;
 
-  const maxY = Math.max(1, ...shown.map((pl) => cum[pl.p]));
-  const ticks = niceTicks(maxY);
-  const top = ticks[ticks.length - 1];
-
-  const H = 260, pad = { t: 14, r: 14, b: 28, l: 28 };
+  // ---- geometry ----
+  const H = 260, pad = { t: 14, r: 14, b: 28, l: 30 };
   const innerW = Math.max(0, w - pad.l - pad.r), innerH = H - pad.t - pad.b;
-  const n = labels.length;
-  const X = (i) => pad.l + (n <= 1 ? innerW / 2 : (innerW * i) / (n - 1));
-  const Y = (v) => pad.t + innerH * (1 - v / top);
+  const bin = n ? innerW / n : innerW;
+  const Xline = (i) => pad.l + (n <= 1 ? innerW / 2 : (innerW * i) / (n - 1));
+  const Xbar = (i) => pad.l + bin * (i + 0.5);
+
+  const maxCum = Math.max(1, ...shown.map((pl) => cum[pl.p]));
+  const ticksP = niceTicks(maxCum); const topP = ticksP[ticksP.length - 1];
+  const Yp = (v) => pad.t + innerH * (1 - v / topP);
+  const Yr = (r) => (P <= 1 ? pad.t + innerH / 2 : pad.t + innerH * ((r - 1) / (P - 1)));
+  const maxD = Math.max(1, ...daily[focus]);
+  const ticksB = niceTicks(maxD); const topB = ticksB[ticksB.length - 1];
+  const Yb = (v) => pad.t + innerH * (1 - v / topB);
+
   const everyX = Math.ceil(n / 8); // thin out x labels when there are many days
+  const dim = (pl) => highlight && pl.p !== highlight;
+  const wide = (pl) => pl.p === me || pl.p === highlight;
+  const lineOpacity = (pl) => (dim(pl) ? 0.12 : wide(pl) ? 1 : 0.8);
+
+  // pointer → nearest matchday index
+  const onMove = (e) => {
+    const rect = wrapRef.current?.getBoundingClientRect(); if (!rect) return;
+    const mx = e.clientX - rect.left;
+    const i = mode === "spieltag"
+      ? Math.floor((mx - pad.l) / bin)
+      : (n <= 1 ? 0 : Math.round((mx - pad.l) / (innerW / (n - 1))));
+    setActive(Math.max(0, Math.min(n - 1, i)));
+  };
+  const activeX = active == null ? 0 : (mode === "spieltag" ? Xbar(active) : Xline(active));
+
+  // tooltip rows for the active matchday (sorted; reuse the per-mode value)
+  const tipRows = () => {
+    if (active == null) return [];
+    if (mode === "platz")
+      return shown.map((pl) => ({ pl, val: `#${rankSeries[pl.p][active]}`, sort: rankSeries[pl.p][active] }))
+        .sort((a, b) => a.sort - b.sort);
+    const get = mode === "spieltag" ? (p) => daily[p][active] : (p) => series[p][active];
+    return shown.map((pl) => ({ pl, val: get(pl.p), sort: get(pl.p) })).sort((a, b) => b.sort - a.sort);
+  };
+  const title = mode === "platz" ? "Platzierungs-Verlauf"
+    : mode === "spieltag" ? `Punkte je Spieltag · ${focusName}`
+    : "Punkteverlauf (kumuliert)";
 
   return (
     <div className="rounded-xl border border-border bg-surface p-3">
-      <div className="mb-2 text-xs font-bold uppercase tracking-wider text-muted">Punkteverlauf (kumuliert)</div>
-      <div ref={wrapRef} className="w-full">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="text-xs font-bold uppercase tracking-wider text-muted">{title}</div>
+        <div className="inline-flex rounded-lg border border-border bg-overlay p-0.5 text-[11px]">
+          {MODES.map(([k, l]) => (
+            <button key={k} onClick={() => { setMode(k); setActive(null); }}
+              className={`rounded-md px-2 py-0.5 transition ${mode === k ? "bg-accent font-semibold text-accent-foreground" : "text-muted"}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div ref={wrapRef} className="relative w-full" onPointerMove={onMove} onPointerDown={onMove} onPointerLeave={() => setActive(null)}>
         {w > 0 && (
-          <svg width={w} height={H} role="img" aria-label="Punkteverlauf je Spieler">
-            {ticks.map((t) => (
-              <g key={`t${t}`}>
-                <line x1={pad.l} y1={Y(t)} x2={w - pad.r} y2={Y(t)} stroke="var(--border)" strokeWidth="1" />
-                <text x={pad.l - 5} y={Y(t)} textAnchor="end" dominantBaseline="middle" fontSize="10" fill="var(--muted)">{t}</text>
-              </g>
-            ))}
+          <svg width={w} height={H} role="img" aria-label={title}>
+            {/* y grid + labels */}
+            {mode === "platz"
+              ? players.map((_, k) => k + 1).filter((r) => (r - 1) % Math.ceil(P / 6) === 0 || r === P).map((r) => (
+                  <g key={`r${r}`}>
+                    <line x1={pad.l} y1={Yr(r)} x2={w - pad.r} y2={Yr(r)} stroke="var(--border)" strokeWidth="1" />
+                    <text x={pad.l - 5} y={Yr(r)} textAnchor="end" dominantBaseline="middle" fontSize="10" fill="var(--muted)">{r}</text>
+                  </g>
+                ))
+              : (mode === "spieltag" ? ticksB : ticksP).map((t) => {
+                  const y = mode === "spieltag" ? Yb(t) : Yp(t);
+                  return (
+                    <g key={`t${t}`}>
+                      <line x1={pad.l} y1={y} x2={w - pad.r} y2={y} stroke="var(--border)" strokeWidth="1" />
+                      <text x={pad.l - 5} y={y} textAnchor="end" dominantBaseline="middle" fontSize="10" fill="var(--muted)">{t}</text>
+                    </g>
+                  );
+                })}
+
+            {/* x labels */}
             {labels.map((lab, i) => ((i % everyX === 0 || i === n - 1) && (
-              <text key={`x${i}`} x={X(i)} y={H - 8} textAnchor="middle" fontSize="10" fill="var(--muted)">{lab}</text>
+              <text key={`x${i}`} x={mode === "spieltag" ? Xbar(i) : Xline(i)} y={H - 8} textAnchor="middle" fontSize="10" fill="var(--muted)">{lab}</text>
             )))}
-            {shown.map((pl, i) => {
-              const isMe = pl.p === me;
-              if (n === 1) return null; // single day → only the dot below
-              const pts = series[pl.p].map((v, j) => `${X(j)},${Y(v)}`).join(" ");
-              return <polyline key={pl.p} points={pts} fill="none" stroke={colorOf(pl, i)} strokeWidth={isMe ? 3 : 1.5} strokeLinejoin="round" strokeLinecap="round" opacity={isMe ? 1 : 0.8} />;
-            })}
-            {shown.map((pl, i) => {
-              const v = series[pl.p][n - 1];
-              if (v == null) return null;
-              return <circle key={`d${pl.p}`} cx={X(n - 1)} cy={Y(v)} r={pl.p === me ? 3.5 : 2.5} fill={colorOf(pl, i)} />;
-            })}
+
+            {/* active matchday guide */}
+            {active != null && <line x1={activeX} y1={pad.t} x2={activeX} y2={H - pad.b} stroke="var(--focus)" strokeWidth="1" strokeDasharray="3 3" />}
+
+            {/* ----- content per mode ----- */}
+            {mode === "spieltag" ? (
+              daily[focus].map((v, i) => {
+                const bw = Math.max(2, bin * 0.6);
+                return <rect key={`b${i}`} x={Xbar(i) - bw / 2} y={Yb(v)} width={bw} height={Math.max(0, H - pad.b - Yb(v))}
+                  rx="2" fill="var(--app-accent)" opacity={active == null || active === i ? 1 : 0.45} />;
+              })
+            ) : (
+              <>
+                {shown.map((pl) => {
+                  if (n === 1) return null;
+                  const Y = mode === "platz" ? (i) => Yr(rankSeries[pl.p][i]) : (i) => Yp(series[pl.p][i]);
+                  const pts = (mode === "platz" ? rankSeries[pl.p] : series[pl.p]).map((_, j) => `${Xline(j)},${Y(j)}`).join(" ");
+                  return <polyline key={pl.p} points={pts} fill="none" stroke={colorOf(pl)} strokeWidth={wide(pl) ? 3 : 1.5}
+                    strokeLinejoin="round" strokeLinecap="round" opacity={lineOpacity(pl)} />;
+                })}
+                {/* end dots + active dots */}
+                {shown.map((pl) => {
+                  const yAt = (i) => (mode === "platz" ? Yr(rankSeries[pl.p][i]) : Yp(series[pl.p][i]));
+                  return (
+                    <g key={`d${pl.p}`} opacity={lineOpacity(pl)}>
+                      <circle cx={Xline(n - 1)} cy={yAt(n - 1)} r={wide(pl) ? 3.5 : 2.5} fill={colorOf(pl)} />
+                      {active != null && <circle cx={Xline(active)} cy={yAt(active)} r={wide(pl) ? 3.5 : 2.5} fill={colorOf(pl)} />}
+                    </g>
+                  );
+                })}
+              </>
+            )}
           </svg>
         )}
+
+        {/* tooltip */}
+        {active != null && w > 0 && (
+          <div className="pointer-events-none absolute z-10 max-w-[60%]"
+            style={{ left: activeX, top: pad.t, transform: `translate(${activeX > w / 2 ? "calc(-100% - 8px)" : "8px"}, 0)` }}>
+            <div className="rounded-lg border border-border bg-overlay px-2 py-1.5 text-[11px] shadow-lg">
+              <div className="mb-1 font-semibold">{labels[active]}</div>
+              <div className="flex flex-col gap-0.5">
+                {tipRows().map(({ pl, val }) => (
+                  <div key={pl.p} className={`flex items-center gap-1.5 ${pl.p === me ? "font-bold text-app-accent" : ""}`}>
+                    <span className="inline-block size-2 shrink-0 rounded-full" style={{ background: colorOf(pl) }} />
+                    <span className="min-w-0 truncate">{pl.name}</span>
+                    <span className="ml-auto pl-2 tabular-nums">{val}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* legend — tap a name to highlight (in Spieltag mode it picks whose bars to show) */}
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-        {shown.map((pl, i) => (
-          <span key={pl.p} className={`inline-flex items-center gap-1.5 ${pl.p === me ? "font-bold text-app-accent" : "text-muted"}`}>
-            <span className="inline-block size-2 shrink-0 rounded-full" style={{ background: colorOf(pl, i) }} />
-            {pl.name} <span className="tabular-nums">{cum[pl.p]}</span>
-          </span>
-        ))}
+        {shown.map((pl) => {
+          const sel = highlight === pl.p;
+          return (
+            <button key={pl.p} onClick={() => setHighlight(sel ? null : pl.p)}
+              className={`inline-flex items-center gap-1.5 rounded px-1 transition ${sel ? "bg-accent/15" : ""} ${pl.p === me ? "font-bold text-app-accent" : "text-muted"} ${highlight && !sel ? "opacity-40" : ""}`}>
+              <span className="inline-block size-2 shrink-0 rounded-full" style={{ background: colorOf(pl) }} />
+              {pl.name} <span className="tabular-nums">{cum[pl.p]}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
