@@ -1,21 +1,21 @@
 // Real interface icons for match events (replacing the old ⚽/🟨/🟥 emoji).
-// Both use currentColor / theme colours so they scale and theme cleanly.
 
-// Classic soccer ball (truncated-icosahedron front view): outer circle, a centre
-// pentagon, five outer pentagons, and the seams linking them. All stroked (no fill)
-// in currentColor so it themes + scales cleanly.
+// Soccer ball — classic black-and-white panels (white ball, black seams), so it
+// reads clearly on any theme via its own outline.
 export function GoalIcon({ size = 14, className = "" }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden
-      fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" strokeLinecap="round">
-      <circle cx="12" cy="12" r="9.3" />
-      <polygon points="12,8.6 15.23,10.95 14,14.75 10,14.75 8.77,10.95" />
-      <polygon points="12,7.1 10.1,5.72 10.82,3.48 13.18,3.48 13.9,5.72" />
-      <polygon points="16.66,10.49 17.38,8.25 19.74,8.25 20.46,10.49 18.56,11.87" />
-      <polygon points="14.88,15.96 17.24,15.96 17.96,18.2 16.06,19.58 14.16,18.2" />
-      <polygon points="9.12,15.96 9.84,18.2 7.94,19.58 6.04,18.2 6.76,15.96" />
-      <polygon points="7.34,10.49 5.44,11.87 3.54,10.49 4.26,8.25 6.62,8.25" />
-      <path d="M12,8.6 12,7.1 M15.23,10.95 16.66,10.49 M14,14.75 14.88,15.96 M10,14.75 9.12,15.96 M8.77,10.95 7.34,10.49" />
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
+      <g transform="translate(4.5, 4.5)">
+        <circle cx="7.5" cy="7.5" r="7.5" fill="#FFFFFF" stroke="#000000" strokeWidth="1" />
+        <g fill="#000000" fillOpacity="0.9">
+          <polygon points="7.5 5 9.87764129 6.72745751 8.96946313 9.52254249 6.03053687 9.52254249 5.12235871 6.72745751" />
+          <path d="M 9.683,0.343 L 8.969,2.522 L 6.031,2.522 L 5.317,0.343 A 7.5,7.5 0 0 1 9.683,0.343 Z" />
+          <path d="M 1.731,12.285 L 3.5,11 L 5.877,12.727 L 5.312,14.467 A 7.5,7.5 0 0 1 1.731,12.285 Z" />
+          <path d="M 13.300,12.307 L 11.5,11 L 9.122,12.727 L 9.750,14.639 A 7.5,7.5 0 0 0 13.300,12.307 Z" />
+          <path d="M 9.683,0.343 L 8.969,2.522 L 6.031,2.522 L 5.317,0.343 A 7.5,7.5 0 0 1 9.683,0.343 Z" transform="rotate(-80 7.5 7.5)" />
+          <path d="M 9.683,0.343 L 8.969,2.522 L 6.031,2.522 L 5.317,0.343 A 7.5,7.5 0 0 1 9.683,0.343 Z" transform="rotate(80 7.5 7.5)" />
+        </g>
+      </g>
     </svg>
   );
 }
