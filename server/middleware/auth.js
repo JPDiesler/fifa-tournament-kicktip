@@ -64,6 +64,10 @@ export const adminUserDto = (u) =>
     isActive: !!u.is_active,
     createdAt: u.created_at,
     hasPassword: !!u.pass_hash,
+    isAi: !!u.is_ai,
+    aiProvider: u.ai_provider || null,
+    aiModel: u.ai_model || null,
+    aiLogo: u.ai_logo || null,
   };
 
 export function requireAuth(req, res, next) {

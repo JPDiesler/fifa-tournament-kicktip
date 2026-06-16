@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import { MATCHES, CHAMP_BONUS } from "./data.js";
 import { score } from "./services/scoring.js";
 import { isTipLocked, isChampLocked, champLockTs, TIP_LOCK_OFFSET_MIN } from "./services/locks.js";
+import { encryptSecret, decryptSecret } from "./services/secrets.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
@@ -106,6 +107,40 @@ CREATE TABLE IF NOT EXISTS match_detail (
   final_phase  TEXT,
   updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- AI players' per-match LLM predictions (exactly one attempt per match). The
+-- (user_id,match_n) PRIMARY KEY is the idempotency guard: a row is CLAIMED
+-- (status 'pending') BEFORE the LLM call, so a concurrent/repeated job can never
+-- trigger a second call for the same (player, match).
+CREATE TABLE IF NOT EXISTS ai_predictions (
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  match_n      INTEGER NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'done' | 'failed'
+  tip_h        TEXT, tip_a TEXT,
+  prediction   TEXT,            -- full canonical JSON returned by the model
+  provider     TEXT, model TEXT,
+  latency_ms   INTEGER, tokens INTEGER,
+  error        TEXT,
+  attempted_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, match_n)
+);
+-- AI players' one-off champion (Weltmeister) prediction.
+CREATE TABLE IF NOT EXISTS ai_champ_predictions (
+  user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  status       TEXT NOT NULL DEFAULT 'pending',
+  code         TEXT,
+  prediction   TEXT,
+  provider     TEXT, model TEXT,
+  error        TEXT,
+  attempted_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+-- Provider fixture ids per static match number, persisted each sync so the AI tip
+-- scheduler can assemble a data bundle without re-fetching the whole fixture list.
+CREATE TABLE IF NOT EXISTS match_ext (
+  match_n  INTEGER NOT NULL,
+  provider TEXT NOT NULL,
+  ext_id   TEXT NOT NULL,
+  PRIMARY KEY (match_n, provider)
+);
 `);
 
 // Migration for DBs created before is_superadmin existed.
@@ -132,6 +167,15 @@ if (!db.prepare("PRAGMA table_info(live)").all().some((c) => c.name === "as_of")
   if (!cols.includes("final_phase")) db.exec("ALTER TABLE match_detail ADD COLUMN final_phase TEXT");
   if (!cols.includes("subs")) db.exec("ALTER TABLE match_detail ADD COLUMN subs TEXT");
   if (!cols.includes("lineups")) db.exec("ALTER TABLE match_detail ADD COLUMN lineups TEXT");
+}
+// Migration for DBs created before AI players existed.
+{
+  const cols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+  if (!cols.includes("is_ai")) db.exec("ALTER TABLE users ADD COLUMN is_ai INTEGER NOT NULL DEFAULT 0");
+  if (!cols.includes("ai_provider")) db.exec("ALTER TABLE users ADD COLUMN ai_provider TEXT");
+  if (!cols.includes("ai_model")) db.exec("ALTER TABLE users ADD COLUMN ai_model TEXT");
+  if (!cols.includes("ai_key_enc")) db.exec("ALTER TABLE users ADD COLUMN ai_key_enc TEXT");
+  if (!cols.includes("ai_logo")) db.exec("ALTER TABLE users ADD COLUMN ai_logo TEXT");
 }
 
 // ---------- settings (kv, JSON-encoded) ----------
@@ -253,6 +297,7 @@ export function stateForUser(meKuerzel) {
     me: meKuerzel,
     tips, champs, results, resolved, live: liveByMatch(), broadcasts: broadcastsByMatch(),
     details: detailByMatch(),
+    players: playersMeta(),
     championActual: getSetting("championActual", ""),
     capabilities: getSetting("capabilities", null),
     meta: getSetting("meta", {}),
@@ -290,6 +335,7 @@ export function setResolved(n, rv) {
     .run(Number(n), rv.homeName ?? null, rv.awayName ?? null, rv.homeCode ?? null, rv.awayCode ?? null, rv.winner ?? null);
 }
 export const clearResolved = (n) => db.prepare("DELETE FROM resolved WHERE match_n=?").run(Number(n));
+export const getResolved = (n) => db.prepare("SELECT * FROM resolved WHERE match_n=?").get(Number(n));
 
 // Replace ALL broadcast rows for one source with `map` ({ match_n: [serviceKey…] }).
 // Sources are independent (e.g. 'epg' and 'rights' are merged on read), so each
@@ -549,7 +595,8 @@ export function createUser({
   return getUserById(info.lastInsertRowid);
 }
 export function updateUser(id, fields) {
-  const allowed = ["kuerzel", "name", "username", "pass_hash", "entra_oid", "entra_upn", "is_admin", "is_active", "is_superadmin"];
+  const allowed = ["kuerzel", "name", "username", "pass_hash", "entra_oid", "entra_upn", "is_admin", "is_active", "is_superadmin",
+    "is_ai", "ai_provider", "ai_model", "ai_key_enc", "ai_logo"];
   const keys = Object.keys(fields).filter((k) => allowed.includes(k));
   if (!keys.length) return getUserById(id);
   const vals = { id };
@@ -558,3 +605,91 @@ export function updateUser(id, fields) {
   return getUserById(id);
 }
 export const deleteUser = (id) => db.prepare("DELETE FROM users WHERE id=?").run(id);
+
+// ---------- AI players (real users marked is_ai=1) ----------
+// Create an AI player: a regular user (so its tips flow through the normal
+// scoring/leaderboard/state machinery) plus provider/model + an ENCRYPTED key.
+export function createAiPlayer({ kuerzel, name, provider, model, apiKey, logo = null }) {
+  const u = createUser({ kuerzel, name, kind: "ai", is_active: 1 });
+  return updateUser(u.id, {
+    is_ai: 1, ai_provider: provider, ai_model: model || null,
+    ai_key_enc: encryptSecret(apiKey), ai_logo: logo || null,
+  });
+}
+export const getAiPlayerById = (id) => db.prepare("SELECT * FROM users WHERE id=? AND is_ai=1").get(id);
+export const listAiPlayers = () =>
+  db.prepare("SELECT * FROM users WHERE is_ai=1 ORDER BY kuerzel").all();
+export const listActiveAiPlayers = () =>
+  db.prepare("SELECT * FROM users WHERE is_ai=1 AND is_active=1 AND kuerzel IS NOT NULL").all();
+// Decrypt the stored provider key — SERVER-SIDE ONLY; never serialise to a client.
+export function getAiPlayerKey(id) {
+  const u = getAiPlayerById(id);
+  return u ? decryptSecret(u.ai_key_enc) : null;
+}
+// Update an AI player; a new apiKey (if given) is re-encrypted, otherwise left as is.
+export function updateAiPlayer(id, { name, provider, model, apiKey, logo, is_active }) {
+  const fields = {};
+  if (name !== undefined) fields.name = (name || "").trim() || null;
+  if (provider !== undefined) fields.ai_provider = provider;
+  if (model !== undefined) fields.ai_model = model || null;
+  if (logo !== undefined) fields.ai_logo = logo || null;
+  if (is_active !== undefined) fields.is_active = !!is_active;
+  if (apiKey) fields.ai_key_enc = encryptSecret(apiKey);
+  return updateUser(id, fields);
+}
+
+// kuerzel → { name, isAi, provider, logo } for ALL players (drives frontend display).
+export function playersMeta() {
+  const out = {};
+  for (const u of db.prepare("SELECT kuerzel,name,is_ai,ai_provider,ai_logo FROM users WHERE kuerzel IS NOT NULL AND is_superadmin=0").all())
+    out[u.kuerzel] = { name: u.name || u.kuerzel, isAi: !!u.is_ai, provider: u.ai_provider || null, logo: u.ai_logo || null };
+  return out;
+}
+
+// ---------- AI predictions (per-match + champion), with idempotent claim ----------
+// Claim (player, match) for an LLM attempt. Returns true ONLY the first time — the
+// PK + INSERT OR IGNORE guarantee at most one attempt ever, even across parallel runs.
+export const claimAiPrediction = (userId, matchN, provider, model) =>
+  db.prepare("INSERT OR IGNORE INTO ai_predictions(user_id,match_n,status,provider,model) VALUES(?,?, 'pending', ?, ?)")
+    .run(userId, Number(matchN), provider || null, model || null).changes > 0;
+export function finishAiPrediction(userId, matchN, { status, tip, prediction, latencyMs, tokens, error } = {}) {
+  db.prepare(`UPDATE ai_predictions SET status=?, tip_h=?, tip_a=?, prediction=?, latency_ms=?, tokens=?, error=?, attempted_at=datetime('now')
+    WHERE user_id=? AND match_n=?`)
+    .run(status, tip?.h ?? null, tip?.a ?? null, prediction ? JSON.stringify(prediction) : null,
+      latencyMs ?? null, tokens ?? null, error ?? null, userId, Number(matchN));
+}
+export function getAiPrediction(userId, matchN) {
+  const r = db.prepare("SELECT * FROM ai_predictions WHERE user_id=? AND match_n=?").get(userId, Number(matchN));
+  if (!r) return null;
+  return { ...r, prediction: r.prediction ? JSON.parse(r.prediction) : null };
+}
+export const hasAiPrediction = (userId, matchN) =>
+  db.prepare("SELECT 1 FROM ai_predictions WHERE user_id=? AND match_n=? LIMIT 1").get(userId, Number(matchN)) != null;
+
+export const claimAiChamp = (userId, provider, model) =>
+  db.prepare("INSERT OR IGNORE INTO ai_champ_predictions(user_id,status,provider,model) VALUES(?, 'pending', ?, ?)")
+    .run(userId, provider || null, model || null).changes > 0;
+export function finishAiChamp(userId, { status, code, prediction, error } = {}) {
+  db.prepare("UPDATE ai_champ_predictions SET status=?, code=?, prediction=?, error=?, attempted_at=datetime('now') WHERE user_id=?")
+    .run(status, code ?? null, prediction ? JSON.stringify(prediction) : null, error ?? null, userId);
+}
+export function getAiChamp(userId) {
+  const r = db.prepare("SELECT * FROM ai_champ_predictions WHERE user_id=?").get(userId);
+  if (!r) return null;
+  return { ...r, prediction: r.prediction ? JSON.parse(r.prediction) : null };
+}
+export const hasAiChamp = (userId) =>
+  db.prepare("SELECT 1 FROM ai_champ_predictions WHERE user_id=? LIMIT 1").get(userId) != null;
+
+// ---------- persisted provider fixture ids (written each sync) ----------
+export function setMatchExtIds(n, extIds) {
+  const ins = db.prepare("INSERT INTO match_ext(match_n,provider,ext_id) VALUES(?,?,?) ON CONFLICT(match_n,provider) DO UPDATE SET ext_id=excluded.ext_id");
+  for (const [provider, extId] of Object.entries(extIds || {})) if (extId != null) ins.run(Number(n), provider, String(extId));
+}
+export const getMatchExtId = (n, provider) =>
+  db.prepare("SELECT ext_id FROM match_ext WHERE match_n=? AND provider=?").get(Number(n), provider)?.ext_id || null;
+export function extIdsByMatch(n) {
+  const out = {};
+  for (const r of db.prepare("SELECT provider,ext_id FROM match_ext WHERE match_n=?").all(Number(n))) out[r.provider] = r.ext_id;
+  return out;
+}

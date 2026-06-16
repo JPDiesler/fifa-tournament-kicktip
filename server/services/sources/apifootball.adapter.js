@@ -100,6 +100,19 @@ async function fetchLineups(extId, ctx) {
   return out;
 }
 
+// --- AI-bundle data (pre-match): predictions (form/att-def/Poisson/percent/h2h) + injuries ---
+// Each returns response[0] / response[] (or null/[]); orientation is handled by the bundle builder.
+async function fetchPredictions(extId) {
+  const r = await fetch(`${BASE}/predictions?fixture=${extId}`, H());
+  const j = await r.json();
+  return Array.isArray(j.response) ? (j.response[0] || null) : null;
+}
+async function fetchInjuries(extId) {
+  const r = await fetch(`${BASE}/injuries?fixture=${extId}`, H());
+  const j = await r.json();
+  return Array.isArray(j.response) ? j.response : [];
+}
+
 // Paid real-time provider: assume the full feature set (confirmed by probe).
 const declaredCaps = () => ({ results: true, liveScore: true, phase: true, liveMinute: true, scorers: true, cards: true, realtime: true });
 
@@ -126,5 +139,5 @@ export const apifootball = {
   rateLimit: () => { const o = getProviderLimits("apifootball").rateLimit; return Number.isFinite(o) ? o : Number(process.env.API_RATE_LIMIT || 10); },
   dailyLimit: () => { const o = getProviderLimits("apifootball").dailyLimit; return o === null ? null : Number.isFinite(o) ? o : Number(process.env.API_DAILY_LIMIT || 100); },
   configured: () => !!key(),
-  declaredCaps, fetchFixtures, fetchDetail, fetchLineups, probe,
+  declaredCaps, fetchFixtures, fetchDetail, fetchLineups, fetchPredictions, fetchInjuries, probe,
 };

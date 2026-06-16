@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { Popover, Button } from "@heroui/react";
 import { ChevronDown, Search } from "lucide-react";
+import ProviderLogo from "@/components/ProviderLogo.jsx";
+import { usePlayers } from "@/components/PlayerName.jsx";
 
 // Distinct line colours for the players (the current user always uses the app
 // accent and is drawn on top). Cycles if there are more players than colours.
@@ -77,6 +79,7 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
   let shown = anyPoints ? players.filter((pl) => cum[pl.p] > 0 || pl.p === me) : players;
   shown = [...shown].sort((a, b) => cum[b.p] - cum[a.p]); // legend high→low
   const idxOf = Object.fromEntries(shown.map((pl, i) => [pl.p, i]));
+  const pmeta = usePlayers();
   const colorOf = (pl) => (pl.p === me ? "var(--app-accent)" : PALETTE[idxOf[pl.p] % PALETTE.length]);
   // Readable text colour for a coloured Kürzel pill (luminance → black/white;
   // the accent uses its paired foreground token).
@@ -166,7 +169,9 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
                         <button onClick={() => { setHighlight(pl.p); setPickOpen(false); setQuery(""); }}
                           className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-overlay ${highlight === pl.p ? "bg-accent/15 font-semibold" : ""}`}>
                           <span className="shrink-0">{pill(pl.p, colorOf(pl), "text-[10px]")}</span>
+                          {pmeta[pl.p]?.isAi && <ProviderLogo provider={pmeta[pl.p].provider} logo={pmeta[pl.p].logo} size={12} />}
                           <span className="truncate">{pl.name}</span>
+                          {pmeta[pl.p]?.isAi && <span className="shrink-0 rounded bg-app-accent/15 px-1 text-[9px] font-bold uppercase text-app-accent">KI</span>}
                           {pl.p === me && <span className="ml-auto text-[10px] text-app-accent">du</span>}
                         </button>
                       </li>

@@ -46,6 +46,23 @@ export async function deleteUser(id) {
   return j(await fetch(`/api/admin/users/${id}`, { method: "DELETE" }), "Löschen fehlgeschlagen");
 }
 
+// ---- AI players ----
+export async function listAiPlayers() {
+  return j(await fetch("/api/admin/ai-players"), "KI-Spieler nicht ladbar"); // { providers, players }
+}
+export async function createAiPlayer(body) {
+  return j(await post("/api/admin/ai-players", body), "Anlegen fehlgeschlagen"); // { player }
+}
+export async function patchAiPlayer(id, fields) {
+  return j(await fetch(`/api/admin/ai-players/${id}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields),
+  }), "Speichern fehlgeschlagen");
+}
+// Connection test; id 0 = test an unsaved key (provider/apiKey/model in body).
+export async function testAiPlayer(id, body) {
+  return j(await post(`/api/admin/ai-players/${id}/test`, body), "Test fehlgeschlagen"); // { ok, error? }
+}
+
 // Download the one-time credentials PDF (available only right after create/reset).
 export async function downloadCredentialsPdf(id, username) {
   const r = await fetch(`/api/admin/users/${id}/credentials.pdf`);

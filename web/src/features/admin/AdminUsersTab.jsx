@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Table, Button, Switch, Chip, Modal, TextField, Input, Label, Spinner } from "@heroui/react";
-import { UserPlus, Users as UsersIcon, FileDown, KeyRound, Trash2, Pencil } from "lucide-react";
-import { listUsers, createBasic, createEntra, patchUser, resetPassword, deleteUser, downloadCredentialsPdf } from "./admin.js";
+import { UserPlus, Users as UsersIcon, FileDown, KeyRound, Trash2, Pencil, Bot } from "lucide-react";
+import { listUsers, createBasic, createEntra, patchUser, resetPassword, deleteUser, downloadCredentialsPdf, listAiPlayers, createAiPlayer, testAiPlayer } from "./admin.js";
 import { fetchEntraUsers } from "@/features/auth/msal.js";
 
 function Field({ label, ...props }) {
@@ -185,15 +185,97 @@ function EditModal({ user, onOpenChange, onSaved }) {
   );
 }
 
+// --- create an AI player (provider + model + encrypted API key) ---
+function AiPlayerModal({ open, onOpenChange, providers, onCreated }) {
+  const [kuerzel, setKuerzel] = useState("");
+  const [name, setName] = useState("");
+  const [provider, setProvider] = useState("");
+  const [model, setModel] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [logo, setLogo] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [test, setTest] = useState(null); // null | "testing" | { ok, error }
+
+  useEffect(() => {
+    if (!open) return;
+    const first = providers?.[0];
+    setKuerzel(""); setName(""); setLogo(""); setApiKey(""); setErr(""); setTest(null);
+    setProvider(first?.id || ""); setModel(first?.defaultModel || "");
+  }, [open, providers]);
+
+  const onProvider = (id) => {
+    setProvider(id);
+    setModel(providers?.find((x) => x.id === id)?.defaultModel || "");
+    setTest(null);
+  };
+  const doTest = async () => {
+    setTest("testing"); setErr("");
+    try { setTest(await testAiPlayer(0, { provider, model, apiKey })); }
+    catch (e) { setTest({ ok: false, error: e.message }); }
+  };
+  const submit = async () => {
+    setErr(""); setBusy(true);
+    try { await createAiPlayer({ kuerzel, name, provider, model, apiKey, logo }); onCreated?.(); onOpenChange(false); }
+    catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <Modal.Backdrop isOpen={open} onOpenChange={onOpenChange}>
+      <Modal.Container placement="center">
+        <Modal.Dialog className="w-full sm:max-w-[440px]">
+          <Modal.CloseTrigger />
+          <Modal.Header><Modal.Heading>KI-Spieler hinzufügen</Modal.Heading></Modal.Header>
+          <Modal.Body>
+            <div className="flex flex-col gap-3">
+              <Field label="Kürzel (z. B. CLD) *" value={kuerzel} onChange={setKuerzel} />
+              <Field label="Anzeigename" value={name} onChange={setName} />
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted">Provider *</span>
+                <select value={provider} onChange={(e) => onProvider(e.target.value)}
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+                  {(providers || []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <Field label="Modell" value={model} onChange={setModel} />
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted">API-Key * (verschlüsselt gespeichert, nie wieder sichtbar)</span>
+                <TextField value={apiKey} onChange={setApiKey}><Input type="password" placeholder="sk-…" /></TextField>
+              </div>
+              <Field label="Logo-URL (optional)" value={logo} onChange={setLogo} />
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" size="sm" onPress={doTest} isDisabled={!provider || !apiKey || test === "testing"}>
+                  {test === "testing" ? "Teste …" : "Verbindung testen"}
+                </Button>
+                {test && test !== "testing" && (test.ok
+                  ? <span className="text-xs text-success">✓ Verbindung ok</span>
+                  : <span className="min-w-0 truncate text-xs text-danger">✗ {test.error || "Fehler"}</span>)}
+              </div>
+              {err && <div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{err}</div>}
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button slot="close" variant="secondary">Abbrechen</Button>
+            <Button variant="primary" onPress={submit} isPending={busy} isDisabled={!kuerzel || !provider || !apiKey}>Anlegen</Button>
+          </Modal.Footer>
+        </Modal.Dialog>
+      </Modal.Container>
+    </Modal.Backdrop>
+  );
+}
+
 export default function AdminUsersTab({ entra, meId, onFlash, autoOpenEntra }) {
   const [users, setUsers] = useState(null);
   const [err, setErr] = useState("");
   const [basicOpen, setBasicOpen] = useState(false);
   const [entraOpen, setEntraOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [providers, setProviders] = useState([]);
   const [edit, setEdit] = useState(null);
 
   const reload = async () => { try { setUsers(await listUsers()); setErr(""); } catch (e) { setErr(e.message); } };
   useEffect(() => { reload(); }, []);
+  useEffect(() => { listAiPlayers().then((d) => setProviders(d.providers || [])).catch(() => {}); }, []);
   // Resume the Entra picker after a Microsoft redirect round-trip.
   useEffect(() => { if (autoOpenEntra) setEntraOpen(true); }, [autoOpenEntra]);
 
@@ -215,6 +297,7 @@ export default function AdminUsersTab({ entra, meId, onFlash, autoOpenEntra }) {
         <h2 className="mr-auto text-sm font-bold uppercase tracking-wider text-muted">Benutzerverwaltung</h2>
         <Button variant="primary" size="sm" onPress={() => setBasicOpen(true)}><UserPlus size={15} /> Basic anlegen</Button>
         {entra && <Button variant="secondary" size="sm" onPress={() => setEntraOpen(true)}><UsersIcon size={15} /> Aus Entra wählen</Button>}
+        <Button variant="secondary" size="sm" onPress={() => setAiOpen(true)}><Bot size={15} /> KI-Spieler</Button>
       </div>
 
       {err && <div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{err}</div>}
@@ -243,7 +326,7 @@ export default function AdminUsersTab({ entra, meId, onFlash, autoOpenEntra }) {
                       <div className="font-semibold">{u.name || "—"}</div>
                       <div className="text-xs text-muted">{u.username || u.upn}</div>
                     </Table.Cell>
-                    <Table.Cell><span className="text-xs text-muted">{u.kind === "entra" ? "Entra" : "Basic"}</span></Table.Cell>
+                    <Table.Cell><span className="text-xs text-muted">{u.isAi ? `KI · ${u.aiProvider || "?"}` : u.kind === "entra" ? "Entra" : "Basic"}</span></Table.Cell>
                     <Table.Cell>
                       <Switch size="sm" aria-label="Admin" isSelected={u.isAdmin} isDisabled={u.id === meId} onChange={(v) => toggle(u, "is_admin", v)}>
                         <Switch.Control><Switch.Thumb /></Switch.Control>
@@ -276,6 +359,7 @@ export default function AdminUsersTab({ entra, meId, onFlash, autoOpenEntra }) {
 
       <BasicModal open={basicOpen} onOpenChange={setBasicOpen} onCreated={reload} />
       {entra && <EntraModal open={entraOpen} onOpenChange={setEntraOpen} onCreated={reload} />}
+      <AiPlayerModal open={aiOpen} onOpenChange={setAiOpen} providers={providers} onCreated={reload} />
       <EditModal user={edit} onOpenChange={(o) => !o && setEdit(null)} onSaved={reload} />
     </div>
   );

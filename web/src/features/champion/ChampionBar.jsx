@@ -1,6 +1,7 @@
 import { Trophy, Lock, Check, X } from "lucide-react";
 import { Card, Chip } from "@heroui/react";
 import Flag from "@/components/Flag.jsx";
+import PlayerName from "@/components/PlayerName.jsx";
 import TeamSelect from "./TeamSelect.jsx";
 import { known } from "@/lib/scoring.js";
 
@@ -50,7 +51,7 @@ export default function ChampionBar({ me, teams, champ, onSetChamp, champBonus, 
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-border pt-2 text-xs">
             {others.map((o) => (
               <span key={o.k} className="inline-flex items-center gap-1.5">
-                <span className="font-semibold">{o.k}</span>
+                <PlayerName kuerzel={o.k} className="font-semibold" />
                 {known(o.code) && <Flag code={o.code} sm />}
                 <span className="text-muted">{teamName(o.code)}</span>
                 {championActual && (o.code === championActual

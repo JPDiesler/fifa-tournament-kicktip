@@ -62,6 +62,28 @@ Test, plus eine Feature-Routing-Matrix. Ohne Konfiguration = Einzel-Provider aus
 Torschützen/Karten werden nur von einer **fähigen** Quelle und nur für laufende/gerade
 beendete Spiele geholt (Cap via `DETAIL_MAX_PER_SYNC`).
 
+## KI-Spieler (LLM-Tipper)
+KI-Spieler nehmen wie menschliche Spieler am Tippspiel teil — sie werden regulär
+gewertet und erscheinen überall mit **Kürzel + „KI"-Badge + Provider-Logo**.
+
+- **Anlegen:** Web-Admin → **Nutzer → „KI-Spieler"**: Kürzel, Provider (Claude/OpenAI;
+  Gemini/Mistral folgen), Modell (sinnvoller Default) und **API-Key**. Der Key wird
+  **verschlüsselt** gespeichert (`AI_KEY_SECRET`, Fallback `SESSION_SECRET`), **nie** ans
+  Frontend ausgeliefert und **nie** geloggt. Optionaler **Verbindungstest** beim Anlegen.
+- **Tippen:** ein Scheduler (`AI_TIP_CRON`, jede Minute) legt pro Spiel **genau einen**
+  Tipp ab — getriggert bei **Anpfiff − 10 min**, garantiert vor der 5-min-Sperre. Pro
+  (KI-Spieler, Spiel) gibt es **höchstens einen LLM-Call** (DB-Unique-Constraint +
+  „attempted"-Status). Bei Fehlschlag: kein Tipp (deterministischer Fallback optional via
+  `AI_FALLBACK`). Zusätzlich ein einmaliger **Weltmeister-Tipp** vor K.o.-Start.
+- **Modell:** je Spiel ein quell-abhängiges Daten-Bundle (api-football: Predictions/
+  Poisson/Form/Lineups/Injuries · football-data: Tabellen/Form/H2H) → System-Prompt →
+  kanonisches JSON (Dixon-Coles/EV-Maximierung). Prompts liegen extern in
+  `server/prompts/*.md` und sind **ohne Rebuild** editierbar (mtime-Reload; per
+  Bind-Mount, siehe `docker-compose.yml`).
+- **Begründung:** Klick auf einen KI-Tipp öffnet die Analyse (deutsches Reasoning, λ,
+  Wahrscheinlichkeiten, Konfidenz). Sichtbar erst **nach Anpfiff**
+  (`AI_REASONING_VISIBLE_AFTER=kickoff|lock`), damit kein Tipp-Vorteil entsteht.
+
 ## „Wo zu sehen" (Deutschland)
 Lineare Sender (ARD/ZDF/RTL/Sky/DAZN/Eurosport) werden aus einem deutschen
 TV-Programm (XMLTV/EPG, `EPG_URL`) per Teamname + Anstoßzeit den Spielen zugeordnet;

@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Drawer, Chip } from "@heroui/react";
-import { Lock, ChevronDown } from "lucide-react";
+import { Lock, ChevronDown, Info } from "lucide-react";
 import Flag from "@/components/Flag.jsx";
+import PlayerName from "@/components/PlayerName.jsx";
+import AiReasoning from "./AiReasoning.jsx";
 import ScoreInput from "./ScoreInput.jsx";
 import PointsBadge from "@/components/PointsBadge.jsx";
 import BroadcastButtons from "@/features/broadcasts/BroadcastButtons.jsx";
@@ -32,6 +34,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   // Accordion: only one of Spielverlauf / Aufstellung open at a time (Verlauf default).
   const [section, setSection] = useState("verlauf");
   const toggleSection = (id) => setSection((s) => (s === id ? null : id));
+  const [reasonFor, setReasonFor] = useState(null); // kürzel of the AI tip whose reasoning is open
   const broadcasts = match ? (st.broadcasts?.[match.n] || []) : [];
   if (!match) {
     return <Drawer.Backdrop isOpen={false} onOpenChange={() => onClose()}><Drawer.Content placement="bottom"><Drawer.Dialog /></Drawer.Content></Drawer.Backdrop>;
@@ -64,6 +67,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
     : tipped.filter((o) => !o.isMe);                           // pre-score → just the others' tips
 
   return (
+    <>
     <Drawer.Backdrop isOpen={isOpen} onOpenChange={(o) => !o && onClose()}>
       <Drawer.Content placement="bottom">
         <Drawer.Dialog className="mx-auto flex max-h-[88vh] w-full max-w-2xl flex-col">
@@ -158,18 +162,26 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
                 <p className="rounded-xl border border-border bg-overlay p-3 text-center text-xs text-muted">Niemand{effRes ? "" : " sonst"} hat getippt.</p>
               ) : (
                 <div className="max-h-72 overflow-y-auto rounded-xl border border-border">
-                  {displayList.map((o, i) => (
-                    <div key={o.k} className={`flex items-center justify-between px-3 py-2 text-sm ${i ? "border-t border-border" : ""} ${o.isMe ? "bg-accent/10" : ""}`}>
-                      <span className="flex items-center gap-1.5 font-semibold">
-                        {effRes && <span className="w-4 text-right text-xs tabular-nums text-muted">{i + 1}</span>}
-                        {o.k}{o.isMe && <span className="text-[10px] text-app-accent">du</span>}
-                      </span>
-                      <span className="flex items-center gap-2">
-                        <span className="tabular-nums">{o.tip.h}:{o.tip.a}</span>
-                        <PointsBadge points={o.pts} />
-                      </span>
-                    </div>
-                  ))}
+                  {displayList.map((o, i) => {
+                    const isAi = !!st.players?.[o.k]?.isAi; // AI tips are clickable → reasoning
+                    return (
+                      <div key={o.k}
+                        role={isAi ? "button" : undefined} tabIndex={isAi ? 0 : undefined}
+                        onClick={isAi ? () => setReasonFor(o.k) : undefined}
+                        onKeyDown={isAi ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setReasonFor(o.k); } } : undefined}
+                        className={`flex items-center justify-between px-3 py-2 text-sm ${i ? "border-t border-border" : ""} ${o.isMe ? "bg-accent/10" : ""} ${isAi ? "cursor-pointer hover:bg-overlay" : ""}`}>
+                        <span className="flex min-w-0 items-center gap-1.5 font-semibold">
+                          {effRes && <span className="w-4 shrink-0 text-right text-xs tabular-nums text-muted">{i + 1}</span>}
+                          <PlayerName kuerzel={o.k} />{o.isMe && <span className="shrink-0 text-[10px] text-app-accent">du</span>}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          <span className="tabular-nums">{o.tip.h}:{o.tip.a}</span>
+                          <PointsBadge points={o.pts} />
+                          {isAi && <Info size={13} className="text-muted" />}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -177,5 +189,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
         </Drawer.Dialog>
       </Drawer.Content>
     </Drawer.Backdrop>
+    <AiReasoning matchN={n} player={reasonFor} providerMeta={reasonFor ? st.players?.[reasonFor] : null} onClose={() => setReasonFor(null)} />
+    </>
   );
 }

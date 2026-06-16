@@ -3,6 +3,7 @@ import { Table, Pagination, Button } from "@heroui/react";
 import { Check, X, Share2 } from "lucide-react";
 import { known } from "@/lib/scoring.js";
 import Flag from "@/components/Flag.jsx";
+import PlayerName from "@/components/PlayerName.jsx";
 import ScoreTrend from "./ScoreTrend.jsx";
 import MyStatsTab from "@/features/stats/MyStatsTab.jsx";
 import PointsHistory from "@/features/stats/PointsHistory.jsx";
@@ -85,7 +86,7 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
                     <Table.Row key={t.p} id={t.p} className={t.p === me ? "bg-accent/10" : ""}>
                       <Table.Cell className="px-2 font-bold text-muted sm:px-4">{start + i + 1}</Table.Cell>
                       <Table.Cell className="px-2 sm:px-4">
-                        <div className="max-w-[7.5rem] truncate font-semibold sm:max-w-none">{t.name || t.p}</div>
+                        <PlayerName kuerzel={t.p} showName className="max-w-[7.5rem] font-semibold sm:max-w-none" />
                         {t.name && t.name !== t.p && <div className="text-xs text-muted">{t.p}</div>}
                       </Table.Cell>
                       <Table.Cell className="px-2 text-center text-base font-bold text-success sm:px-4">{t.sum}</Table.Cell>

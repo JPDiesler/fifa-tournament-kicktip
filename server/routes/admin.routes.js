@@ -9,7 +9,9 @@ import {
   getDataToken, setDataToken, dataTokenFromDb, getCapabilities, setCapabilities,
   getProviderToken, setProviderToken, providerTokenFromDb, getProviderCaps, setProviderCaps,
   getSourceConfig, setSourceConfig, getLivePollSeconds, setLivePollSeconds, getProviderDelay,
+  listAiPlayers, createAiPlayer, updateAiPlayer, getAiPlayerById, getAiPlayerKey,
 } from "../db.js";
+import { AI_PROVIDERS, getAiAdapter, isKnownProvider } from "../services/ai/index.js";
 import { requireAdmin, adminUserDto, hashPassword } from "../middleware/auth.js";
 import { sync, runBackfill } from "../services/sync.js";
 import { activeSource, probeSource, getAdapter, listAdapters, DEFAULT_SOURCE } from "../services/sources/index.js";
@@ -209,6 +211,54 @@ router.delete("/admin/users/:id", requireAdmin, (req, res) => {
   if (u.is_admin && countAdmins() <= 1) return res.status(400).json({ error: "Der letzte aktive Admin kann nicht gelöscht werden" });
   deleteUser(u.id);
   res.json({ ok: true });
+});
+
+// ---------- AI players (admin-only; API keys are write-only + never returned) ----------
+router.get("/admin/ai-players", requireAdmin, (req, res) => {
+  res.json({
+    providers: AI_PROVIDERS, // [{ id, name, defaultModel }]
+    players: listAiPlayers().map((u) => ({
+      id: u.id, kuerzel: u.kuerzel, name: u.name, provider: u.ai_provider,
+      model: u.ai_model, logo: u.ai_logo, isActive: !!u.is_active, hasKey: !!u.ai_key_enc,
+    })),
+  });
+});
+router.post("/admin/ai-players", requireAdmin, (req, res) => {
+  const b = req.body || {};
+  const kuerzel = cleanKuerzel(b.kuerzel);
+  const provider = (b.provider || "").trim();
+  const apiKey = (b.apiKey || "").trim();
+  if (!kuerzel) return res.status(400).json({ error: "Kürzel fehlt" });
+  if (getUserByKuerzel(kuerzel)) return res.status(409).json({ error: "Kürzel bereits vergeben" });
+  if (!isKnownProvider(provider)) return res.status(400).json({ error: "Unbekannter Provider" });
+  if (!apiKey) return res.status(400).json({ error: "API-Key fehlt" });
+  const u = createAiPlayer({ kuerzel, name: (b.name || "").trim() || null, provider, model: (b.model || "").trim() || null, apiKey, logo: (b.logo || "").trim() || null });
+  res.json({ player: adminUserDto(u) });
+});
+router.patch("/admin/ai-players/:id", requireAdmin, (req, res) => {
+  const u = getAiPlayerById(+req.params.id);
+  if (!u) return res.status(404).json({ error: "nicht gefunden" });
+  const b = req.body || {};
+  if (b.provider && !isKnownProvider(b.provider)) return res.status(400).json({ error: "Unbekannter Provider" });
+  if ("kuerzel" in b) {
+    const k = cleanKuerzel(b.kuerzel);
+    if (k && k !== u.kuerzel) { const other = getUserByKuerzel(k); if (other) return res.status(409).json({ error: "Kürzel bereits vergeben" }); updateUser(u.id, { kuerzel: k }); }
+  }
+  const updated = updateAiPlayer(u.id, { name: b.name, provider: b.provider, model: b.model, logo: b.logo, apiKey: b.apiKey, is_active: b.isActive });
+  res.json({ player: adminUserDto(updated) });
+});
+// Minimal connection test (no match prompt). Works for a saved player OR an unsaved
+// key (id 0 + provider/apiKey in the body) so the admin can verify before creating.
+router.post("/admin/ai-players/:id/test", requireAdmin, async (req, res) => {
+  const u = +req.params.id ? getAiPlayerById(+req.params.id) : null;
+  const provider = (req.body?.provider || u?.ai_provider || "").trim();
+  const model = (req.body?.model || u?.ai_model || "").trim() || undefined;
+  const apiKey = (req.body?.apiKey || "").trim() || (u ? getAiPlayerKey(u.id) : null);
+  const adapter = getAiAdapter(provider);
+  if (!adapter) return res.status(400).json({ error: "Unbekannter Provider" });
+  if (!apiKey) return res.status(400).json({ error: "Kein API-Key" });
+  try { await adapter.testConnection({ apiKey, model }); res.json({ ok: true }); }
+  catch (e) { res.json({ ok: false, error: String(e?.message || e).split(apiKey).join("***").slice(0, 300) }); }
 });
 
 export default router;

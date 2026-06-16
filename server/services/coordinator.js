@@ -42,6 +42,17 @@ function dailyOk(id, limit) {
   return !pc || pc.date !== today || pc.count < limit;
 }
 
+// Budget-gated ancillary single call (used by the AI-player bundle builder). Returns
+// null if over the provider's per-minute or daily budget — or on error — otherwise
+// notes the call against the SAME budgets the sync uses and returns fn()'s result.
+export async function budgetedCall(id, fn) {
+  const ad = getAdapter(id);
+  if (!ad) return null;
+  if (!rateOk(id, ad.rateLimit()) || !dailyOk(id, ad.dailyLimit())) return null;
+  noteCall(id);
+  try { return await fn(); } catch { return null; }
+}
+
 // ---- routing (with default = DATA_SOURCE for every feature) ----
 export function effectiveConfig() {
   const cfg = getSourceConfig() || {};

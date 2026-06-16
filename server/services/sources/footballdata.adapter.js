@@ -76,6 +76,22 @@ async function fetchDetail(extId, ctx) {
   return { scorers, cards, subs };
 }
 
+// --- AI-bundle data (pre-match): the raw match (h2h), competition standings, recent team form ---
+async function fetchMatch(extId) {
+  const r = await fetch(`${BASE}/matches/${extId}`, H());
+  return r.json();
+}
+async function fetchStandings() {
+  const season = process.env.FOOTBALL_DATA_SEASON || "";
+  const url = `${BASE}/competitions/${comp()}/standings` + (season ? `?season=${season}` : "");
+  const r = await fetch(url, H());
+  return r.json();
+}
+async function fetchTeamMatches(teamId, limit = 5) {
+  const r = await fetch(`${BASE}/teams/${teamId}/matches?status=FINISHED&limit=${limit}`, H());
+  return r.json();
+}
+
 // Best-known capabilities without a probe. Free tier: scores/phase/results yes,
 // but DELAYED; minute/scorers/cards unknown until probed (null).
 const declaredCaps = () => ({ results: true, liveScore: true, phase: true, liveMinute: null, scorers: null, cards: null, realtime: false });
@@ -117,5 +133,5 @@ export const footballdata = {
   rateLimit: () => { const o = getProviderLimits("footballdata").rateLimit; return Number.isFinite(o) ? o : Number(process.env.FOOTBALL_DATA_RATE_LIMIT || 10); },
   dailyLimit: () => { const o = getProviderLimits("footballdata").dailyLimit; return o === null ? null : Number.isFinite(o) ? o : (process.env.FOOTBALL_DATA_DAILY_LIMIT ? Number(process.env.FOOTBALL_DATA_DAILY_LIMIT) : null); },
   configured: () => !!getDataToken(),
-  declaredCaps, fetchFixtures, fetchDetail, probe,
+  declaredCaps, fetchFixtures, fetchDetail, fetchMatch, fetchStandings, fetchTeamMatches, probe,
 };

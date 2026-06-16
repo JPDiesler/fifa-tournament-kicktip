@@ -18,8 +18,9 @@ import Bracket from "@/features/matches/Bracket.jsx";
 import MatchDetail from "@/features/matches/MatchDetail.jsx";
 import BroadcastDrawer from "@/features/broadcasts/BroadcastDrawer.jsx";
 import LeaderboardTab from "@/features/leaderboard/LeaderboardTab.jsx";
+import { PlayersContext } from "@/components/PlayerName.jsx";
 
-const EMPTY_STATE = { tips: {}, champs: {}, results: {}, resolved: {}, live: {}, broadcasts: {}, details: {}, championActual: "", capabilities: null, meta: {}, locks: {} };
+const EMPTY_STATE = { tips: {}, champs: {}, results: {}, resolved: {}, live: {}, broadcasts: {}, details: {}, players: {}, championActual: "", capabilities: null, meta: {}, locks: {} };
 const GROUP_PHASES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
 
 export default function App() {
@@ -164,6 +165,7 @@ export default function App() {
   ];
 
   return (
+    <PlayersContext.Provider value={st.players || {}}>
     <div className="min-h-dvh">
       <Navbar
         user={user}
@@ -308,5 +310,6 @@ export default function App() {
         </div>
       )}
     </div>
+    </PlayersContext.Provider>
   );
 }

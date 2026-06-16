@@ -9,7 +9,7 @@ import { fetchMerged, fetchDetails, effectiveCapabilities } from "./coordinator.
 import {
   setResult, setResolved, clearResolved, replaceLive, liveByMatch,
   getMeta, setMeta, getChampionActual, setChampionActual, setCapabilities,
-  setMatchDetail, setMatchFinalTime, setMatchLineups, detailByMatch,
+  setMatchDetail, setMatchFinalTime, setMatchLineups, detailByMatch, setMatchExtIds,
 } from "../db.js";
 import { notifyKickoff, notifyGoal, notifyFinal } from "./push.js";
 
@@ -72,6 +72,9 @@ export async function sync(reason = "cron") {
 
     for (const rec of fixtures) {
       const n = rec.n;
+      // Persist provider fixture ids so the AI-tip scheduler can build a data bundle
+      // for a match without re-fetching the whole fixture list.
+      if (rec.extIds && Object.keys(rec.extIds).length) setMatchExtIds(n, rec.extIds);
       if (rec.ko) {
         // K.o.: store the API-resolved teams (+ winner side, so a shootout winner
         // is known even when the fulltime score is level).
