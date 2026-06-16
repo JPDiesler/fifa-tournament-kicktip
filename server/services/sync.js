@@ -47,6 +47,12 @@ function finalClock(rec, prev, detail) {
 }
 // Total played seconds of a final clock, for "only ever upgrade" comparisons (-1 = none).
 const finalTot = (f) => (f && f.minute != null ? f.minute + (f.injury || 0) : -1);
+// Persist scorers/cards but never let an empty side ERASE already-stored events: a
+// provider returns all events of a match at once, so a momentarily empty response is
+// a glitch (or an early live snapshot), not a real "no events". Keeps the richer side.
+function writeDetail(n, d, have) {
+  setMatchDetail(n, d.scorers?.length ? d.scorers : have[n]?.scorers || [], d.cards?.length ? d.cards : have[n]?.cards || []);
+}
 
 export async function sync(reason = "cron") {
   try {
@@ -117,7 +123,7 @@ export async function sync(reason = "cron") {
       if (need.size) {
         const r = await fetchDetails(fixtures, byProvider, routing, need);
         details = r.details;
-        for (const [n, d] of Object.entries(details)) setMatchDetail(n, d.scorers, d.cards);
+        for (const [n, d] of Object.entries(details)) writeDetail(n, d, have);
         if (r.capped) console.log("Detail-Limit erreicht – einige Spiele ausgelassen.");
       }
       // Final match clock from the best source (live snapshot / events / nominal).
@@ -163,7 +169,7 @@ export async function backfillDetails() {
 
   const { details, capable } = await fetchDetails(fixtures, byProvider, routing, need, { max: need.size });
   let fetched = 0;
-  for (const [n, d] of Object.entries(details)) { setMatchDetail(n, d.scorers, d.cards); fetched++; }
+  for (const [n, d] of Object.entries(details)) { writeDetail(n, d, have); fetched++; }
   // Final clock for finished matches — upgrade to a larger time from fresh/stored
   // events (corrects an earlier nominal 90 → 90+2), never shrink.
   for (const f of fixtures) {
