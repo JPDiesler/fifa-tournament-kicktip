@@ -70,7 +70,34 @@ async function fetchDetail(extId, ctx) {
   const cards = ev
     .filter((e) => e.type === "Card")
     .map((e) => ({ team: e.team?.name || null, player: e.player?.name || null, minute: e.time?.elapsed ?? null, injury: e.time?.extra ?? null, card: e.detail || null, side: sideOf(e.team?.name, ctx) }));
-  return { scorers, cards };
+  // Substitutions: api-football's subst event carries the player going OFF in `player`
+  // and the one coming ON in `assist` (verified against live data, despite the docs).
+  const subs = ev
+    .filter((e) => e.type === "subst")
+    .map((e) => ({ minute: e.time?.elapsed ?? null, injury: e.time?.extra ?? null, in: e.assist?.name || null, out: e.player?.name || null, side: sideOf(e.team?.name, ctx) }));
+  return { scorers, cards, subs };
+}
+
+// Starting lineups + bench/formation/coach, oriented to the static home/away (via ctx).
+async function fetchLineups(extId, ctx) {
+  const r = await fetch(`${BASE}/fixtures/lineups?fixture=${extId}`, H());
+  const j = await r.json();
+  const arr = Array.isArray(j.response) ? j.response : [];
+  if (arr.length < 2) return null; // lineups usually publish ~1h before kickoff
+  const mapTeam = (t) => ({
+    formation: t.formation || null,
+    coach: t.coach?.name || null,
+    startXI: (t.startXI || []).map((e) => ({ n: e.player?.number ?? null, name: e.player?.name || null, pos: e.player?.pos || null, grid: e.player?.grid || null })),
+    bench: (t.substitutes || []).map((e) => ({ n: e.player?.number ?? null, name: e.player?.name || null, pos: e.player?.pos || null })),
+  });
+  const out = { home: null, away: null };
+  for (const t of arr) {
+    const side = sideOf(t.team?.name, ctx);
+    if (side === "h") out.home = mapTeam(t);
+    else if (side === "a") out.away = mapTeam(t);
+  }
+  if (!out.home && !out.away) { const a = mapTeam(arr[0]), b = mapTeam(arr[1]); out.home = ctx?.swap ? b : a; out.away = ctx?.swap ? a : b; }
+  return out;
 }
 
 // Paid real-time provider: assume the full feature set (confirmed by probe).
@@ -99,5 +126,5 @@ export const apifootball = {
   rateLimit: () => { const o = getProviderLimits("apifootball").rateLimit; return Number.isFinite(o) ? o : Number(process.env.API_RATE_LIMIT || 10); },
   dailyLimit: () => { const o = getProviderLimits("apifootball").dailyLimit; return o === null ? null : Number.isFinite(o) ? o : Number(process.env.API_DAILY_LIMIT || 100); },
   configured: () => !!key(),
-  declaredCaps, fetchFixtures, fetchDetail, probe,
+  declaredCaps, fetchFixtures, fetchDetail, fetchLineups, probe,
 };

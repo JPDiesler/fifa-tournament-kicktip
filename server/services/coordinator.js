@@ -135,16 +135,17 @@ export function mergeFixtures(byProvider, fetched, routing) {
 // whose caps declare scorers/cards true are used → no extra calls on the free
 // default (football-data, caps null). Returns { details:{n:{scorers,cards}}, capped }.
 const DETAIL_MAX = Number(process.env.DETAIL_MAX_PER_SYNC || 8);
-export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max = DETAIL_MAX } = {}) {
+export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max = DETAIL_MAX, lineupNs = null } = {}) {
   const capsOf = (id) => getProviderCaps(id) || getAdapter(id)?.declaredCaps() || {};
   const sProv = (routing.scorers || []).find((id) => capsOf(id).scorers === true);
   const cProv = (routing.cards || []).find((id) => capsOf(id).cards === true);
-  if (!sProv && !cProv) return { details: {}, capped: false, capable: false, queried: [] };
+  if (!sProv && !cProv) return { details: {}, lineups: {}, capped: false, capable: false, queried: [] };
+  const lProv = [sProv, cProv].find((id) => id && getAdapter(id)?.fetchLineups); // provider for the starting lineup
 
   const targets = fixtures.filter((f) => (f.live || f.finished) && (!matchNs || matchNs.has(f.n)));
-  const cache = new Map(); // `${id}:${n}` → {scorers,cards}|null
-  const details = {};
-  const queried = new Set(); // matches we actually fetched (a real response, even if empty)
+  const cache = new Map(); // `${id}:${n}` → {scorers,cards,subs}|null
+  const details = {}, lineups = {};
+  const queried = new Set(); // matches we fully fetched (events + lineup if requested)
   let calls = 0, capped = false;
 
   const get = async (provId, n) => {
@@ -162,14 +163,28 @@ export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max
     catch { cache.set(k, null); return null; }
   };
 
+  // Lineups: a separate endpoint, only fetched for matches that still need it
+  // (lineupNs). Rate/daily-gated but not bound by `max` (it piggybacks the events pass).
+  const getLineups = async (n) => {
+    const fx = byProvider[lProv]?.[n];
+    if (fx?.extId == null) return null;
+    const ad = getAdapter(lProv);
+    if (!rateOk(lProv, ad.rateLimit()) || !dailyOk(lProv, ad.dailyLimit())) { capped = true; return null; }
+    try { noteCall(lProv); calls++; return await ad.fetchLineups(fx.extId, { homeName: fx.homeName, awayName: fx.awayName, swap: fx.swap }); }
+    catch { return null; }
+  };
+
   for (const f of targets) {
     const sd = await get(sProv, f.n);
     const cd = sProv === cProv ? sd : await get(cProv, f.n);
-    if (sd !== null || cd !== null) queried.add(f.n); // got a real response → don't keep retrying this one
-    const scorers = sd?.scorers || [], cards = cd?.cards || [];
-    if (scorers.length || cards.length) details[f.n] = { scorers, cards };
+    const eventsOk = sd !== null || cd !== null; // got a real response
+    const scorers = sd?.scorers || [], cards = cd?.cards || [], subs = sd?.subs || [];
+    if (scorers.length || cards.length || subs.length) details[f.n] = { scorers, cards, subs };
+    let lineupOk = true;
+    if (lineupNs?.has(f.n) && lProv) { const lu = await getLineups(f.n); if (lu) lineups[f.n] = lu; else lineupOk = false; }
+    if (eventsOk && lineupOk) queried.add(f.n); // fully done → don't keep retrying
   }
-  return { details, capped, capable: true, queried: [...queried] };
+  return { details, lineups, capped, capable: true, queried: [...queried] };
 }
 
 const RESERVE = Math.min(0.5, Math.max(0, Number(process.env.POLL_BUDGET_RESERVE || 0.15)));

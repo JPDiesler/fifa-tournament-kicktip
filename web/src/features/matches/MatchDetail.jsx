@@ -1,17 +1,37 @@
+import { useState } from "react";
 import { Drawer, Chip } from "@heroui/react";
-import { Lock } from "lucide-react";
+import { Lock, ChevronDown } from "lucide-react";
 import Flag from "@/components/Flag.jsx";
 import ScoreInput from "./ScoreInput.jsx";
 import PointsBadge from "@/components/PointsBadge.jsx";
 import BroadcastButtons from "@/features/broadcasts/BroadcastButtons.jsx";
 import { LiveTag, LivePhase } from "./LiveBadge.jsx";
-import { GoalIcon, CardIcon } from "@/components/MatchIcons.jsx";
+import Lineups from "./Lineups.jsx";
+import MatchTimeline from "./MatchTimeline.jsx";
 import { PHASES } from "@/lib/scoring.js";
-import { countdown, kickoffMs, delayLabel, eventMinute, goalMark, isRedCard, finalClockLabel } from "@/lib/matchtime.js";
+import { countdown, kickoffMs, delayLabel, finalClockLabel } from "@/lib/matchtime.js";
+
+// Collapsible section (header + chevron). Controlled, so the two sections can be
+// coupled into an accordion (opening one closes the other).
+function Section({ title, open, onToggle, children }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-overlay">
+      <button type="button" onClick={onToggle} aria-expanded={open}
+        className="flex w-full items-center justify-between px-3 py-2 text-xs font-bold uppercase tracking-wider text-muted">
+        {title}
+        <ChevronDown size={16} className={`shrink-0 transition-transform ${open ? "" : "-rotate-90"}`} />
+      </button>
+      {open && <div className="border-t border-border p-3">{children}</div>}
+    </div>
+  );
+}
 
 // Bottom-sheet detail for one match: final score, your tip (disabled when
 // locked), and the other players' tips (revealed only once the match is locked).
 export default function MatchDetail({ match, isOpen, onClose, st, board, me, teamLabel, teamCode, score, onTip }) {
+  // Accordion: only one of Spielverlauf / Aufstellung open at a time (Verlauf default).
+  const [section, setSection] = useState("verlauf");
+  const toggleSection = (id) => setSection((s) => (s === id ? null : id));
   const broadcasts = match ? (st.broadcasts?.[match.n] || []) : [];
   if (!match) {
     return <Drawer.Backdrop isOpen={false} onOpenChange={() => onClose()}><Drawer.Content placement="bottom"><Drawer.Dialog /></Drawer.Content></Drawer.Backdrop>;
@@ -46,12 +66,14 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   return (
     <Drawer.Backdrop isOpen={isOpen} onOpenChange={(o) => !o && onClose()}>
       <Drawer.Content placement="bottom">
-        <Drawer.Dialog className="mx-auto max-h-[88vh] w-full max-w-2xl">
+        <Drawer.Dialog className="mx-auto flex max-h-[88vh] w-full max-w-2xl flex-col">
           <Drawer.Handle />
           <Drawer.Header>
             <Drawer.Heading className="text-sm text-muted">{phaseLabel} · Spiel {n}</Drawer.Heading>
           </Drawer.Header>
-          <Drawer.Body className="flex flex-col gap-5 pb-8">
+          {/* Block (not flex) so children keep their height and the body actually
+              scrolls — a flex column would shrink them to fit and clip the content. */}
+          <Drawer.Body className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain pb-8">
             {/* teams + big score */}
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 flex-1 flex-col items-center gap-1 text-center">
@@ -88,39 +110,18 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
               </div>
             )}
 
-            {/* scorers & cards (only when a capable provider feeds them) */}
-            {detail && (detail.scorers?.length > 0 || detail.cards?.length > 0) && (
-              <div>
-                <div className="mb-1.5 px-1 text-xs font-bold uppercase tracking-wider text-muted">Tore &amp; Karten</div>
-                <div className="rounded-xl border border-border bg-overlay p-3 text-sm">
-                  {detail.scorers?.length > 0 && (
-                    <ul className="space-y-0.5">
-                      {detail.scorers.map((g, i) => (
-                        <li key={`g${i}`} className="flex items-center gap-2">
-                          <GoalIcon className="shrink-0 text-foreground" />
-                          <span className="min-w-0 flex-1 truncate">
-                            {g.player || "—"}
-                            {goalMark(g.type) && <span className="text-muted"> {goalMark(g.type)}</span>}
-                            {g.team && <span className="text-muted"> · {g.team}</span>}
-                          </span>
-                          {eventMinute(g) && <span className="shrink-0 tabular-nums text-muted">{eventMinute(g)}</span>}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {detail.cards?.length > 0 && (
-                    <ul className={`space-y-0.5 ${detail.scorers?.length ? "mt-2 border-t border-border pt-2" : ""}`}>
-                      {detail.cards.map((c, i) => (
-                        <li key={`c${i}`} className="flex items-center gap-2">
-                          <CardIcon red={isRedCard(c.card)} className="shrink-0" />
-                          <span className="min-w-0 flex-1 truncate">{c.player || "—"}{c.team && <span className="text-muted"> · {c.team}</span>}</span>
-                          {eventMinute(c) && <span className="shrink-0 tabular-nums text-muted">{eventMinute(c)}</span>}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
+            {/* Spielverlauf — chronological goals/cards/subs (home left, away right) */}
+            {detail && (detail.scorers?.length > 0 || detail.cards?.length > 0 || detail.subs?.length > 0) && (
+              <Section title="Spielverlauf" open={section === "verlauf"} onToggle={() => toggleSection("verlauf")}>
+                <MatchTimeline detail={detail} home={home} away={away} />
+              </Section>
+            )}
+
+            {/* Startaufstellung — one team per card, pitch graphic */}
+            {detail?.lineups && (
+              <Section title="Aufstellung" open={section === "aufstellung"} onToggle={() => toggleSection("aufstellung")}>
+                <Lineups lineups={detail.lineups} home={home} away={away} />
+              </Section>
             )}
 
             {/* my tip */}

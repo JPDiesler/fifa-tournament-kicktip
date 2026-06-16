@@ -9,7 +9,7 @@ import { fetchMerged, fetchDetails, effectiveCapabilities } from "./coordinator.
 import {
   setResult, setResolved, clearResolved, replaceLive, liveByMatch,
   getMeta, setMeta, getChampionActual, setChampionActual, setCapabilities,
-  setMatchDetail, setMatchFinalTime, detailByMatch,
+  setMatchDetail, setMatchFinalTime, setMatchLineups, detailByMatch,
 } from "../db.js";
 import { notifyKickoff, notifyGoal, notifyFinal } from "./push.js";
 
@@ -51,7 +51,10 @@ const finalTot = (f) => (f && f.minute != null ? f.minute + (f.injury || 0) : -1
 // provider returns all events of a match at once, so a momentarily empty response is
 // a glitch (or an early live snapshot), not a real "no events". Keeps the richer side.
 function writeDetail(n, d, have) {
-  setMatchDetail(n, d.scorers?.length ? d.scorers : have[n]?.scorers || [], d.cards?.length ? d.cards : have[n]?.cards || []);
+  setMatchDetail(n,
+    d.scorers?.length ? d.scorers : have[n]?.scorers || [],
+    d.cards?.length ? d.cards : have[n]?.cards || [],
+    d.subs?.length ? d.subs : have[n]?.subs || []);
 }
 
 export async function sync(reason = "cron") {
@@ -119,11 +122,13 @@ export async function sync(reason = "cron") {
         ...Object.keys(liveMap).map(Number),
         ...fixtures.filter((f) => f.finished && (have[f.n]?.final == null || !(have[f.n]?.scorers?.length || have[f.n]?.cards?.length))).map((f) => f.n),
       ]);
+      const lineupNs = new Set([...need].filter((n) => !have[n]?.lineups)); // fetch each lineup once
       let details = {};
       if (need.size) {
-        const r = await fetchDetails(fixtures, byProvider, routing, need);
+        const r = await fetchDetails(fixtures, byProvider, routing, need, { lineupNs });
         details = r.details;
         for (const [n, d] of Object.entries(details)) writeDetail(n, d, have);
+        for (const [n, lu] of Object.entries(r.lineups)) setMatchLineups(n, lu);
         if (r.capped) console.log("Detail-Limit erreicht – einige Spiele ausgelassen.");
       }
       // Final match clock from the best source (live snapshot / events / nominal).
@@ -174,9 +179,11 @@ export async function backfillDetails({ force = false, skip = null } = {}) {
   }).map((f) => f.n));
   if (!need.size) return { remaining: 0, fetched: 0, capable: true, queried: [] };
 
-  const { details, capable, queried } = await fetchDetails(fixtures, byProvider, routing, need, { max: need.size });
+  const lineupNs = force ? need : new Set([...need].filter((n) => !have[n]?.lineups));
+  const { details, lineups, capable, queried } = await fetchDetails(fixtures, byProvider, routing, need, { max: need.size, lineupNs });
   let fetched = 0;
   for (const [n, d] of Object.entries(details)) { writeDetail(n, d, have); fetched++; }
+  for (const [n, lu] of Object.entries(lineups)) setMatchLineups(n, lu);
   // Final clock for finished matches — upgrade to a larger time from fresh/stored
   // events (corrects an earlier nominal 90 → 90+2), never shrink.
   for (const f of fixtures) {

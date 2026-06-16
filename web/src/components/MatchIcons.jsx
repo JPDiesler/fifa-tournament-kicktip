@@ -20,10 +20,11 @@ export function GoalIcon({ size = 14, className = "" }) {
   );
 }
 
-// Booking card: a small rounded rectangle in the canonical yellow/red.
-export function CardIcon({ red = false, className = "" }) {
-  return (
-    <span aria-hidden
-      className={`inline-block h-[13px] w-[9px] shrink-0 rounded-[2px] ${red ? "bg-red-500" : "bg-yellow-400"} ${className}`} />
-  );
+// Booking card: a small rounded rectangle. kind "yellow" | "red" | "yellowred"
+// (the last is a diagonally split yellow/red card for a second-yellow dismissal).
+export function CardIcon({ kind = "yellow", className = "" }) {
+  const bg = kind === "red" ? "#ef4444"
+    : kind === "yellowred" ? "linear-gradient(135deg,#facc15 0 50%,#ef4444 50% 100%)"
+    : "#facc15";
+  return <span aria-hidden style={{ background: bg }} className={`inline-block h-[13px] w-[9px] shrink-0 rounded-[2px] ${className}`} />;
 }

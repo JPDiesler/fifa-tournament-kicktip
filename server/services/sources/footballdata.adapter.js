@@ -69,7 +69,11 @@ async function fetchDetail(extId, ctx) {
     team: b.team?.name || null, player: b.player?.name || null,
     minute: b.minute ?? null, card: b.card || null, side: sideOf(b.team?.name, ctx),
   })) : [];
-  return { scorers, cards };
+  const subs = Array.isArray(d.substitutions) ? d.substitutions.map((s) => ({
+    minute: s.minute ?? null, injury: null,
+    in: s.playerIn?.name || null, out: s.playerOut?.name || null, side: sideOf(s.team?.name, ctx),
+  })) : [];
+  return { scorers, cards, subs };
 }
 
 // Best-known capabilities without a probe. Free tier: scores/phase/results yes,

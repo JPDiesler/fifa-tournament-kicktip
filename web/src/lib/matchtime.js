@@ -67,6 +67,16 @@ export const goalMark = (type) => (type === "penalty" ? "(E)" : type === "own" ?
 // A card counts as red when its label mentions "red" (football-data: RED / YELLOW_RED;
 // api-football: "Red Card"). A second yellow stays yellow (it's still a yellow card).
 export const isRedCard = (card) => /red/i.test(card || "");
+
+// Card type for the icon: "yellow" | "red" | "yellowred" (second yellow / Gelb-Rot).
+// football-data: YELLOW / RED / YELLOW_RED; api-football: "Yellow Card" / "Red Card" /
+// "Second Yellow card".
+export function cardKind(card) {
+  const c = card || "";
+  if (/yellow.?red|second\s*yellow/i.test(c)) return "yellowred";
+  if (/red/i.test(c)) return "red";
+  return "yellow";
+}
 // Final match clock for a finished match (from match_detail.final): "90+5'", "120'",
 // or "120' i.E." when decided on penalties. null when unknown.
 export function finalClockLabel(final) {

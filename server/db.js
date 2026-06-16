@@ -99,6 +99,8 @@ CREATE TABLE IF NOT EXISTS match_detail (
   match_n      INTEGER PRIMARY KEY,
   scorers      TEXT,
   cards        TEXT,
+  subs         TEXT,    -- JSON: substitutions [{minute,injury,in,out,side}]
+  lineups      TEXT,    -- JSON: { home:{formation,coach,startXI,bench}, away:{…} }
   final_minute INTEGER,
   final_injury INTEGER,
   final_phase  TEXT,
@@ -128,6 +130,8 @@ if (!db.prepare("PRAGMA table_info(live)").all().some((c) => c.name === "as_of")
   if (!cols.includes("final_minute")) db.exec("ALTER TABLE match_detail ADD COLUMN final_minute INTEGER");
   if (!cols.includes("final_injury")) db.exec("ALTER TABLE match_detail ADD COLUMN final_injury INTEGER");
   if (!cols.includes("final_phase")) db.exec("ALTER TABLE match_detail ADD COLUMN final_phase TEXT");
+  if (!cols.includes("subs")) db.exec("ALTER TABLE match_detail ADD COLUMN subs TEXT");
+  if (!cols.includes("lineups")) db.exec("ALTER TABLE match_detail ADD COLUMN lineups TEXT");
 }
 
 // ---------- settings (kv, JSON-encoded) ----------
@@ -346,11 +350,17 @@ export function liveByMatch() {
     out[r.match_n] = { h: r.h, a: r.a, phase: r.phase, minute: r.minute, injury: r.injury, asOf: r.as_of };
   return out;
 }
-// ---------- per-match scorers/cards + final clock (display only) ----------
-export function setMatchDetail(n, scorers, cards) {
-  db.prepare(`INSERT INTO match_detail(match_n,scorers,cards) VALUES(?,?,?)
-    ON CONFLICT(match_n) DO UPDATE SET scorers=excluded.scorers, cards=excluded.cards, updated_at=datetime('now')`)
-    .run(Number(n), JSON.stringify(scorers || []), JSON.stringify(cards || []));
+// ---------- per-match scorers/cards/subs + lineups + final clock (display only) ----------
+export function setMatchDetail(n, scorers, cards, subs) {
+  db.prepare(`INSERT INTO match_detail(match_n,scorers,cards,subs) VALUES(?,?,?,?)
+    ON CONFLICT(match_n) DO UPDATE SET scorers=excluded.scorers, cards=excluded.cards, subs=excluded.subs, updated_at=datetime('now')`)
+    .run(Number(n), JSON.stringify(scorers || []), JSON.stringify(cards || []), JSON.stringify(subs || []));
+}
+// Starting lineups (+bench/formation/coach). Upserts only the lineups column.
+export function setMatchLineups(n, lineups) {
+  db.prepare(`INSERT INTO match_detail(match_n,lineups) VALUES(?,?)
+    ON CONFLICT(match_n) DO UPDATE SET lineups=excluded.lineups, updated_at=datetime('now')`)
+    .run(Number(n), lineups ? JSON.stringify(lineups) : null);
 }
 // Observed final match clock (minute/injury/phase) — written once per match when it
 // finishes. Upserts only the final_* columns, leaving any scorers/cards intact.
@@ -361,11 +371,13 @@ export function setMatchFinalTime(n, f) {
 }
 export function detailByMatch() {
   const out = {};
-  for (const r of db.prepare("SELECT match_n,scorers,cards,final_minute,final_injury,final_phase FROM match_detail").all()) {
+  for (const r of db.prepare("SELECT match_n,scorers,cards,subs,lineups,final_minute,final_injury,final_phase FROM match_detail").all()) {
     try {
       out[r.match_n] = {
         scorers: JSON.parse(r.scorers || "[]"),
         cards: JSON.parse(r.cards || "[]"),
+        subs: JSON.parse(r.subs || "[]"),
+        lineups: r.lineups ? JSON.parse(r.lineups) : null,
         final: r.final_minute != null ? { minute: r.final_minute, injury: r.final_injury, phase: r.final_phase } : null,
       };
     } catch { /* skip */ }

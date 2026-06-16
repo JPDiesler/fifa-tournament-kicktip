@@ -1,7 +1,7 @@
 // Minimal service worker for installability + an offline shell + Web Push.
 // Strategy: never touch /api or non-GET; hashed /assets/* are cache-first
 // (immutable); navigations/others are network-first with a cache fallback.
-const CACHE = "wm-tippspiel-v2";
+const CACHE = "wm-tippspiel-v4";
 
 self.addEventListener("install", () => self.skipWaiting());
 

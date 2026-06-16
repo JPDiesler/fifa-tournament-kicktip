@@ -5,7 +5,7 @@ import PointsBadge from "@/components/PointsBadge.jsx";
 import { GoalIcon, CardIcon } from "@/components/MatchIcons.jsx";
 import BroadcastPill from "@/features/broadcasts/BroadcastPill.jsx";
 import LiveBadge, { LiveTag, LivePhase } from "./LiveBadge.jsx";
-import { countdown, kickoffMs, eventMinute, goalMark, isRedCard } from "@/lib/matchtime.js";
+import { countdown, kickoffMs, eventMinute, goalMark, cardKind } from "@/lib/matchtime.js";
 
 // Goals + cards for one side ("h"/"a"), oldest first, for the live overview card.
 function sideEvents(detail, side) {
@@ -21,7 +21,7 @@ function EventLine({ e, align }) {
     <li className={`flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
       {e.kind === "goal"
         ? <GoalIcon size={12} className="shrink-0 text-foreground" />
-        : <CardIcon red={isRedCard(e.card)} className="shrink-0" />}
+        : <CardIcon kind={cardKind(e.card)} className="shrink-0" />}
       <span className="min-w-0 truncate">
         <span className="tabular-nums text-muted">{eventMinute(e)}</span> {e.player || "—"}
         {e.kind === "goal" && goalMark(e.type) ? ` ${goalMark(e.type)}` : ""}
