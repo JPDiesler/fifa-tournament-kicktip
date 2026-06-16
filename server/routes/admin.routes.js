@@ -20,6 +20,9 @@ const router = Router();
 const cleanKuerzel = (k) => ((k || "").trim().toUpperCase() || null);
 
 router.post("/sync", requireAdmin, async (req, res) => { await sync("manuell"); runBackfill("manuell"); res.json({ meta: getMeta() }); });
+// Force a full re-fetch of scorers/cards/final-clock for ALL finished matches (repairs
+// already-stored-but-incomplete data). Runs in the background; spread over the budget.
+router.post("/admin/refresh-details", requireAdmin, (req, res) => { runBackfill("manuell-force", { force: true }); res.json({ ok: true }); });
 
 // ---------- result source / API token ----------
 const SOURCE_KEY = (process.env.DATA_SOURCE || "footballdata").toLowerCase();

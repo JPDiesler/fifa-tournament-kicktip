@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button, TextField, Label, Input, Spinner, Switch, Tooltip } from "@heroui/react";
-import { Plug, Check, X, Minus, Clock, RefreshCw } from "lucide-react";
-import { getSources, setProviderToken, testProvider, saveRouting } from "./admin.js";
+import { Plug, Check, X, Minus, Clock, RefreshCw, RotateCcw } from "lucide-react";
+import { getSources, setProviderToken, testProvider, saveRouting, refreshDetails } from "./admin.js";
 
 // Capability pills (per provider), in display order.
 const PILLS = [
@@ -186,6 +186,7 @@ export default function SourcePanel({ onFlash, onSync }) {
   useEffect(() => { load(); }, []);
 
   const runSync = async () => { setBusy(true); try { await onSync?.(); await load(); } finally { setBusy(false); } };
+  const reloadDetails = async () => { setBusy(true); try { await refreshDetails(); onFlash?.("Details werden neu geladen … (Hintergrund, kann ein paar Minuten dauern)"); } catch (e) { onFlash?.(e.message); } finally { setBusy(false); } };
   const onSaveRouting = async (routing) => { await saveRouting({ routing }); await load(); onFlash?.("Routing gespeichert"); };
   const saveProvider = async (id, patch) => {
     const providers = { ...(data.providers || {}) };
@@ -202,6 +203,7 @@ export default function SourcePanel({ onFlash, onSync }) {
       <div className="flex flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" size="sm" isDisabled={busy} onPress={runSync}><RefreshCw size={15} /> Synchronisieren</Button>
+          <Button variant="tertiary" size="sm" isDisabled={busy} onPress={reloadDetails}><RotateCcw size={15} /> Details neu laden</Button>
           <label className="ml-auto text-[11px] text-muted">
             Live-Abruf alle
             <input type="number" min="10" max="600" defaultValue={data.pollSeconds}

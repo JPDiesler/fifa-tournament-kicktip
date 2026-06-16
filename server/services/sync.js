@@ -161,13 +161,20 @@ export async function sync(reason = "cron") {
 // it until drained. Writes a (nominal) final clock for every finished match.
 // Returns { remaining, fetched, capable } so the caller can stop when there's no
 // capable detail provider or no further progress is possible.
-export async function backfillDetails() {
+// force = re-fetch EVERY finished match's detail (not just those missing data) — for
+// a manual "reload details" that repairs already-stored-but-incomplete matches.
+// skip = matches already handled this run (so the force loop converges).
+export async function backfillDetails({ force = false, skip = null } = {}) {
   const { fixtures, byProvider, routing } = await fetchMerged();
   const have = detailByMatch();
-  const need = new Set(fixtures.filter((f) => f.finished && (have[f.n]?.final == null || !(have[f.n]?.scorers?.length || have[f.n]?.cards?.length))).map((f) => f.n));
-  if (!need.size) return { remaining: 0, fetched: 0, capable: true };
+  const need = new Set(fixtures.filter((f) => {
+    if (!f.finished || skip?.has(f.n)) return false;
+    if (force) return true;
+    return have[f.n]?.final == null || !(have[f.n]?.scorers?.length || have[f.n]?.cards?.length);
+  }).map((f) => f.n));
+  if (!need.size) return { remaining: 0, fetched: 0, capable: true, queried: [] };
 
-  const { details, capable } = await fetchDetails(fixtures, byProvider, routing, need, { max: need.size });
+  const { details, capable, queried } = await fetchDetails(fixtures, byProvider, routing, need, { max: need.size });
   let fetched = 0;
   for (const [n, d] of Object.entries(details)) { writeDetail(n, d, have); fetched++; }
   // Final clock for finished matches — upgrade to a larger time from fresh/stored
@@ -177,7 +184,10 @@ export async function backfillDetails() {
     const cand = finalClock(f, null, details[f.n] || have[f.n]);
     if (finalTot(cand) > finalTot(have[f.n]?.final)) setMatchFinalTime(f.n, cand);
   }
-  return { remaining: [...need].filter((n) => !details[n] && !(have[n]?.scorers?.length || have[n]?.cards?.length)).length, fetched, capable };
+  const remaining = force
+    ? need.size - queried.length // capped this pass; the rest retries next pass
+    : [...need].filter((n) => !details[n] && !(have[n]?.scorers?.length || have[n]?.cards?.length)).length;
+  return { remaining, fetched, capable, queried };
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -187,14 +197,19 @@ let backfillRunning = false;
 // per minute until nothing is left (or there's no capable detail provider / no
 // further progress). Re-entrant-safe — a call while a drain is already in flight is a
 // no-op. Fire-and-forget: callers (start, safety sync, manual sync) don't await it.
-export async function runBackfill(reason = "start") {
+export async function runBackfill(reason = "start", { force = false } = {}) {
   if (backfillRunning) return;
   backfillRunning = true;
+  const done = force ? new Set() : null; // force: remember handled matches so the loop converges
+  let pass = 0;
   try {
     for (;;) {
-      const { remaining, fetched, capable } = await backfillDetails();
-      console.log(`Backfill (${reason}): ${fetched} Spiele geholt, ${remaining} offen`);
-      if (!capable || remaining === 0 || fetched === 0) break;
+      const { remaining, fetched, capable, queried } = await backfillDetails({ force, skip: done });
+      if (done) queried.forEach((n) => done.add(n));
+      console.log(`Backfill (${reason}${force ? "/force" : ""}): ${fetched} Spiele geholt, ${remaining} offen`);
+      if (!capable || remaining === 0) break;
+      if (!force && fetched === 0) break;      // normal: stop once no more progress
+      if (force && ++pass >= 30) break;        // force: hard cap (rate budget spreads it over minutes)
       await sleep(60_000); // spread further passes across the per-minute rate budget
     }
   } catch (e) { console.error("backfill", e); }

@@ -24,6 +24,10 @@ export async function testProvider(id) {
 export async function saveRouting(body) {
   return j(await post("/api/admin/routing", body), "Speichern fehlgeschlagen"); // body: { routing, providers }
 }
+// Force a full re-fetch of scorers/cards/final-clock for all finished matches (background).
+export async function refreshDetails() {
+  return j(await post("/api/admin/refresh-details"), "Neu laden fehlgeschlagen");
+}
 export async function createBasic(body) {
   return j(await post("/api/admin/users/basic", body), "Anlegen fehlgeschlagen"); // { user, password }
 }

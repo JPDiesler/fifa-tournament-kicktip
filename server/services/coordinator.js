@@ -139,11 +139,12 @@ export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max
   const capsOf = (id) => getProviderCaps(id) || getAdapter(id)?.declaredCaps() || {};
   const sProv = (routing.scorers || []).find((id) => capsOf(id).scorers === true);
   const cProv = (routing.cards || []).find((id) => capsOf(id).cards === true);
-  if (!sProv && !cProv) return { details: {}, capped: false, capable: false };
+  if (!sProv && !cProv) return { details: {}, capped: false, capable: false, queried: [] };
 
   const targets = fixtures.filter((f) => (f.live || f.finished) && (!matchNs || matchNs.has(f.n)));
   const cache = new Map(); // `${id}:${n}` → {scorers,cards}|null
   const details = {};
+  const queried = new Set(); // matches we actually fetched (a real response, even if empty)
   let calls = 0, capped = false;
 
   const get = async (provId, n) => {
@@ -164,10 +165,11 @@ export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max
   for (const f of targets) {
     const sd = await get(sProv, f.n);
     const cd = sProv === cProv ? sd : await get(cProv, f.n);
+    if (sd !== null || cd !== null) queried.add(f.n); // got a real response → don't keep retrying this one
     const scorers = sd?.scorers || [], cards = cd?.cards || [];
     if (scorers.length || cards.length) details[f.n] = { scorers, cards };
   }
-  return { details, capped, capable: true };
+  return { details, capped, capable: true, queried: [...queried] };
 }
 
 const RESERVE = Math.min(0.5, Math.max(0, Number(process.env.POLL_BUDGET_RESERVE || 0.15)));
