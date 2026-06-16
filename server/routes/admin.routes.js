@@ -11,7 +11,7 @@ import {
   getSourceConfig, setSourceConfig, getLivePollSeconds, setLivePollSeconds, getProviderDelay,
 } from "../db.js";
 import { requireAdmin, adminUserDto, hashPassword } from "../middleware/auth.js";
-import { sync } from "../services/sync.js";
+import { sync, runBackfill } from "../services/sync.js";
 import { activeSource, probeSource, getAdapter, listAdapters, DEFAULT_SOURCE } from "../services/sources/index.js";
 import { effectiveCapabilities, effectiveConfig, FEATURES, liveDelayMs } from "../services/coordinator.js";
 import { genPassword, cacheCredential, getCredential, streamCredentialsPdf } from "../services/credentials.js";
@@ -19,7 +19,7 @@ import { genPassword, cacheCredential, getCredential, streamCredentialsPdf } fro
 const router = Router();
 const cleanKuerzel = (k) => ((k || "").trim().toUpperCase() || null);
 
-router.post("/sync", requireAdmin, async (req, res) => { await sync("manuell"); res.json({ meta: getMeta() }); });
+router.post("/sync", requireAdmin, async (req, res) => { await sync("manuell"); runBackfill("manuell"); res.json({ meta: getMeta() }); });
 
 // ---------- result source / API token ----------
 const SOURCE_KEY = (process.env.DATA_SOURCE || "footballdata").toLowerCase();

@@ -137,3 +137,24 @@ export async function backfillDetails() {
   for (const [n, d] of Object.entries(details)) { setMatchDetail(n, d.scorers, d.cards); fetched++; }
   return { remaining: [...need].filter((n) => !details[n]).length, fetched, capable };
 }
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let backfillRunning = false;
+
+// Drain ALL matches still missing scorers/cards/final-clock: one budget-gated pass
+// per minute until nothing is left (or there's no capable detail provider / no
+// further progress). Re-entrant-safe — a call while a drain is already in flight is a
+// no-op. Fire-and-forget: callers (start, safety sync, manual sync) don't await it.
+export async function runBackfill(reason = "start") {
+  if (backfillRunning) return;
+  backfillRunning = true;
+  try {
+    for (;;) {
+      const { remaining, fetched, capable } = await backfillDetails();
+      console.log(`Backfill (${reason}): ${fetched} Spiele geholt, ${remaining} offen`);
+      if (!capable || remaining === 0 || fetched === 0) break;
+      await sleep(60_000); // spread further passes across the per-minute rate budget
+    }
+  } catch (e) { console.error("backfill", e); }
+  finally { backfillRunning = false; }
+}
