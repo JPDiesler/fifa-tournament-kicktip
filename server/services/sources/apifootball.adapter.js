@@ -22,7 +22,7 @@ export function mapApiFootballFixture(f) {
     live, phase,
     duration: short === "PEN" ? "PENALTY" : short === "AET" ? "EXTRA_TIME" : short === "FT" ? "REGULAR" : null,
     minute: f.fixture?.status?.elapsed ?? null,
-    injuryTime: null, // not provided
+    injuryTime: f.fixture?.status?.extra ?? null, // added/stoppage time of the current period (also set at FT)
     homeName: f.teams?.home?.name || null,
     awayName: f.teams?.away?.name || null,
     homeGoals: f.goals?.home,

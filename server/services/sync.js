@@ -20,13 +20,33 @@ function finalClockFromRecord(rec) {
   if (dur === "EXTRA_TIME") return { minute: 120, injury: null, phase: "ET" };
   return { minute: 90, injury: null, phase: null };
 }
-// Best final clock: prefer the last observed live minute when it reached the nominal
-// boundary (gives real stoppage like 90+5); otherwise the bare nominal length.
-function finalClock(rec, prev) {
-  const nom = finalClockFromRecord(rec);
-  if (prev && prev.minute != null && prev.minute >= nom.minute) return { minute: prev.minute, injury: prev.injury ?? null, phase: nom.phase };
-  return nom;
+// Latest goal/card event clock (minute + stoppage) — a provable lower bound on how
+// long the match actually ran. null when there are no timed events.
+function maxEventClock(detail) {
+  let best = null;
+  for (const e of [...(detail?.scorers || []), ...(detail?.cards || [])]) {
+    if (e.minute == null) continue;
+    if (!best || e.minute + (e.injury || 0) > best.minute + (best.injury || 0)) best = { minute: e.minute, injury: e.injury || null };
+  }
+  return best;
 }
+// Best final clock = the LARGEST of nominal length, last live snapshot, and latest
+// event — so a regular match with a card at 90+2 reads "90+2" instead of bare "90"
+// (api-football omits stoppage from the live minute, so events are the better source).
+function finalClock(rec, prev, detail) {
+  let best = finalClockFromRecord(rec); // nominal baseline carries the phase (ET/PEN)
+  const consider = (minute, injury) => {
+    if (minute == null) return;
+    if (minute + (injury || 0) > best.minute + (best.injury || 0)) best = { minute, injury: injury || null, phase: best.phase };
+  };
+  consider(rec.minute, rec.injuryTime); // provider's FT elapsed + added time (api-football status.extra)
+  if (prev) consider(prev.minute, prev.injury);
+  const ev = maxEventClock(detail);
+  if (ev) consider(ev.minute, ev.injury);
+  return best;
+}
+// Total played seconds of a final clock, for "only ever upgrade" comparisons (-1 = none).
+const finalTot = (f) => (f && f.minute != null ? f.minute + (f.injury || 0) : -1);
 
 export async function sync(reason = "cron") {
   try {
@@ -58,9 +78,6 @@ export async function sync(reason = "cron") {
       if (rec.finished && rec.homeGoals != null && rec.awayGoals != null) {
         setResult(n, String(rec.homeGoals), String(rec.awayGoals));
         updated++;
-        // Capture the real final match clock once (from the last live snapshot if we
-        // saw it, else nominal) so the detail card can show e.g. "90+5".
-        if (have[n]?.final == null) setMatchFinalTime(n, finalClock(rec, prevLive[n]));
         events.push(() => notifyFinal(n, rec.homeGoals, rec.awayGoals));
       } else if (rec.live) {
         const h = rec.homeGoals ?? 0, a = rec.awayGoals ?? 0; // default 0:0 so a running card always shows a score
@@ -88,14 +105,28 @@ export async function sync(reason = "cron") {
     // Recompute the effective feature capabilities for the frontend.
     setCapabilities(effectiveCapabilities());
 
-    // Scorers/cards for live + finished-without-detail matches — only fetched via a
-    // provider whose caps support them (no extra calls on the football-data default).
+    // Scorers/cards for live matches + finished matches lacking detail OR a final
+    // clock (the latter forces ONE post-finish refetch → complete stoppage-time cards
+    // + an accurate final clock). Only via a provider whose caps support it.
     try {
-      const need = new Set([...Object.keys(liveMap).map(Number), ...fixtures.filter((f) => f.finished && !(have[f.n]?.scorers?.length || have[f.n]?.cards?.length)).map((f) => f.n)]);
+      const need = new Set([
+        ...Object.keys(liveMap).map(Number),
+        ...fixtures.filter((f) => f.finished && (have[f.n]?.final == null || !(have[f.n]?.scorers?.length || have[f.n]?.cards?.length))).map((f) => f.n),
+      ]);
+      let details = {};
       if (need.size) {
-        const { details, capped } = await fetchDetails(fixtures, byProvider, routing, need);
+        const r = await fetchDetails(fixtures, byProvider, routing, need);
+        details = r.details;
         for (const [n, d] of Object.entries(details)) setMatchDetail(n, d.scorers, d.cards);
-        if (capped) console.log("Detail-Limit erreicht – einige Spiele ausgelassen.");
+        if (r.capped) console.log("Detail-Limit erreicht – einige Spiele ausgelassen.");
+      }
+      // Final match clock from the best source (live snapshot / events / nominal).
+      // Only ever upgrade to a larger time — so a stored nominal 90 becomes 90+2 once
+      // a stoppage event is known, but a complete clock is never shrunk.
+      for (const f of fixtures) {
+        if (!f.finished) continue;
+        const cand = finalClock(f, prevLive[f.n], details[f.n] || have[f.n]);
+        if (finalTot(cand) > finalTot(have[f.n]?.final)) setMatchFinalTime(f.n, cand);
       }
     } catch (e) { console.error("detail", e); }
 
@@ -127,15 +158,20 @@ export async function sync(reason = "cron") {
 export async function backfillDetails() {
   const { fixtures, byProvider, routing } = await fetchMerged();
   const have = detailByMatch();
-  for (const rec of fixtures) if (rec.finished && have[rec.n]?.final == null) setMatchFinalTime(rec.n, finalClockFromRecord(rec));
-
-  const need = new Set(fixtures.filter((f) => f.finished && !(have[f.n]?.scorers?.length || have[f.n]?.cards?.length)).map((f) => f.n));
+  const need = new Set(fixtures.filter((f) => f.finished && (have[f.n]?.final == null || !(have[f.n]?.scorers?.length || have[f.n]?.cards?.length))).map((f) => f.n));
   if (!need.size) return { remaining: 0, fetched: 0, capable: true };
 
   const { details, capable } = await fetchDetails(fixtures, byProvider, routing, need, { max: need.size });
   let fetched = 0;
   for (const [n, d] of Object.entries(details)) { setMatchDetail(n, d.scorers, d.cards); fetched++; }
-  return { remaining: [...need].filter((n) => !details[n]).length, fetched, capable };
+  // Final clock for finished matches — upgrade to a larger time from fresh/stored
+  // events (corrects an earlier nominal 90 → 90+2), never shrink.
+  for (const f of fixtures) {
+    if (!f.finished) continue;
+    const cand = finalClock(f, null, details[f.n] || have[f.n]);
+    if (finalTot(cand) > finalTot(have[f.n]?.final)) setMatchFinalTime(f.n, cand);
+  }
+  return { remaining: [...need].filter((n) => !details[n] && !(have[n]?.scorers?.length || have[n]?.cards?.length)).length, fetched, capable };
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

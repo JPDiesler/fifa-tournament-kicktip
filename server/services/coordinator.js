@@ -113,6 +113,7 @@ export function mergeFixtures(byProvider, fetched, routing) {
       const o = oriented(resFx);
       rec.finished = true; rec.homeGoals = o.homeGoals; rec.awayGoals = o.awayGoals; rec.winner = o.winner; rec.homeName = o.homeName; rec.awayName = o.awayName;
       rec.duration = resFx.duration || "REGULAR"; // play length (REGULAR | EXTRA_TIME | PENALTY) for the final clock
+      rec.minute = resFx.minute ?? null; rec.injuryTime = resFx.injuryTime ?? null; // FT elapsed + added time (api-football status.extra) → real final clock
     } else if (lsFx) {
       const o = oriented(lsFx);
       rec.live = true;
