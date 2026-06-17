@@ -3,13 +3,20 @@
 // AI player then gets no tip for that match (exactly one attempt, no retry).
 const isNum = (x) => typeof x === "number" && Number.isFinite(x);
 const inUnit = (x) => isNum(x) && x >= 0 && x <= 1;
+// Coerce a score to a non-negative integer: accepts a number, an integer-valued float
+// (2.0) or a numeric string ("2") — some providers (e.g. Gemini) return scores as
+// strings/floats. Returns null when it isn't a whole number >= 0.
+const toScore = (x) => {
+  const n = typeof x === "string" && x.trim() !== "" ? Number(x) : x;
+  return Number.isInteger(n) && n >= 0 ? n : null;
+};
 
 // Match tip: integer scores >= 0, probabilities in [0,1] summing to ~1.
 export function validateMatchPrediction(p) {
   if (!p || typeof p !== "object") throw new Error("Antwort ist kein JSON-Objekt");
   const tip = p.tip || {};
-  const h = tip.home, a = tip.away;
-  if (!Number.isInteger(h) || !Number.isInteger(a) || h < 0 || a < 0)
+  const h = toScore(tip.home), a = toScore(tip.away);
+  if (h == null || a == null)
     throw new Error("tip.home/away müssen ganze Zahlen >= 0 sein");
   const op = p.outcome_probabilities || {};
   const probs = [op.home_win, op.draw, op.away_win];

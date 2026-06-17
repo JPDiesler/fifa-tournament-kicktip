@@ -7,6 +7,9 @@ const okMatch = { tip: { home: 2, away: 1 }, outcome_probabilities: { home_win: 
 test("match: valid → string scores", () => {
   assert.deepEqual(validateMatchPrediction(okMatch).tip, { h: "2", a: "1" });
 });
+test("match: accepts a whole-number score given as a string (e.g. Gemini)", () => {
+  assert.deepEqual(validateMatchPrediction({ ...okMatch, tip: { home: "2", away: "0" } }).tip, { h: "2", a: "0" });
+});
 test("match: rejects non-integer tip", () => {
   assert.throws(() => validateMatchPrediction({ ...okMatch, tip: { home: 1.5, away: 0 } }));
 });
