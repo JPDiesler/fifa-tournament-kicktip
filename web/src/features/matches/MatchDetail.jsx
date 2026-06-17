@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Drawer, Chip } from "@heroui/react";
 import { Lock, Info } from "lucide-react";
+import { MATCHES } from "@/data";
 import Flag from "@/components/Flag.jsx";
 import PlayerName from "@/components/PlayerName.jsx";
 import Carousel from "@/components/Carousel.jsx";
 import AiReasoning from "./AiReasoning.jsx";
 import ScoreInput from "./ScoreInput.jsx";
 import PointsBadge from "@/components/PointsBadge.jsx";
-import BroadcastButtons from "@/features/broadcasts/BroadcastButtons.jsx";
+import BroadcastChips from "@/features/broadcasts/BroadcastChips.jsx";
 import { LiveTag, LivePhase } from "./LiveBadge.jsx";
 import Lineups from "./Lineups.jsx";
 import MatchTimeline from "./MatchTimeline.jsx";
@@ -16,6 +17,26 @@ import PreMatch from "./PreMatch.jsx";
 import OddsView from "./OddsView.jsx";
 import { PHASES } from "@/lib/scoring.js";
 import { countdown, kickoffMs, delayLabel, finalClockLabel } from "@/lib/matchtime.js";
+import { kitColor, FALLBACK_HOME, FALLBACK_AWAY } from "@/lib/teamColors.js";
+
+// Last-known match-kit colour per team code, gathered from every match that already has
+// a lineup — so charts can be team-coloured even before THIS match's lineup is published
+// (api-football only ships kit colours with the lineup, ~40 min before kickoff). A team's
+// HOME-kit appearance wins over its change-kit one (closer to its identity colour).
+function buildKitColors(st, teamCode) {
+  const seen = {}; // code → { color, home }
+  for (const m of MATCHES) {
+    const lu = st.details?.[m.n]?.lineups;
+    if (!lu) continue;
+    const hc = teamCode(m, "h"), ac = teamCode(m, "a");
+    const hCol = kitColor(lu.home?.colors), aCol = kitColor(lu.away?.colors);
+    if (hc && hCol && !seen[hc]?.home) seen[hc] = { color: hCol, home: true };  // home kit wins
+    if (ac && aCol && !seen[ac]) seen[ac] = { color: aCol, home: false };       // change kit only as a stopgap
+  }
+  const out = {};
+  for (const k in seen) out[k] = seen[k].color;
+  return out;
+}
 
 // Bottom-sheet detail for one match. A fixed teams+score header on top; below it a
 // swipeable carousel whose sections appear only when their data exists (Tipps always,
@@ -23,6 +44,7 @@ import { countdown, kickoffMs, delayLabel, finalClockLabel } from "@/lib/matchti
 export default function MatchDetail({ match, isOpen, onClose, st, board, me, teamLabel, teamCode, score, onTip }) {
   const [reasonFor, setReasonFor] = useState(null); // kürzel of the AI tip whose reasoning is open
   const broadcasts = match ? (st.broadcasts?.[match.n] || []) : [];
+  const kitByCode = useMemo(() => buildKitColors(st, teamCode), [st.details, teamCode]);
   if (!match) {
     return <Drawer.Backdrop isOpen={false} onOpenChange={() => onClose()}><Drawer.Content placement="bottom"><Drawer.Dialog /></Drawer.Content></Drawer.Backdrop>;
   }
@@ -113,22 +135,31 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   );
 
   const hasStats = detail?.stats && (Object.keys(detail.stats.home || {}).length > 0 || Object.keys(detail.stats.away || {}).length > 0);
-  const preKickoff = !hasResult && !isLiveMatch;
+  const preview = detail?.preview;
+  const liveOdds = isLiveMatch ? live?.odds : null;
+  // Home/away chart colours: this match's kit (with the lineup) → the team's last-known
+  // kit from an earlier match → neutral fallback.
+  const homeColor = kitColor(detail?.lineups?.home?.colors) || kitByCode[home.code] || FALLBACK_HOME;
+  const awayColor = kitColor(detail?.lineups?.away?.colors) || kitByCode[away.code] || FALLBACK_AWAY;
+  // Prognose: pre-match forecast — shown through the live phase, hidden once finished.
+  // The tab appears whenever we have a preview; PreMatch itself shows an info line when
+  // the data isn't solid (api-football has no real prediction for some fixtures).
+  const hasPrognose = !hasResult && !!preview;
+  // Quoten: pre-match before/at kickoff, in-play once it arrives (pre-match stays as the
+  // fallback until then). Shown while not finished; OddsView shows an info line if empty.
+  const hasOdds = !hasResult && (!!preview || !!liveOdds);
+  // Order: Tipps · Spielverlauf · Aufstellung · Statistik · Prognose · Quoten (only those with data).
   const sections = [{ id: "tipps", label: "Tipps", content: tippsSection }];
-  // pre-match info first (hidden once played)
-  if (broadcasts.length > 0 && !past)
-    sections.push({ id: "tv", label: "Übertragung", content: <div className="pb-4"><BroadcastButtons keys={broadcasts} /></div> });
-  if (detail?.preview && preKickoff)
-    sections.push({ id: "prematch", label: "Vorschau", content: <div className="pb-4"><PreMatch preview={detail.preview} home={home} away={away} /></div> });
-  if (detail?.preview?.odds && preKickoff)
-    sections.push({ id: "quoten", label: "Quoten", content: <div className="pb-4"><OddsView odds={detail.preview.odds} home={home} away={away} /></div> });
-  // live / post
   if (detail && (detail.scorers?.length > 0 || detail.cards?.length > 0 || detail.subs?.length > 0))
     sections.push({ id: "verlauf", label: "Spielverlauf", content: <div className="pb-4"><MatchTimeline detail={detail} home={home} away={away} /></div> });
-  if (hasStats)
-    sections.push({ id: "statistik", label: "Statistik", content: <div className="pb-4"><MatchStats stats={detail.stats} /></div> });
   if (detail?.lineups)
     sections.push({ id: "aufstellung", label: "Aufstellung", content: <div className="pb-4"><Lineups lineups={detail.lineups} home={home} away={away} /></div> });
+  if (hasStats)
+    sections.push({ id: "statistik", label: "Statistik", content: <div className="pb-4"><MatchStats stats={detail.stats} homeColor={homeColor} awayColor={awayColor} /></div> });
+  if (hasPrognose)
+    sections.push({ id: "prognose", label: "Prognose", content: <div className="pb-4"><PreMatch preview={preview} home={home} away={away} homeColor={homeColor} awayColor={awayColor} /></div> });
+  if (hasOdds)
+    sections.push({ id: "quoten", label: "Quoten", content: <div className="pb-4"><OddsView odds={preview?.odds} live={liveOdds} home={home} away={away} homeColor={homeColor} awayColor={awayColor} /></div> });
 
   return (
     <>
@@ -169,7 +200,10 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
               </div>
             </div>
 
-            {/* swipeable sections (Übertragung / Vorschau / Quoten / Verlauf / Statistik / Aufstellung) */}
+            {/* where to watch: compact, centred logo chips under the score (hidden once played) */}
+            {broadcasts.length > 0 && !past && <BroadcastChips keys={broadcasts} />}
+
+            {/* swipeable sections (Verlauf / Aufstellung / Statistik / Prognose / Quoten) */}
             <Carousel sections={sections} className="mt-4" />
           </Drawer.Body>
         </Drawer.Dialog>

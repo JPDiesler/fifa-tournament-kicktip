@@ -1,16 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 
+const MAX_VH = 0.6; // viewport caps at 60% of the screen; taller sections scroll internally
+
 // Horizontal swipe carousel (CSS scroll-snap) with clickable, centred label tabs.
-// `sections` = [{ id, label, content }]. The viewport takes the ACTIVE slide's height
-// (others don't inflate it), so the surrounding Drawer.Body can stay a normal block
-// scroller — the whole sheet scrolls vertically while sections swipe horizontally.
+// `sections` = [{ id, label, content }]. The viewport height is FIXED across slides
+// (the tallest section, capped at MAX_VH) so switching tabs never resizes the
+// surrounding drawer; a section taller than the cap scrolls vertically inside its slide.
 export default function Carousel({ sections, initial = 0, className = "" }) {
   const ref = useRef(null);
   const slideRefs = useRef([]);
   const [active, setActive] = useState(initial);
   const [h, setH] = useState(null);
 
-  const measure = (i) => { const el = slideRefs.current[i]; if (el) setH(el.scrollHeight); };
+  const measure = () => {
+    let max = 0;
+    for (const el of slideRefs.current) if (el) max = Math.max(max, el.scrollHeight);
+    if (!max) return;
+    const cap = Math.round((typeof window !== "undefined" ? window.innerHeight : 800) * MAX_VH);
+    setH(Math.min(max, cap)); // React bails if unchanged → no churn when switching tabs
+  };
   const onScroll = () => {
     const el = ref.current;
     if (!el || !el.clientWidth) return;
@@ -20,15 +28,13 @@ export default function Carousel({ sections, initial = 0, className = "" }) {
   const go = (i) => { const el = ref.current; if (el) el.scrollTo({ left: i * el.clientWidth, behavior: "smooth" }); };
 
   useEffect(() => { setActive((p) => Math.min(p, sections.length - 1)); }, [sections.length]);
-  // Size the viewport to the active slide (re-measure after layout + late image loads).
+  useEffect(measure); // re-measure after every render (content/length changes); height is the tallest slide, not the active one
   useEffect(() => {
-    measure(active);
-    const t = setTimeout(() => measure(active), 180);
-    const onR = () => measure(active);
-    window.addEventListener("resize", onR);
-    return () => { clearTimeout(t); window.removeEventListener("resize", onR); };
+    const t = setTimeout(measure, 180); // late image loads
+    window.addEventListener("resize", measure);
+    return () => { clearTimeout(t); window.removeEventListener("resize", measure); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, sections.length]);
+  }, []);
 
   if (!sections.length) return null;
   const cur = Math.min(active, sections.length - 1);
@@ -43,9 +49,10 @@ export default function Carousel({ sections, initial = 0, className = "" }) {
         ))}
       </div>
       <div ref={ref} onScroll={onScroll} style={{ height: h ? `${h}px` : undefined }}
-        className="flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain transition-[height] duration-200 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        className="flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {sections.map((s, i) => (
-          <div key={s.id} ref={(el) => (slideRefs.current[i] = el)} className="w-full shrink-0 snap-center self-start px-0.5">
+          <div key={s.id} ref={(el) => (slideRefs.current[i] = el)}
+            className="w-full shrink-0 snap-center self-start max-h-full overflow-y-auto overscroll-contain px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {s.content}
           </div>
         ))}
