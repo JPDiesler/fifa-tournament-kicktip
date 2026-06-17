@@ -66,8 +66,8 @@ beendete Spiele geholt (Cap via `DETAIL_MAX_PER_SYNC`).
 KI-Spieler nehmen wie menschliche Spieler am Tippspiel teil — sie werden regulär
 gewertet und erscheinen überall mit **Kürzel + „KI"-Badge + Provider-Logo**.
 
-- **Anlegen:** Web-Admin → **Nutzer → „KI-Spieler"**: Kürzel, Provider (Claude/OpenAI;
-  Gemini/Mistral folgen), Modell (sinnvoller Default) und **API-Key**. Der Key wird
+- **Anlegen:** Web-Admin → **Nutzer → „KI-Spieler"**: Kürzel, Provider (Claude, OpenAI,
+  Gemini, Mistral), Modell (sinnvoller Default) und **API-Key**. Der Key wird
   **verschlüsselt** gespeichert (`AI_KEY_SECRET`, Fallback `SESSION_SECRET`), **nie** ans
   Frontend ausgeliefert und **nie** geloggt. Optionaler **Verbindungstest** beim Anlegen.
 - **Tippen:** ein Scheduler (`AI_TIP_CRON`, jede Minute) legt pro Spiel **genau einen**

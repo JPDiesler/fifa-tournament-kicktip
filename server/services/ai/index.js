@@ -5,8 +5,10 @@
 // New providers (Gemini, Mistral) drop in here and appear in the admin form automatically.
 import * as anthropic from "./adapters/anthropic.adapter.js";
 import * as openai from "./adapters/openai.adapter.js";
+import * as gemini from "./adapters/gemini.adapter.js";
+import * as mistral from "./adapters/mistral.adapter.js";
 
-const ADAPTERS = { anthropic, openai };
+const ADAPTERS = { anthropic, openai, gemini, mistral };
 
 export const getAiAdapter = (provider) => ADAPTERS[provider] || null;
 export const isKnownProvider = (provider) => Object.prototype.hasOwnProperty.call(ADAPTERS, provider);
