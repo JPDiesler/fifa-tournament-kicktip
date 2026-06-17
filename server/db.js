@@ -644,10 +644,47 @@ export function updateAiPlayer(id, { name, provider, model, apiKey, logo, is_act
 export function setAiTestResult(id, ok) {
   db.prepare("UPDATE users SET ai_test_ok=?, ai_test_at=datetime('now') WHERE id=? AND is_ai=1").run(ok ? 1 : 0, id);
 }
-// Success ratio of an AI player's actual tips: { done, total } over ai_predictions.
+// Success ratio + token/latency averages of an AI player's tips (for the admin stats).
 export function aiPlayerStats(userId) {
-  const r = db.prepare("SELECT COUNT(*) AS total, COALESCE(SUM(status='done'),0) AS done FROM ai_predictions WHERE user_id=?").get(userId);
-  return { done: r.done || 0, total: r.total || 0 };
+  const r = db.prepare(`SELECT COUNT(*) AS total, COALESCE(SUM(status='done'),0) AS done,
+    COALESCE(AVG(NULLIF(tokens,0)),0) AS avgTokens, COALESCE(AVG(NULLIF(latency_ms,0)),0) AS avgLatency
+    FROM ai_predictions WHERE user_id=?`).get(userId);
+  return { done: r.done || 0, total: r.total || 0, avgTokens: Math.round(r.avgTokens || 0), avgLatency: Math.round(r.avgLatency || 0) };
+}
+// Most recent failed attempt's error (shown in the admin UI), or null.
+export function aiLastError(userId) {
+  return db.prepare("SELECT error, match_n FROM ai_predictions WHERE user_id=? AND status='failed' AND error IS NOT NULL ORDER BY attempted_at DESC LIMIT 1").get(userId) || null;
+}
+// Recent attempts for the admin diagnostics list.
+export function recentAiPredictions(userId, limit = 30) {
+  return db.prepare(`SELECT match_n, status, tip_h, tip_a, error, latency_ms, tokens, attempted_at
+    FROM ai_predictions WHERE user_id=? ORDER BY attempted_at DESC LIMIT ?`).all(userId, limit);
+}
+// Drop a single attempt → the player may be tipped again for that match (admin reset).
+export const deleteAiPrediction = (userId, matchN) =>
+  db.prepare("DELETE FROM ai_predictions WHERE user_id=? AND match_n=?").run(userId, Number(matchN));
+
+// Per-player calibration from past tips vs results (systematic home/away goal bias),
+// fed into the next bundle so the model can self-correct. null until enough history.
+export function calibrationFor(userId) {
+  const rows = db.prepare(`SELECT p.tip_h AS th, p.tip_a AS ta, r.h AS rh, r.a AS ra
+    FROM ai_predictions p JOIN results r ON r.match_n=p.match_n
+    WHERE p.user_id=? AND p.status='done' AND p.tip_h IS NOT NULL AND p.tip_a IS NOT NULL AND r.h!='' AND r.a!=''`).all(userId);
+  if (rows.length < 3) return null;
+  let bh = 0, ba = 0, pts = 0;
+  for (const x of rows) {
+    bh += Number(x.th) - Number(x.rh);
+    ba += Number(x.ta) - Number(x.ra);
+    pts += score({ h: String(x.th), a: String(x.ta) }, { h: String(x.rh), a: String(x.ra) }) ?? 0;
+  }
+  const n = rows.length;
+  return {
+    tips_evaluated: n,
+    avg_points_per_tip: +(pts / n).toFixed(2),
+    goal_bias_home: +(bh / n).toFixed(2),
+    goal_bias_away: +(ba / n).toFixed(2),
+    note: "auto-aggregiert aus bisherigen Tipps vs. Ergebnissen",
+  };
 }
 
 // kuerzel → { name, isAi, provider, logo } for ALL players (drives frontend display).

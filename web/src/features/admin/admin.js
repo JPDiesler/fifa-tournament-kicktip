@@ -66,6 +66,18 @@ export async function testAiPlayer(id, body) {
 export async function testAiTip(id, body) {
   return j(await post(`/api/admin/ai-players/${id}/test-tip`, body), "Test fehlgeschlagen"); // { ok, match, tip, prediction, error? }
 }
+export async function listAiPredictions(id) {
+  return j(await fetch(`/api/admin/ai-players/${id}/predictions`), "Tipps nicht ladbar"); // { predictions }
+}
+export async function tipNow(id, matchN) {
+  return j(await post(`/api/admin/ai-players/${id}/tip-now`, matchN ? { matchN } : {}), "Tippen fehlgeschlagen"); // { matchN, prediction }
+}
+export async function resetAiPrediction(id, matchN) {
+  return j(await fetch(`/api/admin/ai-players/${id}/predictions/${matchN}`, { method: "DELETE" }), "Zurücksetzen fehlgeschlagen");
+}
+export async function setAiConfig(body) {
+  return j(await post("/api/admin/ai-config", body), "Speichern fehlgeschlagen"); // { reasoningVisibleAfter }
+}
 
 // Download the one-time credentials PDF (available only right after create/reset).
 export async function downloadCredentialsPdf(id, username) {

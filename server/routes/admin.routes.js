@@ -10,7 +10,8 @@ import {
   getProviderToken, setProviderToken, providerTokenFromDb, getProviderCaps, setProviderCaps,
   getSourceConfig, setSourceConfig, getLivePollSeconds, setLivePollSeconds, getProviderDelay,
   listAiPlayers, createAiPlayer, updateAiPlayer, getAiPlayerById, getAiPlayerKey,
-  setAiTestResult, aiPlayerStats,
+  setAiTestResult, aiPlayerStats, aiLastError, recentAiPredictions, deleteAiPrediction,
+  getSetting, setSetting,
 } from "../db.js";
 import { MATCHES } from "../data.js";
 import { kickoff } from "../services/locks.js";
@@ -18,6 +19,9 @@ import { AI_PROVIDERS, getAiAdapter, isKnownProvider } from "../services/ai/inde
 import { buildBundle } from "../services/ai/bundle.js";
 import { matchSystemPrompt } from "../services/ai/prompt.js";
 import { validateMatchPrediction } from "../services/ai/schema.js";
+import { placeTipNow } from "../services/ai/scheduler.js";
+
+const REASONING_DEFAULT = () => getSetting("aiReasoningVisibleAfter", process.env.AI_REASONING_VISIBLE_AFTER || "kickoff");
 import { requireAdmin, adminUserDto, hashPassword } from "../middleware/auth.js";
 import { sync, runBackfill } from "../services/sync.js";
 import { activeSource, probeSource, getAdapter, listAdapters, DEFAULT_SOURCE } from "../services/sources/index.js";
@@ -223,16 +227,26 @@ router.delete("/admin/users/:id", requireAdmin, (req, res) => {
 router.get("/admin/ai-players", requireAdmin, (req, res) => {
   res.json({
     providers: AI_PROVIDERS, // [{ id, name, defaultModel }]
+    config: { reasoningVisibleAfter: REASONING_DEFAULT() },
     players: listAiPlayers().map((u) => {
-      const { done, total } = aiPlayerStats(u.id);
+      const s = aiPlayerStats(u.id);
+      const le = aiLastError(u.id);
       return {
         id: u.id, kuerzel: u.kuerzel, name: u.name, provider: u.ai_provider,
         model: u.ai_model, isActive: !!u.is_active, hasKey: !!u.ai_key_enc,
         testOk: u.ai_test_ok == null ? null : !!u.ai_test_ok, testAt: u.ai_test_at || null,
-        done, total, // successful / attempted tips → "3/5"
+        done: s.done, total: s.total, avgTokens: s.avgTokens, avgLatency: s.avgLatency, // success ratio + cost signals
+        lastError: le?.error || null, lastErrorMatch: le?.match_n || null,
       };
     }),
   });
+});
+// AI-wide config (e.g. when the reasoning becomes visible).
+router.post("/admin/ai-config", requireAdmin, (req, res) => {
+  const mode = req.body?.reasoningVisibleAfter;
+  if (mode && !["kickoff", "lock"].includes(mode)) return res.status(400).json({ error: "ungültiger Wert" });
+  if (mode) setSetting("aiReasoningVisibleAfter", mode);
+  res.json({ ok: true, reasoningVisibleAfter: REASONING_DEFAULT() });
 });
 router.post("/admin/ai-players", requireAdmin, (req, res) => {
   const b = req.body || {};
@@ -296,6 +310,28 @@ router.post("/admin/ai-players/:id/test-tip", requireAdmin, async (req, res) => 
     if (u) setAiTestResult(u.id, false);
     res.json({ ok: false, error: String(e?.message || e).split(apiKey).join("***").slice(0, 300) });
   }
+});
+
+// Recent attempts (diagnostics): match, status, tip, error, tokens, latency.
+router.get("/admin/ai-players/:id/predictions", requireAdmin, (req, res) => {
+  const u = getAiPlayerById(+req.params.id);
+  if (!u) return res.status(404).json({ error: "nicht gefunden" });
+  res.json({ predictions: recentAiPredictions(u.id, 30) });
+});
+// Reset one attempt (delete the row) → the player may be tipped again for that match.
+router.delete("/admin/ai-players/:id/predictions/:matchN", requireAdmin, (req, res) => {
+  const u = getAiPlayerById(+req.params.id);
+  if (!u) return res.status(404).json({ error: "nicht gefunden" });
+  deleteAiPrediction(u.id, +req.params.matchN);
+  res.json({ ok: true });
+});
+// Tip NOW: force a fresh real attempt immediately (optionally a specific match) —
+// bypasses the −10-min window for testing. Writes the tip if the match isn't locked.
+router.post("/admin/ai-players/:id/tip-now", requireAdmin, async (req, res) => {
+  const u = getAiPlayerById(+req.params.id);
+  if (!u) return res.status(404).json({ error: "nicht gefunden" });
+  try { const r = await placeTipNow(u.id, req.body?.matchN || null); res.json({ ok: true, ...r }); }
+  catch (e) { res.status(400).json({ error: String(e?.message || e).slice(0, 300) }); }
 });
 
 export default router;

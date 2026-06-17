@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
 import { Table, Button, Switch, Chip, Modal, TextField, Input, Label, Spinner } from "@heroui/react";
-import { UserPlus, Users as UsersIcon, FileDown, KeyRound, Trash2, Pencil, Bot } from "lucide-react";
-import { listUsers, createBasic, createEntra, patchUser, resetPassword, deleteUser, downloadCredentialsPdf, listAiPlayers, createAiPlayer, patchAiPlayer, testAiPlayer, testAiTip } from "./admin.js";
+import { UserPlus, Users as UsersIcon, FileDown, KeyRound, Trash2, Pencil, Bot, Play, RotateCcw } from "lucide-react";
+import { listUsers, createBasic, createEntra, patchUser, resetPassword, deleteUser, downloadCredentialsPdf, listAiPlayers, createAiPlayer, patchAiPlayer, testAiPlayer, testAiTip, listAiPredictions, tipNow, resetAiPrediction, setAiConfig } from "./admin.js";
 import ProviderLogo from "@/components/ProviderLogo.jsx";
 import { fetchEntraUsers } from "@/features/auth/msal.js";
+
+// ≈ USD per 1M tokens (blended in+out), rough — only a cost signal, edit as prices change.
+const PRICES = { anthropic: 9, openai: 6, gemini: 5, mistral: 4 };
+const estCost = (provider, avgTokens) => (PRICES[provider] && avgTokens ? `≈ $${((avgTokens / 1e6) * PRICES[provider]).toFixed(4)}/Tipp` : "—");
 
 function Field({ label, ...props }) {
   return (
@@ -198,13 +202,17 @@ function AiPlayerModal({ open, onOpenChange, providers, player, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [conn, setConn] = useState(null); // null | "testing" | { ok, error }
   const [tip, setTip] = useState(null);   // null | "testing" | { ok, error, match, tip, prediction }
+  const [preds, setPreds] = useState(null);
+  const [diagBusy, setDiagBusy] = useState(false);
 
+  const refreshPreds = () => { if (player) listAiPredictions(player.id).then((d) => setPreds(d.predictions || [])).catch(() => setPreds([])); };
   useEffect(() => {
     if (!open) return;
-    setErr(""); setConn(null); setTip(null); setApiKey("");
+    setErr(""); setConn(null); setTip(null); setApiKey(""); setPreds(null);
     if (player) {
       setKuerzel(player.kuerzel || ""); setName(player.name || "");
       setProvider(player.provider || providers?.[0]?.id || ""); setModel(player.model || "");
+      refreshPreds();
     } else {
       const first = providers?.[0];
       setKuerzel(""); setName(""); setProvider(first?.id || ""); setModel(first?.defaultModel || "");
@@ -217,6 +225,8 @@ function AiPlayerModal({ open, onOpenChange, providers, player, onSaved }) {
   const onProvider = (pid) => { setProvider(pid); setModel(providers?.find((x) => x.id === pid)?.defaultModel || ""); setConn(null); setTip(null); };
   const doConn = async () => { setConn("testing"); setErr(""); try { setConn(await testAiPlayer(id, body)); } catch (e) { setConn({ ok: false, error: e.message }); } };
   const doTip = async () => { setTip("testing"); setErr(""); try { setTip(await testAiTip(id, body)); } catch (e) { setTip({ ok: false, error: e.message }); } };
+  const doTipNow = async (matchN) => { setDiagBusy(true); setErr(""); try { await tipNow(player.id, matchN); refreshPreds(); onSaved?.(); } catch (e) { setErr(e.message); } finally { setDiagBusy(false); } };
+  const doReset = async (matchN) => { setDiagBusy(true); setErr(""); try { await resetAiPrediction(player.id, matchN); refreshPreds(); onSaved?.(); } catch (e) { setErr(e.message); } finally { setDiagBusy(false); } };
   const submit = async () => {
     setErr(""); setBusy(true);
     try {
@@ -266,6 +276,38 @@ function AiPlayerModal({ open, onOpenChange, providers, player, onSaved }) {
                   {tip.prediction?.reasoning && <div className="mt-1 text-muted">{tip.prediction.reasoning}</div>}
                 </div>
               ) : <div className="rounded-lg border border-danger/40 bg-danger/10 p-2 text-xs text-danger">✗ {tip.error || "Test fehlgeschlagen"}</div>)}
+              {editing && (
+                <div className="rounded-lg border border-border bg-overlay p-2 text-xs">
+                  <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="font-semibold">Diagnose</span>
+                    <span className="text-muted">Tipps {player.done}/{player.total}</span>
+                    <span className="text-muted">Ø {player.avgTokens || 0} Tok</span>
+                    <span className="text-muted">Ø {player.avgLatency || 0} ms</span>
+                    <span className="text-muted">{estCost(provider, player.avgTokens)}</span>
+                    <Button variant="secondary" size="sm" className="ml-auto" onPress={() => doTipNow()} isDisabled={diagBusy}>
+                      <Play size={12} /> Jetzt tippen
+                    </Button>
+                  </div>
+                  {player.lastError && <div className="mb-2 truncate text-danger" title={player.lastError}>Letzter Fehler (Spiel {player.lastErrorMatch}): {player.lastError}</div>}
+                  {preds === null ? <div className="text-muted">lädt …</div>
+                    : preds.length === 0 ? <div className="text-muted">Noch keine Tipps.</div>
+                    : (
+                      <ul className="max-h-40 divide-y divide-border overflow-y-auto">
+                        {preds.map((p) => (
+                          <li key={p.match_n} className="flex items-center gap-2 py-1">
+                            <span className="w-10 shrink-0 text-muted">Sp {p.match_n}</span>
+                            <span className={`shrink-0 tabular-nums ${p.status === "done" ? "text-success" : p.status === "failed" ? "text-danger" : "text-muted"}`}>
+                              {p.status === "done" ? `${p.tip_h}:${p.tip_a}` : p.status === "failed" ? "Fehler" : "offen"}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-muted" title={p.error || ""}>{p.error || ""}</span>
+                            <Button aria-label="Neu tippen" variant="tertiary" size="sm" isIconOnly isDisabled={diagBusy} onPress={() => doTipNow(p.match_n)}><RotateCcw size={12} /></Button>
+                            <Button aria-label="Zurücksetzen" variant="tertiary" size="sm" isIconOnly isDisabled={diagBusy} onPress={() => doReset(p.match_n)}><Trash2 size={12} /></Button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                </div>
+              )}
               {err && <div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{err}</div>}
             </div>
           </Modal.Body>
@@ -287,10 +329,18 @@ export default function AdminUsersTab({ entra, meId, onFlash, autoOpenEntra }) {
   const [aiTarget, setAiTarget] = useState(undefined); // undefined=closed | null=create | player=edit
   const [providers, setProviders] = useState([]);
   const [aiInfo, setAiInfo] = useState({}); // id → { testOk, done, total, … }
+  const [reasoningMode, setReasoningMode] = useState("kickoff");
   const [edit, setEdit] = useState(null);
 
   const reload = async () => { try { setUsers(await listUsers()); setErr(""); } catch (e) { setErr(e.message); } };
-  const loadAi = async () => { try { const d = await listAiPlayers(); setProviders(d.providers || []); setAiInfo(Object.fromEntries((d.players || []).map((p) => [p.id, p]))); } catch { /* admin-only, ignore */ } };
+  const loadAi = async () => {
+    try {
+      const d = await listAiPlayers();
+      setProviders(d.providers || []);
+      setAiInfo(Object.fromEntries((d.players || []).map((p) => [p.id, p])));
+      setReasoningMode(d.config?.reasoningVisibleAfter || "kickoff");
+    } catch { /* admin-only, ignore */ }
+  };
   useEffect(() => { reload(); loadAi(); }, []);
   // Resume the Entra picker after a Microsoft redirect round-trip.
   useEffect(() => { if (autoOpenEntra) setEntraOpen(true); }, [autoOpenEntra]);
@@ -314,6 +364,15 @@ export default function AdminUsersTab({ entra, meId, onFlash, autoOpenEntra }) {
         <Button variant="primary" size="sm" onPress={() => setBasicOpen(true)}><UserPlus size={15} /> Basic anlegen</Button>
         {entra && <Button variant="secondary" size="sm" onPress={() => setEntraOpen(true)}><UsersIcon size={15} /> Aus Entra wählen</Button>}
         <Button variant="secondary" size="sm" onPress={() => setAiTarget(null)}><Bot size={15} /> KI-Spieler</Button>
+        <label className="flex items-center gap-1 text-xs text-muted">
+          KI-Begründung ab
+          <select value={reasoningMode}
+            onChange={async (e) => { const v = e.target.value; setReasoningMode(v); try { await setAiConfig({ reasoningVisibleAfter: v }); } catch (err) { setErr(err.message); } }}
+            className="rounded-md border border-border bg-surface px-2 py-1 text-xs">
+            <option value="kickoff">Anpfiff</option>
+            <option value="lock">Tipp-Sperre</option>
+          </select>
+        </label>
       </div>
 
       {err && <div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{err}</div>}

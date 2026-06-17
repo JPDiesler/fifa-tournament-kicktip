@@ -8,6 +8,7 @@ import {
   listActiveAiPlayers, getAiPlayerKey, setUserTips, setChamp,
   hasAiPrediction, claimAiPrediction, finishAiPrediction,
   hasAiChamp, claimAiChamp, finishAiChamp,
+  getAiPlayerById, getAiPrediction, deleteAiPrediction, calibrationFor,
 } from "../../db.js";
 import { getAiAdapter } from "./index.js";
 import { matchSystemPrompt, championSystemPrompt } from "./prompt.js";
@@ -64,9 +65,33 @@ export async function runAiTips(now = Date.now()) {
     if (!need.length) continue;
     const bundle = await buildBundle(n); // null = defer (e.g. K.o. pairing not resolved yet)
     if (!bundle) continue;
-    for (const p of need) tasks.push(tipOne(p, n, bundle));
+    for (const p of need) {
+      const cal = calibrationFor(p.id); // per-player self-correction from past tips
+      tasks.push(tipOne(p, n, cal ? { ...bundle, calibration: cal } : bundle));
+    }
   }
   if (tasks.length) await Promise.all(tasks);
+}
+
+// Admin "tip now": force a fresh single attempt for one player (+ optional match),
+// with calibration. Deletes any existing row first so it always re-runs (real tip).
+export async function placeTipNow(userId, matchN = null) {
+  const p = getAiPlayerById(userId);
+  if (!p || !p.is_ai) throw new Error("kein KI-Spieler");
+  let n = matchN ? Number(matchN) : null;
+  if (!n) {
+    const now = Date.now();
+    for (const m of MATCHES.filter((m) => kickoff(m.n) > now).sort((a, b) => kickoff(a.n) - kickoff(b.n))) {
+      if (await buildBundle(m.n)) { n = m.n; break; }
+    }
+  }
+  if (!n) throw new Error("kein passendes Spiel gefunden");
+  const bundle = await buildBundle(n);
+  if (!bundle) throw new Error("Bundle nicht verfügbar (Paarung evtl. noch offen)");
+  deleteAiPrediction(userId, n);
+  const cal = calibrationFor(userId);
+  await tipOne(p, n, cal ? { ...bundle, calibration: cal } : bundle);
+  return { matchN: n, prediction: getAiPrediction(userId, n) };
 }
 
 // Place the one-off champion tip per player, once group data is mature and before the
