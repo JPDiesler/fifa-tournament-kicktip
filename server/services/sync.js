@@ -3,13 +3,15 @@
 // oriented to the static home/away). Writing (results/resolved/live), champion
 // detection and push hooks stay here; provider fetching + per-feature merge +
 // rate budgets live in coordinator.js.
-import { TEAMS } from "../data.js";
+import { TEAMS, MATCHES } from "../data.js";
 import { codeForName, FINAL_N } from "./fixtures.js";
+import { kickoff } from "./locks.js";
 import { fetchMerged, fetchDetails, effectiveCapabilities } from "./coordinator.js";
+import { buildPreview } from "./ai/bundle.js";
 import {
   setResult, setResolved, clearResolved, replaceLive, liveByMatch,
   getMeta, setMeta, getChampionActual, setChampionActual, setCapabilities,
-  setMatchDetail, setMatchFinalTime, setMatchLineups, detailByMatch, setMatchExtIds,
+  setMatchDetail, setMatchFinalTime, setMatchLineups, setMatchStats, setMatchPreview, detailByMatch, setMatchExtIds,
 } from "../db.js";
 import { notifyKickoff, notifyGoal, notifyFinal } from "./push.js";
 
@@ -123,15 +125,18 @@ export async function sync(reason = "cron") {
     try {
       const need = new Set([
         ...Object.keys(liveMap).map(Number),
-        ...fixtures.filter((f) => f.finished && (have[f.n]?.final == null || !(have[f.n]?.scorers?.length || have[f.n]?.cards?.length))).map((f) => f.n),
+        ...fixtures.filter((f) => f.finished && (have[f.n]?.final == null || !(have[f.n]?.scorers?.length || have[f.n]?.cards?.length) || !have[f.n]?.stats)).map((f) => f.n),
       ]);
       const lineupNs = new Set([...need].filter((n) => !have[n]?.lineups)); // fetch each lineup once
+      // statistics: refresh while live, fetch once for finished matches that lack them
+      const statsNs = new Set([...Object.keys(liveMap).map(Number), ...fixtures.filter((f) => f.finished && !have[f.n]?.stats).map((f) => f.n)]);
       let details = {};
       if (need.size) {
-        const r = await fetchDetails(fixtures, byProvider, routing, need, { lineupNs });
+        const r = await fetchDetails(fixtures, byProvider, routing, need, { lineupNs, statsNs });
         details = r.details;
         for (const [n, d] of Object.entries(details)) writeDetail(n, d, have);
         for (const [n, lu] of Object.entries(r.lineups)) setMatchLineups(n, lu);
+        for (const [n, s] of Object.entries(r.stats || {})) setMatchStats(n, s);
         if (r.capped) console.log("Detail-Limit erreicht – einige Spiele ausgelassen.");
       }
       // Final match clock from the best source (live snapshot / events / nominal).
@@ -178,15 +183,17 @@ export async function backfillDetails({ force = false, skip = null } = {}) {
   const need = new Set(fixtures.filter((f) => {
     if (!f.finished || skip?.has(f.n)) return false;
     if (force) return true;
-    return have[f.n]?.final == null || !(have[f.n]?.scorers?.length || have[f.n]?.cards?.length);
+    return have[f.n]?.final == null || !(have[f.n]?.scorers?.length || have[f.n]?.cards?.length) || !have[f.n]?.stats;
   }).map((f) => f.n));
   if (!need.size) return { remaining: 0, fetched: 0, capable: true, queried: [] };
 
   const lineupNs = force ? need : new Set([...need].filter((n) => !have[n]?.lineups));
-  const { details, lineups, capable, queried } = await fetchDetails(fixtures, byProvider, routing, need, { max: need.size, lineupNs });
+  const statsNs = force ? need : new Set([...need].filter((n) => !have[n]?.stats));
+  const { details, lineups, stats, capable, queried } = await fetchDetails(fixtures, byProvider, routing, need, { max: need.size, lineupNs, statsNs });
   let fetched = 0;
   for (const [n, d] of Object.entries(details)) { writeDetail(n, d, have); fetched++; }
   for (const [n, lu] of Object.entries(lineups)) setMatchLineups(n, lu);
+  for (const [n, s] of Object.entries(stats || {})) setMatchStats(n, s);
   // Final clock for finished matches — upgrade to a larger time from fresh/stored
   // events (corrects an earlier nominal 90 → 90+2), never shrink.
   for (const f of fixtures) {
@@ -198,6 +205,27 @@ export async function backfillDetails({ force = false, skip = null } = {}) {
     ? need.size - queried.length // capped this pass; the rest retries next pass
     : [...need].filter((n) => !details[n] && !(have[n]?.scorers?.length || have[n]?.cards?.length)).length;
   return { remaining, fetched, capable, queried };
+}
+
+// Pre-match preview (predictions/form/h2h/injuries) for upcoming matches — fetched
+// ONCE per match (kept until kickoff), budget-gated + capped. Surfaced to human
+// tippers in the detail carousel. Only api-football provides it.
+export async function prefetchPreviews(now = Date.now(), max = 6) {
+  const have = detailByMatch();
+  const soon = MATCHES
+    .filter((m) => {
+      const ko = kickoff(m.n);
+      if (ko == null || ko <= now || ko - now > 48 * 3600 * 1000) return false; // only upcoming, ≤48h
+      const pv = have[m.n]?.preview;
+      if (!pv) return true;                                  // no preview yet → fetch
+      return !pv.odds && ko - now < 24 * 3600 * 1000;        // have preview but no odds & <24h → retry (odds appear closer to KO)
+    })
+    .sort((a, b) => kickoff(a.n) - kickoff(b.n))
+    .slice(0, max);
+  for (const m of soon) {
+    try { const p = await buildPreview(m.n); if (p) setMatchPreview(m.n, p); }
+    catch (e) { console.error("preview", m.n, e?.message || e); }
+  }
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

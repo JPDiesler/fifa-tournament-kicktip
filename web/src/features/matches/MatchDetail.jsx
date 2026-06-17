@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Drawer, Chip } from "@heroui/react";
-import { Lock, ChevronDown, Info } from "lucide-react";
+import { Lock, Info } from "lucide-react";
 import Flag from "@/components/Flag.jsx";
 import PlayerName from "@/components/PlayerName.jsx";
+import Carousel from "@/components/Carousel.jsx";
 import AiReasoning from "./AiReasoning.jsx";
 import ScoreInput from "./ScoreInput.jsx";
 import PointsBadge from "@/components/PointsBadge.jsx";
@@ -10,30 +11,16 @@ import BroadcastButtons from "@/features/broadcasts/BroadcastButtons.jsx";
 import { LiveTag, LivePhase } from "./LiveBadge.jsx";
 import Lineups from "./Lineups.jsx";
 import MatchTimeline from "./MatchTimeline.jsx";
+import MatchStats from "./MatchStats.jsx";
+import PreMatch from "./PreMatch.jsx";
+import OddsView from "./OddsView.jsx";
 import { PHASES } from "@/lib/scoring.js";
 import { countdown, kickoffMs, delayLabel, finalClockLabel } from "@/lib/matchtime.js";
 
-// Collapsible section (header + chevron). Controlled, so the two sections can be
-// coupled into an accordion (opening one closes the other).
-function Section({ title, open, onToggle, children }) {
-  return (
-    <div className="overflow-hidden rounded-xl border border-border bg-overlay">
-      <button type="button" onClick={onToggle} aria-expanded={open}
-        className="flex w-full items-center justify-between px-3 py-2 text-xs font-bold uppercase tracking-wider text-muted">
-        {title}
-        <ChevronDown size={16} className={`shrink-0 transition-transform ${open ? "" : "-rotate-90"}`} />
-      </button>
-      {open && <div className="border-t border-border p-3">{children}</div>}
-    </div>
-  );
-}
-
-// Bottom-sheet detail for one match: final score, your tip (disabled when
-// locked), and the other players' tips (revealed only once the match is locked).
+// Bottom-sheet detail for one match. A fixed teams+score header on top; below it a
+// swipeable carousel whose sections appear only when their data exists (Tipps always,
+// then Spielverlauf, Aufstellung — Statistik/Pre-Match plug in here too).
 export default function MatchDetail({ match, isOpen, onClose, st, board, me, teamLabel, teamCode, score, onTip }) {
-  // Accordion: only one of Spielverlauf / Aufstellung open at a time (Verlauf default).
-  const [section, setSection] = useState("verlauf");
-  const toggleSection = (id) => setSection((s) => (s === id ? null : id));
   const [reasonFor, setReasonFor] = useState(null); // kürzel of the AI tip whose reasoning is open
   const broadcasts = match ? (st.broadcasts?.[match.n] || []) : [];
   if (!match) {
@@ -53,7 +40,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   const live = st.live?.[n];
   const isLiveMatch = !hasResult && !!live;             // running → show scoreline (0:0 default) + badge
   const lh = live?.h || "0", la = live?.a || "0";
-  const detail = st.details?.[n]; // { scorers, cards } if a capable provider feeds them
+  const detail = st.details?.[n]; // { scorers, cards, subs, lineups, … } if a capable provider feeds them
 
   // Points score against the final result, or — while a match runs — provisionally
   // against the (delayed) live score. Powers the live tip comparison below.
@@ -66,19 +53,95 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
     ? [...tipped].sort((a, b) => (b.pts ?? -1) - (a.pts ?? -1)) // live/final → leader first (incl. me)
     : tipped.filter((o) => !o.isMe);                           // pre-score → just the others' tips
 
+  // --- carousel sections (only those with data) ---
+  const tippsSection = (
+    <div className="space-y-5 pb-4">
+      <div className="rounded-xl border border-border bg-overlay p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-sm font-bold">Dein Tipp</span>
+          {locked
+            ? <Chip size="sm" className="border-0 bg-zinc-700 text-xs text-zinc-200"><Lock size={11} /> gesperrt</Chip>
+            : <PointsBadge points={myPoints} />}
+        </div>
+        <div className="flex items-center justify-center gap-2">
+          <ScoreInput value={myTip.h} isDisabled={locked || !me || !ready} onChange={(v) => onTip(n, "h", v)} label="Tipp Heim" />
+          <span className="text-muted">:</span>
+          <ScoreInput value={myTip.a} isDisabled={locked || !me || !ready} onChange={(v) => onTip(n, "a", v)} label="Tipp Gast" />
+          {locked && myPoints !== null && <span className="ml-2"><PointsBadge points={myPoints} /></span>}
+        </div>
+        {!me && <p className="mt-2 text-center text-xs text-muted">Kein Kürzel zugewiesen.</p>}
+        {me && !ready && <p className="mt-2 text-center text-xs text-muted">Paarung steht noch nicht fest – Tippen ab dann möglich.</p>}
+      </div>
+
+      <div>
+        <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
+          <span className="text-xs font-bold uppercase tracking-wider text-muted">
+            {isLiveMatch ? "Live-Tippvergleich" : hasResult ? "Tippvergleich" : "Tipps der anderen"}
+          </span>
+          {isLiveMatch && <span className="text-[10px] text-muted">Punkte vorläufig · Stand {lh}:{la}</span>}
+        </div>
+        {!locked ? (
+          <p className="rounded-xl border border-border bg-overlay p-3 text-center text-xs text-muted">Werden 5 Minuten vor Anpfiff sichtbar.</p>
+        ) : displayList.length === 0 ? (
+          <p className="rounded-xl border border-border bg-overlay p-3 text-center text-xs text-muted">Niemand{effRes ? "" : " sonst"} hat getippt.</p>
+        ) : (
+          <div className="rounded-xl border border-border">
+            {displayList.map((o, i) => {
+              const isAi = !!st.players?.[o.k]?.isAi; // AI tips are clickable → reasoning
+              return (
+                <div key={o.k}
+                  role={isAi ? "button" : undefined} tabIndex={isAi ? 0 : undefined}
+                  onClick={isAi ? () => setReasonFor(o.k) : undefined}
+                  onKeyDown={isAi ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setReasonFor(o.k); } } : undefined}
+                  className={`flex items-center justify-between px-3 py-2 text-sm ${i ? "border-t border-border" : ""} ${o.isMe ? "bg-accent/10" : ""} ${isAi ? "cursor-pointer hover:bg-overlay" : ""}`}>
+                  <span className="flex min-w-0 items-center gap-1.5 font-semibold">
+                    {effRes && <span className="w-4 shrink-0 text-right text-xs tabular-nums text-muted">{i + 1}</span>}
+                    <PlayerName kuerzel={o.k} />{o.isMe && <span className="shrink-0 text-[10px] text-app-accent">du</span>}
+                    {isAi && <Info size={13} className="shrink-0 text-muted" />}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="tabular-nums">{o.tip.h}:{o.tip.a}</span>
+                    <PointsBadge points={o.pts} />
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const hasStats = detail?.stats && (Object.keys(detail.stats.home || {}).length > 0 || Object.keys(detail.stats.away || {}).length > 0);
+  const preKickoff = !hasResult && !isLiveMatch;
+  const sections = [{ id: "tipps", label: "Tipps", content: tippsSection }];
+  // pre-match info first (hidden once played)
+  if (broadcasts.length > 0 && !past)
+    sections.push({ id: "tv", label: "Übertragung", content: <div className="pb-4"><BroadcastButtons keys={broadcasts} /></div> });
+  if (detail?.preview && preKickoff)
+    sections.push({ id: "prematch", label: "Vorschau", content: <div className="pb-4"><PreMatch preview={detail.preview} home={home} away={away} /></div> });
+  if (detail?.preview?.odds && preKickoff)
+    sections.push({ id: "quoten", label: "Quoten", content: <div className="pb-4"><OddsView odds={detail.preview.odds} home={home} away={away} /></div> });
+  // live / post
+  if (detail && (detail.scorers?.length > 0 || detail.cards?.length > 0 || detail.subs?.length > 0))
+    sections.push({ id: "verlauf", label: "Spielverlauf", content: <div className="pb-4"><MatchTimeline detail={detail} home={home} away={away} /></div> });
+  if (hasStats)
+    sections.push({ id: "statistik", label: "Statistik", content: <div className="pb-4"><MatchStats stats={detail.stats} /></div> });
+  if (detail?.lineups)
+    sections.push({ id: "aufstellung", label: "Aufstellung", content: <div className="pb-4"><Lineups lineups={detail.lineups} home={home} away={away} /></div> });
+
   return (
     <>
     <Drawer.Backdrop isOpen={isOpen} onOpenChange={(o) => !o && onClose()}>
       <Drawer.Content placement="bottom">
         <Drawer.Dialog className="mx-auto flex max-h-[88vh] w-full max-w-2xl flex-col">
           <Drawer.Handle />
+          <Drawer.CloseTrigger />
           <Drawer.Header>
             <Drawer.Heading className="text-sm text-muted">{phaseLabel} · Spiel {n}</Drawer.Heading>
           </Drawer.Header>
-          {/* Block (not flex) so children keep their height and the body actually
-              scrolls — a flex column would shrink them to fit and clip the content. */}
-          <Drawer.Body className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain pb-8">
-            {/* teams + big score */}
+          <Drawer.Body className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4">
+            {/* fixed: teams + big score */}
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 flex-1 flex-col items-center gap-1 text-center">
                 <Flag code={home.code} /><span className="truncate text-sm font-semibold">{home.label}</span>
@@ -106,85 +169,8 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
               </div>
             </div>
 
-            {/* where to watch (Germany) — hidden once the match is over */}
-            {broadcasts.length > 0 && !past && (
-              <div>
-                <div className="mb-1.5 px-1 text-xs font-bold uppercase tracking-wider text-muted">Wo zu sehen (DE)</div>
-                <BroadcastButtons keys={broadcasts} />
-              </div>
-            )}
-
-            {/* Spielverlauf — chronological goals/cards/subs (home left, away right) */}
-            {detail && (detail.scorers?.length > 0 || detail.cards?.length > 0 || detail.subs?.length > 0) && (
-              <Section title="Spielverlauf" open={section === "verlauf"} onToggle={() => toggleSection("verlauf")}>
-                <MatchTimeline detail={detail} home={home} away={away} />
-              </Section>
-            )}
-
-            {/* Startaufstellung — one team per card, pitch graphic */}
-            {detail?.lineups && (
-              <Section title="Aufstellung" open={section === "aufstellung"} onToggle={() => toggleSection("aufstellung")}>
-                <Lineups lineups={detail.lineups} home={home} away={away} />
-              </Section>
-            )}
-
-            {/* my tip */}
-            <div className="rounded-xl border border-border bg-overlay p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-bold">Dein Tipp</span>
-                {locked
-                  ? <Chip size="sm" className="border-0 bg-zinc-700 text-xs text-zinc-200"><Lock size={11} /> gesperrt</Chip>
-                  : <PointsBadge points={myPoints} />}
-              </div>
-              <div className="flex items-center justify-center gap-2">
-                <ScoreInput value={myTip.h} isDisabled={locked || !me || !ready} onChange={(v) => onTip(n, "h", v)} label="Tipp Heim" />
-                <span className="text-muted">:</span>
-                <ScoreInput value={myTip.a} isDisabled={locked || !me || !ready} onChange={(v) => onTip(n, "a", v)} label="Tipp Gast" />
-                {locked && myPoints !== null && <span className="ml-2"><PointsBadge points={myPoints} /></span>}
-              </div>
-              {!me && <p className="mt-2 text-center text-xs text-muted">Kein Kürzel zugewiesen.</p>}
-              {me && !ready && <p className="mt-2 text-center text-xs text-muted">Paarung steht noch nicht fest – Tippen ab dann möglich.</p>}
-            </div>
-
-            {/* tip comparison — live (provisional points vs the delayed score) / final / pending */}
-            <div>
-              <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted">
-                  {isLiveMatch ? "Live-Tippvergleich" : hasResult ? "Tippvergleich" : "Tipps der anderen"}
-                </span>
-                {isLiveMatch && <span className="text-[10px] text-muted">Punkte vorläufig · Stand {lh}:{la}</span>}
-              </div>
-              {!locked ? (
-                <p className="rounded-xl border border-border bg-overlay p-3 text-center text-xs text-muted">
-                  Werden 5 Minuten vor Anpfiff sichtbar.
-                </p>
-              ) : displayList.length === 0 ? (
-                <p className="rounded-xl border border-border bg-overlay p-3 text-center text-xs text-muted">Niemand{effRes ? "" : " sonst"} hat getippt.</p>
-              ) : (
-                <div className="max-h-72 overflow-y-auto rounded-xl border border-border">
-                  {displayList.map((o, i) => {
-                    const isAi = !!st.players?.[o.k]?.isAi; // AI tips are clickable → reasoning
-                    return (
-                      <div key={o.k}
-                        role={isAi ? "button" : undefined} tabIndex={isAi ? 0 : undefined}
-                        onClick={isAi ? () => setReasonFor(o.k) : undefined}
-                        onKeyDown={isAi ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setReasonFor(o.k); } } : undefined}
-                        className={`flex items-center justify-between px-3 py-2 text-sm ${i ? "border-t border-border" : ""} ${o.isMe ? "bg-accent/10" : ""} ${isAi ? "cursor-pointer hover:bg-overlay" : ""}`}>
-                        <span className="flex min-w-0 items-center gap-1.5 font-semibold">
-                          {effRes && <span className="w-4 shrink-0 text-right text-xs tabular-nums text-muted">{i + 1}</span>}
-                          <PlayerName kuerzel={o.k} />{o.isMe && <span className="shrink-0 text-[10px] text-app-accent">du</span>}
-                          {isAi && <Info size={13} className="shrink-0 text-muted" />}
-                        </span>
-                        <span className="flex shrink-0 items-center gap-2">
-                          <span className="tabular-nums">{o.tip.h}:{o.tip.a}</span>
-                          <PointsBadge points={o.pts} />
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            {/* swipeable sections (Übertragung / Vorschau / Quoten / Verlauf / Statistik / Aufstellung) */}
+            <Carousel sections={sections} className="mt-4" />
           </Drawer.Body>
         </Drawer.Dialog>
       </Drawer.Content>

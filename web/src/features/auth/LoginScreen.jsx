@@ -3,6 +3,7 @@ import { Card, Button, TextField, Label, Input, Spinner, Separator } from "@hero
 import { getConfig, loginBasic } from "./auth.js";
 import { initMsal, loginRedirect } from "./msal.js";
 import Logo from "@/components/Logo.jsx";
+import Notice from "@/components/Notice.jsx";
 
 function MicrosoftLogo() {
   return (
@@ -66,9 +67,7 @@ export default function LoginScreen({ onLoggedIn, initialError }) {
               <Input placeholder="Passwort" />
             </TextField>
 
-            {error && (
-              <div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{error}</div>
-            )}
+            <Notice>{error}</Notice>
 
             <Button type="submit" variant="primary" onPress={submitBasic} isPending={busy === "basic"} className="w-full">
               Anmelden

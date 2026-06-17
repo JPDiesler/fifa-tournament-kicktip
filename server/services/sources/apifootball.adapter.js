@@ -52,8 +52,8 @@ async function fetchFixtures() {
 
 // Per-fixture events → scorers + cards, each tagged with the team SIDE ("h"/"a", via
 // ctx) and goals with a type ("penalty"/"own"/null). A "Missed Penalty" is a Goal
-// event that didn't score → dropped. api-football lists an own goal under the
-// OFFENDING player's team, so we flip its side to the team whose score it increased.
+// event that didn't score → dropped. api-football lists an own goal under the player's
+// (offending) team — we keep that side so the scorer shows on his own team, marked (ET).
 async function fetchDetail(extId, ctx) {
   const r = await fetch(`${BASE}/fixtures/events?fixture=${extId}`, H());
   const j = await r.json();
@@ -61,12 +61,7 @@ async function fetchDetail(extId, ctx) {
   const goalType = (d) => (d === "Penalty" ? "penalty" : d === "Own Goal" ? "own" : null);
   const scorers = ev
     .filter((e) => e.type === "Goal" && e.detail !== "Missed Penalty")
-    .map((e) => {
-      const type = goalType(e.detail);
-      let side = sideOf(e.team?.name, ctx);
-      if (type === "own" && side) side = side === "h" ? "a" : "h";
-      return { team: e.team?.name || null, player: e.player?.name || null, minute: e.time?.elapsed ?? null, injury: e.time?.extra ?? null, type, side };
-    });
+    .map((e) => ({ team: e.team?.name || null, player: e.player?.name || null, minute: e.time?.elapsed ?? null, injury: e.time?.extra ?? null, type: goalType(e.detail), side: sideOf(e.team?.name, ctx) }));
   const cards = ev
     .filter((e) => e.type === "Card")
     .map((e) => ({ team: e.team?.name || null, player: e.player?.name || null, minute: e.time?.elapsed ?? null, injury: e.time?.extra ?? null, card: e.detail || null, side: sideOf(e.team?.name, ctx) }));
@@ -87,8 +82,13 @@ async function fetchLineups(extId, ctx) {
   const mapTeam = (t) => ({
     formation: t.formation || null,
     coach: t.coach?.name || null,
-    startXI: (t.startXI || []).map((e) => ({ n: e.player?.number ?? null, name: e.player?.name || null, pos: e.player?.pos || null, grid: e.player?.grid || null })),
-    bench: (t.substitutes || []).map((e) => ({ n: e.player?.number ?? null, name: e.player?.name || null, pos: e.player?.pos || null })),
+    coachId: t.coach?.id ?? null, // → coach photo via the media CDN (free)
+    teamId: t.team?.id ?? null, // → team crest via the media CDN (free)
+    // The match kit colours (home team = home kit, away team = change kit) → real
+    // home/away colours per side. { player:{primary,number,border}, goalkeeper:{…} }.
+    colors: t.team?.colors || null,
+    startXI: (t.startXI || []).map((e) => ({ pid: e.player?.id ?? null, n: e.player?.number ?? null, name: e.player?.name || null, pos: e.player?.pos || null, grid: e.player?.grid || null })),
+    bench: (t.substitutes || []).map((e) => ({ pid: e.player?.id ?? null, n: e.player?.number ?? null, name: e.player?.name || null, pos: e.player?.pos || null })),
   });
   const out = { home: null, away: null };
   for (const t of arr) {
@@ -98,6 +98,35 @@ async function fetchLineups(extId, ctx) {
   }
   if (!out.home && !out.away) { const a = mapTeam(arr[0]), b = mapTeam(arr[1]); out.home = ctx?.swap ? b : a; out.away = ctx?.swap ? a : b; }
   return out;
+}
+
+// Per-team match statistics, oriented to the static home/away (via ctx). Values are
+// raw api-football strings/numbers ("56%", 12, …); the UI formats them.
+const STAT_KEY = {
+  "Ball Possession": "possession", "Total Shots": "shots", "Shots on Goal": "shotsOnGoal",
+  "Shots off Goal": "shotsOffGoal", "Blocked Shots": "blockedShots", "Corner Kicks": "corners",
+  "Fouls": "fouls", "Offsides": "offsides", "Yellow Cards": "yellow", "Red Cards": "red",
+  "Goalkeeper Saves": "saves", "Total passes": "passes", "Passes accurate": "passesAccurate",
+  "Passes %": "passAccuracy", "expected_goals": "xg",
+};
+async function fetchStatistics(extId, ctx) {
+  const r = await fetch(`${BASE}/fixtures/statistics?fixture=${extId}`, H());
+  const j = await r.json();
+  const arr = Array.isArray(j.response) ? j.response : [];
+  if (arr.length < 2) return null; // not published yet
+  const teamStats = (entry) => {
+    const o = {};
+    for (const s of entry.statistics || []) { const k = STAT_KEY[s.type]; if (k && s.value != null) o[k] = s.value; }
+    return o;
+  };
+  const out = { home: null, away: null };
+  for (const entry of arr) {
+    const side = sideOf(entry.team?.name, ctx);
+    if (side === "h") out.home = teamStats(entry);
+    else if (side === "a") out.away = teamStats(entry);
+  }
+  if (!out.home && !out.away) { out.home = teamStats(arr[ctx?.swap ? 1 : 0]); out.away = teamStats(arr[ctx?.swap ? 0 : 1]); }
+  return (out.home || out.away) ? out : null;
 }
 
 // --- AI-bundle data (pre-match): predictions (form/att-def/Poisson/percent/h2h) + injuries ---
@@ -111,6 +140,20 @@ async function fetchInjuries(extId) {
   const r = await fetch(`${BASE}/injuries?fixture=${extId}`, H());
   const j = await r.json();
   return Array.isArray(j.response) ? j.response : [];
+}
+// Pre-match 1X2 odds from the first bookmaker → decimal odds (provider home/away;
+// the bundle builder orients them). null if no bookmaker/bet is available.
+async function fetchOdds(extId) {
+  const r = await fetch(`${BASE}/odds?fixture=${extId}`, H());
+  const j = await r.json();
+  const resp = Array.isArray(j.response) ? j.response[0] : null;
+  const bm = resp?.bookmakers?.[0];
+  const bet = bm?.bets?.find((b) => b.id === 1 || /match winner/i.test(b.name || ""));
+  if (!bet?.values) return null;
+  const odd = (v) => { const x = bet.values.find((e) => new RegExp(`^${v}$`, "i").test(e.value)); return x ? Number(x.odd) : null; };
+  const home = odd("Home"), draw = odd("Draw"), away = odd("Away");
+  if (home == null && draw == null && away == null) return null;
+  return { home, draw, away, bookmaker: bm?.name || null };
 }
 
 // Paid real-time provider: assume the full feature set (confirmed by probe).
@@ -139,5 +182,5 @@ export const apifootball = {
   rateLimit: () => { const o = getProviderLimits("apifootball").rateLimit; return Number.isFinite(o) ? o : Number(process.env.API_RATE_LIMIT || 10); },
   dailyLimit: () => { const o = getProviderLimits("apifootball").dailyLimit; return o === null ? null : Number.isFinite(o) ? o : Number(process.env.API_DAILY_LIMIT || 100); },
   configured: () => !!key(),
-  declaredCaps, fetchFixtures, fetchDetail, fetchLineups, fetchPredictions, fetchInjuries, probe,
+  declaredCaps, fetchFixtures, fetchDetail, fetchLineups, fetchStatistics, fetchPredictions, fetchInjuries, fetchOdds, probe,
 };

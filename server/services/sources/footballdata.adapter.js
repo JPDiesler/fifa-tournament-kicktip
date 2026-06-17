@@ -60,11 +60,14 @@ async function fetchFixtures() {
 async function fetchDetail(extId, ctx) {
   const d = await (await fetch(`${BASE}/matches/${extId}`, H())).json();
   const goalType = (t) => (t === "PENALTY" ? "penalty" : t === "OWN" ? "own" : null);
-  const scorers = Array.isArray(d.goals) ? d.goals.map((g) => ({
-    team: g.team?.name || null, player: g.scorer?.name || null,
-    minute: g.minute ?? null, injury: g.injuryTime ?? null,
-    type: goalType(g.type), side: sideOf(g.team?.name, ctx),
-  })) : [];
+  // football-data credits an own goal to the BENEFITING team → flip it back to the
+  // scorer's (offending) team so the timeline shows it on his side, marked (ET).
+  const scorers = Array.isArray(d.goals) ? d.goals.map((g) => {
+    const type = goalType(g.type);
+    let side = sideOf(g.team?.name, ctx);
+    if (type === "own" && side) side = side === "h" ? "a" : "h";
+    return { team: g.team?.name || null, player: g.scorer?.name || null, minute: g.minute ?? null, injury: g.injuryTime ?? null, type, side };
+  }) : [];
   const cards = Array.isArray(d.bookings) ? d.bookings.map((b) => ({
     team: b.team?.name || null, player: b.player?.name || null,
     minute: b.minute ?? null, card: b.card || null, side: sideOf(b.team?.name, ctx),

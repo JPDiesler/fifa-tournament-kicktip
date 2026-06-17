@@ -78,6 +78,9 @@ export async function resetAiPrediction(id, matchN) {
 export async function setAiConfig(body) {
   return j(await post("/api/admin/ai-config", body), "Speichern fehlgeschlagen"); // { reasoningVisibleAfter }
 }
+export async function getAiRanking() {
+  return j(await fetch("/api/admin/ai-ranking"), "Ranking nicht ladbar"); // { ranking: [{kuerzel,provider,brier,hitRate,avgPoints,n}] }
+}
 // Live model list from the provider (id 0 = use the key in the body).
 export async function fetchAiModels(id, body) {
   return j(await post(`/api/admin/ai-players/${id}/models`, body), "Modelle nicht ladbar"); // { models: [{id,label?,contextLimit?}] }

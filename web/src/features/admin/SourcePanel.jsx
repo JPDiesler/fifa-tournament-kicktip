@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Button, TextField, Label, Input, Spinner, Switch, Tooltip } from "@heroui/react";
+import { Button, TextField, Label, Input, Spinner, Switch, Tooltip, Select, ListBox, Chip, toast } from "@heroui/react";
 import { Plug, Check, X, Minus, Clock, RefreshCw, RotateCcw } from "lucide-react";
 import { getSources, setProviderToken, testProvider, saveRouting, refreshDetails } from "./admin.js";
+import Notice from "@/components/Notice.jsx";
 
 // Capability pills (per provider), in display order.
 const PILLS = [
@@ -70,16 +71,16 @@ function ProviderCard({ src, onChanged, onSaveLimits, onFlash }) {
     try {
       await onSaveLimits({ rateLimit: rate === "" ? undefined : Number(rate), dailyLimit: daily === "" ? null : Number(daily), delaySeconds: delay === "" ? undefined : Number(delay) });
       onFlash?.("Limits gespeichert");
-    } catch (e) { onFlash?.(e.message); } finally { setBusy(false); }
+    } catch (e) { toast(e.message, { variant: "danger" }); } finally { setBusy(false); }
   };
 
   const save = async () => {
     setBusy(true);
     try { await setProviderToken(src.id, token.trim()); setToken(""); onFlash?.("Token gespeichert"); setProbe(await testProvider(src.id)); await onChanged(); }
-    catch (e) { onFlash?.(e.message); } finally { setBusy(false); }
+    catch (e) { toast(e.message, { variant: "danger" }); } finally { setBusy(false); }
   };
-  const test = async () => { setBusy(true); try { setProbe(await testProvider(src.id)); await onChanged(); } catch (e) { onFlash?.(e.message); } finally { setBusy(false); } };
-  const reset = async () => { setBusy(true); try { await setProviderToken(src.id, ""); onFlash?.("Token zurückgesetzt"); setProbe(null); await onChanged(); } catch (e) { onFlash?.(e.message); } finally { setBusy(false); } };
+  const test = async () => { setBusy(true); try { setProbe(await testProvider(src.id)); await onChanged(); } catch (e) { toast(e.message, { variant: "danger" }); } finally { setBusy(false); } };
+  const reset = async () => { setBusy(true); try { await setProviderToken(src.id, ""); onFlash?.("Token zurückgesetzt"); setProbe(null); await onChanged(); } catch (e) { toast(e.message, { variant: "danger" }); } finally { setBusy(false); } };
 
   return (
     <div className="rounded-lg border border-border bg-overlay p-2.5">
@@ -90,7 +91,7 @@ function ProviderCard({ src, onChanged, onSaveLimits, onFlash }) {
         </span>
         {src.feeds?.length > 0 && (
           <span className="ml-auto flex flex-wrap justify-end gap-1">
-            {src.feeds.map((f) => <span key={f} className="rounded bg-overlay px-1.5 py-0.5 text-[10px] text-muted ring-1 ring-border">{FEATURE_LABEL[f] || f}</span>)}
+            {src.feeds.map((f) => <Chip key={f} size="sm" variant="soft">{FEATURE_LABEL[f] || f}</Chip>)}
           </span>
         )}
       </div>
@@ -123,10 +124,10 @@ function ProviderCard({ src, onChanged, onSaveLimits, onFlash }) {
         <Button variant="tertiary" size="sm" isDisabled={busy} onPress={saveLimits}>Limits speichern</Button>
       </div>
       {probe && (
-        <div className={`mt-2 rounded-md border p-2 text-xs ${probe.ok ? "border-green-600/40 bg-green-500/10 text-green-400" : "border-red-600/40 bg-red-500/10 text-red-400"}`}>
-          {probe.ok ? <>✓ Verbindung OK{probe.client ? ` · Konto: ${probe.client}` : ""}{Number.isFinite(probe.availableMinute) ? ` · ${probe.availableMinute} Requests übrig` : ""}</>
-            : <>✗ {probe.error || "Fehler"}{probe.status ? ` (HTTP ${probe.status})` : ""}</>}
-        </div>
+        <Notice status={probe.ok ? "success" : "danger"} className="mt-2">
+          {probe.ok ? `✓ Verbindung OK${probe.client ? ` · Konto: ${probe.client}` : ""}${Number.isFinite(probe.availableMinute) ? ` · ${probe.availableMinute} Requests übrig` : ""}`
+            : `✗ ${probe.error || "Fehler"}${probe.status ? ` (HTTP ${probe.status})` : ""}`}
+        </Notice>
       )}
     </div>
   );
@@ -159,10 +160,14 @@ function RoutingMatrix({ data, onSave, onFlash }) {
         return (
           <div key={feat} className={`flex flex-wrap items-center gap-2 px-3 py-2 text-sm ${i ? "border-t border-border" : ""}`}>
             <span className="min-w-28 flex-1 font-medium">{FEATURE_LABEL[feat] || feat}</span>
-            <select value={primary} onChange={(e) => setPrimary(feat, e.target.value)}
-              className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-foreground">
-              {opts.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <Select aria-label={`Quelle für ${FEATURE_LABEL[feat] || feat}`} className="w-40" value={primary} onChange={(v) => setPrimary(feat, String(v))}>
+              <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
+              <Select.Popover>
+                <ListBox>
+                  {opts.map((s) => <ListBox.Item key={s.id} id={s.id} textValue={s.name}>{s.name}<ListBox.ItemIndicator /></ListBox.Item>)}
+                </ListBox>
+              </Select.Popover>
+            </Select>
             {opts.length > 1 && (
               <Switch size="sm" aria-label="Fallback" isSelected={fallback} onChange={(v) => setFallback(feat, v)}>
                 <Switch.Control><Switch.Thumb /></Switch.Control>
@@ -186,7 +191,16 @@ export default function SourcePanel({ onFlash, onSync }) {
   useEffect(() => { load(); }, []);
 
   const runSync = async () => { setBusy(true); try { await onSync?.(); await load(); } finally { setBusy(false); } };
-  const reloadDetails = async () => { setBusy(true); try { await refreshDetails(); onFlash?.("Details werden neu geladen … (Hintergrund, kann ein paar Minuten dauern)"); } catch (e) { onFlash?.(e.message); } finally { setBusy(false); } };
+  const reloadDetails = async () => {
+    setBusy(true);
+    try {
+      await toast.promise(refreshDetails(), {
+        loading: "Details werden neu geladen …",
+        success: "Neu-Laden gestartet (läuft im Hintergrund, kann ein paar Minuten dauern)",
+        error: (e) => e?.message || "Neu laden fehlgeschlagen",
+      });
+    } catch { /* error toast already shown */ } finally { setBusy(false); }
+  };
   const onSaveRouting = async (routing) => { await saveRouting({ routing }); await load(); onFlash?.("Routing gespeichert"); };
   const saveProvider = async (id, patch) => {
     const providers = { ...(data.providers || {}) };

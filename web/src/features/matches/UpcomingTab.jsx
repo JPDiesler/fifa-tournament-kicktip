@@ -1,3 +1,4 @@
+import { Separator } from "@heroui/react";
 import MatchCard from "./MatchCard.jsx";
 import { kickoffMs, isLive, delayLabel } from "@/lib/matchtime.js";
 
@@ -44,7 +45,7 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, scor
             Live {delayLabel(st.capabilities?.delaySeconds ?? 180) && <span className="font-normal normal-case text-muted">· {delayLabel(st.capabilities?.delaySeconds ?? 180)}</span>}
           </div>
           {live.map((m) => card(m))}
-          <div className="my-3 border-t border-border" />
+          <Separator className="my-3" />
           {upcoming.length > 0 && <div className="px-1 text-xs font-bold uppercase tracking-wider text-muted">Anstehend</div>}
         </>
       )}

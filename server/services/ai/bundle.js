@@ -132,6 +132,43 @@ async function footballDataBundle(extId, home, away) {
   return out;
 }
 
+// Human-facing pre-match preview (api-football only) — oriented to our home/away:
+// win-percentages, advice, recent form, h2h summary, injuries. null if no data.
+export async function buildPreview(matchN) {
+  const m = matchByN.get(Number(matchN));
+  if (!m) return null;
+  const sides = sidesFor(m, matchN);
+  if (!sides) return null;
+  const { home, away } = sides;
+  const ext = extIdsByMatch(matchN);
+  const ad = getAdapter("apifootball");
+  if (!ad?.configured?.() || !ext.apifootball) return null;
+  const [pred, injuries, odds] = await Promise.all([
+    budgetedCall("apifootball", () => ad.fetchPredictions(ext.apifootball)),
+    budgetedCall("apifootball", () => ad.fetchInjuries(ext.apifootball)),
+    budgetedCall("apifootball", () => ad.fetchOdds(ext.apifootball)),
+  ]);
+  const hasInj = Array.isArray(injuries) && injuries.length;
+  if (!pred && !hasInj && !odds) return null;
+
+  // Orient provider home/away to OUR home/away (the away team's data is swapped when
+  // api-football lists our away side as its "home"). Derived from the predictions teams.
+  const apiHomeCode = pred ? codeForName(pred.teams?.home?.name) : null;
+  const swap = !!apiHomeCode && apiHomeCode !== home.code;
+  const pick = (ht, at) => (swap ? { home: at, away: ht } : { home: ht, away: at });
+
+  const out = { home: home.name, away: away.name };
+  if (pred) {
+    out.percent = pred.predictions?.percent ? pick(pred.predictions.percent.home, pred.predictions.percent.away) : null;
+    out.advice = pred.predictions?.advice || null;
+    out.form = pick(pred.teams?.home?.league?.form || null, pred.teams?.away?.league?.form || null); // "WWDLW"-ish, best effort
+    if (Array.isArray(pred.h2h)) out.h2h = pred.h2h.slice(-5).map((g) => ({ date: g.fixture?.date, home: g.teams?.home?.name, away: g.teams?.away?.name, goals: g.goals }));
+  }
+  if (odds) { const o = pick(odds.home, odds.away); out.odds = { home: o.home, draw: odds.draw, away: o.away, bookmaker: odds.bookmaker }; }
+  if (hasInj) out.injuries = injuries.map((i) => ({ team: i.team?.name, player: i.player?.name, reason: i.player?.reason }));
+  return out;
+}
+
 // One-off champion (Weltmeister) bundle: the valid team codes + group standings.
 export async function buildChampionBundle() {
   const teams = Object.keys(TEAMS).map((code) => ({ code, name: teamName(code) }));

@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { Popover, Button } from "@heroui/react";
-import { ChevronDown, Search } from "lucide-react";
+import { Popover, Button, SearchField } from "@heroui/react";
+import { ChevronDown } from "lucide-react";
 import ProviderLogo from "@/components/ProviderLogo.jsx";
 import { usePlayers } from "@/components/PlayerName.jsx";
 
@@ -152,11 +152,13 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
               </Button>
               <Popover.Content className="w-56">
                 <Popover.Dialog className="p-1.5">
-                  <div className="mb-1 flex items-center gap-1.5 rounded-md border border-border bg-overlay px-2">
-                    <Search size={13} className="shrink-0 text-muted" />
-                    <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Spieler suchen …"
-                      className="w-full bg-transparent py-1.5 text-sm outline-none" />
-                  </div>
+                  <SearchField aria-label="Spieler suchen" value={query} onChange={setQuery} className="mb-1">
+                    <SearchField.Group>
+                      <SearchField.SearchIcon />
+                      <SearchField.Input autoFocus placeholder="Spieler suchen …" />
+                      <SearchField.ClearButton />
+                    </SearchField.Group>
+                  </SearchField>
                   <ul className="max-h-56 overflow-y-auto">
                     <li>
                       <button onClick={() => { setHighlight(null); setPickOpen(false); setQuery(""); }}

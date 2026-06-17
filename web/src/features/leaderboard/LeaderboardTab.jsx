@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Table, Pagination, Button } from "@heroui/react";
+import { Table, Pagination, Button, ToggleButton, ToggleButtonGroup } from "@heroui/react";
 import { Check, X, Share2 } from "lucide-react";
 import { known } from "@/lib/scoring.js";
 import Flag from "@/components/Flag.jsx";
@@ -52,14 +52,10 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
   return (
     <div>
       <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="inline-flex rounded-lg border border-border bg-surface p-0.5 text-xs">
-          {SUBTABS.map(([k, l]) => (
-            <button key={k} onClick={() => setMode(k)}
-              className={`rounded-md px-3 py-1 transition ${mode === k ? "bg-accent font-semibold text-accent-foreground" : "text-muted"}`}>
-              {l}
-            </button>
-          ))}
-        </div>
+        <ToggleButtonGroup selectionMode="single" disallowEmptySelection size="sm" aria-label="Ansicht"
+          selectedKeys={new Set([mode])} onSelectionChange={(keys) => { const k = [...keys][0]; if (k) setMode(String(k)); }}>
+          {SUBTABS.map(([k, l]) => <ToggleButton key={k} id={k}>{l}</ToggleButton>)}
+        </ToggleButtonGroup>
         {canShare && (
           <Button isIconOnly variant="secondary" size="sm" aria-label="Als Bild teilen" onPress={onShare}>
             <Share2 size={15} />
@@ -118,14 +114,11 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
               <Pagination.Summary>
                 <div className="inline-flex items-center gap-1 text-[11px] text-muted">
                   <span className="mr-1 hidden sm:inline">Pro Seite:</span>
-                  <div className="inline-flex rounded-lg border border-border bg-surface p-0.5">
-                    {PAGE_SIZES.map((s) => (
-                      <button key={s} onClick={() => { setPageSize(s); setPage(1); }}
-                        className={`rounded-md px-2 py-0.5 transition ${pageSize === s ? "bg-accent font-semibold text-accent-foreground" : "text-muted"}`}>
-                        {s === Infinity ? "Alle" : s}
-                      </button>
-                    ))}
-                  </div>
+                  <ToggleButtonGroup selectionMode="single" disallowEmptySelection size="sm" aria-label="Pro Seite"
+                    selectedKeys={new Set([String(pageSize)])}
+                    onSelectionChange={(keys) => { const k = [...keys][0]; if (k != null) { setPageSize(k === "Infinity" ? Infinity : Number(k)); setPage(1); } }}>
+                    {PAGE_SIZES.map((s) => <ToggleButton key={String(s)} id={String(s)}>{s === Infinity ? "Alle" : s}</ToggleButton>)}
+                  </ToggleButtonGroup>
                 </div>
               </Pagination.Summary>
               {pageCount > 1 && (

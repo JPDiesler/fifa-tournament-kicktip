@@ -27,6 +27,18 @@ test("champion claim is single-shot per player", async () => {
   assert.equal(db.claimAiChamp(p.id, "anthropic", null), false);
 });
 
+test("aiRanking computes Brier score + hit rate from predictions vs results", async () => {
+  const db = await import("../db.js");
+  const p = db.createAiPlayer({ kuerzel: "RNK", name: "r", provider: "openai", apiKey: "k" });
+  db.claimAiPrediction(p.id, 50, "openai", "m");
+  db.finishAiPrediction(p.id, 50, { status: "done", tip: { h: "2", a: "0" }, prediction: { outcome_probabilities: { home_win: 0.7, draw: 0.2, away_win: 0.1 } } });
+  db.setResult(50, "2", "0"); // actual home win → argmax(home) hits; Brier = .3²+.2²+.1² = .14
+  const r = db.aiRanking().find((x) => x.kuerzel === "RNK");
+  assert.equal(r.n, 1);
+  assert.equal(r.hitRate, 100);
+  assert.equal(r.brier, 0.14);
+});
+
 test("aiPlayerStats counts done/total; setAiTestResult records the connection status", async () => {
   const db = await import("../db.js");
   const p = db.createAiPlayer({ kuerzel: "IDM4", name: "s", provider: "openai", apiKey: "k" });

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Modal, Tabs } from "@heroui/react";
-import { Database, Users } from "lucide-react";
+import { Database, Users, Bot } from "lucide-react";
 import AdminUsersTab from "./AdminUsersTab.jsx";
+import AiAdminTab from "./AiAdminTab.jsx";
 import SourcePanel from "./SourcePanel.jsx";
 
 // Admin in two tabs: "API & Ergebnisse" (result source, token, capabilities,
@@ -28,6 +29,9 @@ export default function AdminModal({ isOpen, onClose, onSync, entra, meId, onFla
                   <Tabs.Tab id="users" className="flex flex-1 items-center justify-center gap-1.5">
                     <Users size={15} /> Nutzer <Tabs.Indicator />
                   </Tabs.Tab>
+                  <Tabs.Tab id="ai" className="flex flex-1 items-center justify-center gap-1.5">
+                    <Bot size={15} /> KI <Tabs.Indicator />
+                  </Tabs.Tab>
                 </Tabs.List>
               </Tabs.ListContainer>
 
@@ -38,6 +42,9 @@ export default function AdminModal({ isOpen, onClose, onSync, entra, meId, onFla
               </Tabs.Panel>
               <Tabs.Panel id="users" className="h-[26rem] overflow-y-auto pr-1 pt-4">
                 <AdminUsersTab entra={entra} meId={meId} onFlash={onFlash} autoOpenEntra={autoOpenEntra} />
+              </Tabs.Panel>
+              <Tabs.Panel id="ai" className="h-[26rem] overflow-y-auto pr-1 pt-4">
+                {isOpen && <AiAdminTab onFlash={onFlash} />}
               </Tabs.Panel>
             </Tabs>
           </Modal.Body>

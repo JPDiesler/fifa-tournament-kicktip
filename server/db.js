@@ -167,6 +167,8 @@ if (!db.prepare("PRAGMA table_info(live)").all().some((c) => c.name === "as_of")
   if (!cols.includes("final_phase")) db.exec("ALTER TABLE match_detail ADD COLUMN final_phase TEXT");
   if (!cols.includes("subs")) db.exec("ALTER TABLE match_detail ADD COLUMN subs TEXT");
   if (!cols.includes("lineups")) db.exec("ALTER TABLE match_detail ADD COLUMN lineups TEXT");
+  if (!cols.includes("stats")) db.exec("ALTER TABLE match_detail ADD COLUMN stats TEXT");      // per-team match statistics (possession/shots/xG/…)
+  if (!cols.includes("preview")) db.exec("ALTER TABLE match_detail ADD COLUMN preview TEXT");   // pre-match: predictions/form/h2h/injuries
 }
 // Migration for DBs created before AI players existed.
 {
@@ -410,6 +412,18 @@ export function setMatchLineups(n, lineups) {
     ON CONFLICT(match_n) DO UPDATE SET lineups=excluded.lineups, updated_at=datetime('now')`)
     .run(Number(n), lineups ? JSON.stringify(lineups) : null);
 }
+// Per-team match statistics ({ home:{…}, away:{…} }). Upserts only the stats column.
+export function setMatchStats(n, stats) {
+  db.prepare(`INSERT INTO match_detail(match_n,stats) VALUES(?,?)
+    ON CONFLICT(match_n) DO UPDATE SET stats=excluded.stats, updated_at=datetime('now')`)
+    .run(Number(n), stats ? JSON.stringify(stats) : null);
+}
+// Pre-match preview (predictions/form/h2h/injuries). Upserts only the preview column.
+export function setMatchPreview(n, preview) {
+  db.prepare(`INSERT INTO match_detail(match_n,preview) VALUES(?,?)
+    ON CONFLICT(match_n) DO UPDATE SET preview=excluded.preview, updated_at=datetime('now')`)
+    .run(Number(n), preview ? JSON.stringify(preview) : null);
+}
 // Observed final match clock (minute/injury/phase) — written once per match when it
 // finishes. Upserts only the final_* columns, leaving any scorers/cards intact.
 export function setMatchFinalTime(n, f) {
@@ -419,13 +433,15 @@ export function setMatchFinalTime(n, f) {
 }
 export function detailByMatch() {
   const out = {};
-  for (const r of db.prepare("SELECT match_n,scorers,cards,subs,lineups,final_minute,final_injury,final_phase FROM match_detail").all()) {
+  for (const r of db.prepare("SELECT match_n,scorers,cards,subs,lineups,stats,preview,final_minute,final_injury,final_phase FROM match_detail").all()) {
     try {
       out[r.match_n] = {
         scorers: JSON.parse(r.scorers || "[]"),
         cards: JSON.parse(r.cards || "[]"),
         subs: JSON.parse(r.subs || "[]"),
         lineups: r.lineups ? JSON.parse(r.lineups) : null,
+        stats: r.stats ? JSON.parse(r.stats) : null,
+        preview: r.preview ? JSON.parse(r.preview) : null,
         final: r.final_minute != null ? { minute: r.final_minute, injury: r.final_injury, phase: r.final_phase } : null,
       };
     } catch { /* skip */ }
@@ -685,6 +701,43 @@ export function calibrationFor(userId) {
     goal_bias_away: +(ba / n).toFixed(2),
     note: "auto-aggregiert aus bisherigen Tipps vs. Ergebnissen",
   };
+}
+
+// Calibration ranking of the AI players over their resolved predictions:
+// Brier score (lower = better-calibrated 1X2 probabilities), hit rate (argmax outcome
+// correct), and ∅ Kicktipp points. Sorted best-calibration first.
+export function aiRanking() {
+  const players = db.prepare("SELECT id, kuerzel, name, ai_provider FROM users WHERE is_ai=1 AND kuerzel IS NOT NULL").all();
+  const out = players.map((u) => {
+    const rows = db.prepare(`SELECT p.prediction, p.tip_h, p.tip_a, r.h AS rh, r.a AS ra
+      FROM ai_predictions p JOIN results r ON r.match_n=p.match_n
+      WHERE p.user_id=? AND p.status='done' AND r.h!='' AND r.a!=''`).all(u.id);
+    let n = 0, brierSum = 0, hits = 0, ptsSum = 0, scored = 0;
+    for (const x of rows) {
+      const rh = Number(x.rh), ra = Number(x.ra);
+      const actual = rh > ra ? "home" : rh < ra ? "away" : "draw";
+      let pred = null; try { pred = JSON.parse(x.prediction || "null"); } catch { /* skip */ }
+      const op = pred?.outcome_probabilities;
+      if (op) {
+        const p = { home: Number(op.home_win) || 0, draw: Number(op.draw) || 0, away: Number(op.away_win) || 0 };
+        const s = p.home + p.draw + p.away || 1;
+        for (const o of ["home", "draw", "away"]) p[o] /= s; // normalize
+        let b = 0; for (const o of ["home", "draw", "away"]) b += (p[o] - (o === actual ? 1 : 0)) ** 2;
+        brierSum += b;
+        if (["home", "draw", "away"].reduce((m, o) => (p[o] > p[m] ? o : m), "home") === actual) hits++;
+        n++;
+      }
+      const pt = score({ h: String(x.tip_h), a: String(x.tip_a) }, { h: String(x.rh), a: String(x.ra) });
+      if (pt != null) { ptsSum += pt; scored++; }
+    }
+    return {
+      kuerzel: u.kuerzel, name: u.name || u.kuerzel, provider: u.ai_provider, n,
+      brier: n ? +(brierSum / n).toFixed(3) : null,
+      hitRate: n ? Math.round((hits / n) * 100) : null,
+      avgPoints: scored ? +(ptsSum / scored).toFixed(2) : null,
+    };
+  });
+  return out.sort((a, b) => (a.brier == null) - (b.brier == null) || (a.brier ?? 9) - (b.brier ?? 9) || (b.hitRate ?? -1) - (a.hitRate ?? -1));
 }
 
 // kuerzel → { name, isAi, provider, logo } for ALL players (drives frontend display).

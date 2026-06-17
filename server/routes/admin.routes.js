@@ -11,7 +11,7 @@ import {
   getSourceConfig, setSourceConfig, getLivePollSeconds, setLivePollSeconds, getProviderDelay,
   listAiPlayers, createAiPlayer, updateAiPlayer, getAiPlayerById, getAiPlayerKey,
   setAiTestResult, aiPlayerStats, aiLastError, recentAiPredictions, deleteAiPrediction,
-  getSetting, setSetting,
+  aiRanking, getSetting, setSetting,
 } from "../db.js";
 import { MATCHES } from "../data.js";
 import { kickoff } from "../services/locks.js";
@@ -23,7 +23,7 @@ import { placeTipNow } from "../services/ai/scheduler.js";
 
 const REASONING_DEFAULT = () => getSetting("aiReasoningVisibleAfter", process.env.AI_REASONING_VISIBLE_AFTER || "kickoff");
 import { requireAdmin, adminUserDto, hashPassword } from "../middleware/auth.js";
-import { sync, runBackfill } from "../services/sync.js";
+import { sync, runBackfill, prefetchPreviews } from "../services/sync.js";
 import { activeSource, probeSource, getAdapter, listAdapters, DEFAULT_SOURCE } from "../services/sources/index.js";
 import { effectiveCapabilities, effectiveConfig, FEATURES, liveDelayMs } from "../services/coordinator.js";
 import { genPassword, cacheCredential, getCredential, streamCredentialsPdf } from "../services/credentials.js";
@@ -31,7 +31,7 @@ import { genPassword, cacheCredential, getCredential, streamCredentialsPdf } fro
 const router = Router();
 const cleanKuerzel = (k) => ((k || "").trim().toUpperCase() || null);
 
-router.post("/sync", requireAdmin, async (req, res) => { await sync("manuell"); runBackfill("manuell"); res.json({ meta: getMeta() }); });
+router.post("/sync", requireAdmin, async (req, res) => { await sync("manuell"); runBackfill("manuell"); prefetchPreviews().catch((e) => console.error("preview", e)); res.json({ meta: getMeta() }); });
 // Force a full re-fetch of scorers/cards/final-clock for ALL finished matches (repairs
 // already-stored-but-incomplete data). Runs in the background; spread over the budget.
 router.post("/admin/refresh-details", requireAdmin, (req, res) => { runBackfill("manuell-force", { force: true }); res.json({ ok: true }); });
@@ -241,6 +241,9 @@ router.get("/admin/ai-players", requireAdmin, (req, res) => {
     }),
   });
 });
+// Calibration ranking of the AI players (Brier / hit rate / ∅ points).
+router.get("/admin/ai-ranking", requireAdmin, (req, res) => res.json({ ranking: aiRanking() }));
+
 // AI-wide config (e.g. when the reasoning becomes visible).
 router.post("/admin/ai-config", requireAdmin, (req, res) => {
   const mode = req.body?.reasoningVisibleAfter;

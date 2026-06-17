@@ -10,7 +10,7 @@ import { known } from "./services/fixtures.js";
 import { bootstrapAdmin } from "./middleware/auth.js";
 import { activeSource } from "./services/sources/index.js";
 import { anyMatchActive } from "./services/poller.js";
-import { sync, runBackfill } from "./services/sync.js";
+import { sync, runBackfill, prefetchPreviews } from "./services/sync.js";
 import { liveDelayMs } from "./services/coordinator.js";
 import { applyRights, syncBroadcasts } from "./services/broadcasts.js";
 import { runTipReminders, runChampReminder, runDailySummary } from "./services/push.js";
@@ -38,7 +38,7 @@ async function livePoll() {
 }
 // Sparse safety net to catch anything missed (e.g. K.o.-team resolution, late edits),
 // then drain any finished matches still missing scorers/cards/final-clock.
-cron.schedule(process.env.SYNC_CRON || "0 */6 * * *", async () => { await sync("Sicherheits-Sync"); runBackfill("Sicherheits-Sync"); });
+cron.schedule(process.env.SYNC_CRON || "0 */6 * * *", async () => { await sync("Sicherheits-Sync"); runBackfill("Sicherheits-Sync"); prefetchPreviews().catch((e) => console.error("preview", e)); });
 // "Where to watch": the EPG only spans a few days and changes slowly, so a daily
 // refresh is plenty (it also re-applies the streaming rights config).
 cron.schedule(process.env.EPG_CRON || "30 4 * * *", () => syncBroadcasts("täglich"));
@@ -59,7 +59,7 @@ app.listen(PORT, () => {
   console.log(`WM-Tippspiel läuft auf :${PORT}`);
   const src = activeSource();
   console.log(`Ergebnis-Quelle: ${src.name}${src.configured() ? "" : " (nicht konfiguriert)"}`);
-  if (src.configured()) { sync("start"); setTimeout(() => runBackfill("start"), 8_000); } // backfill past matches' detail after the start sync
+  if (src.configured()) { sync("start"); setTimeout(() => runBackfill("start"), 8_000); setTimeout(() => prefetchPreviews().catch((e) => console.error("preview", e)), 12_000); } // backfill + pre-match previews after the start sync
   applyRights();              // streaming/pay rights are static — available immediately
   syncBroadcasts("start");    // EPG download runs in the background, won't block boot
   livePoll();                 // start the dynamic near-live polling loop

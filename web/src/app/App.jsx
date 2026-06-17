@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { CalendarDays, CalendarClock, GitBranch, ListOrdered } from "lucide-react";
-import { Tabs, Spinner } from "@heroui/react";
+import { Tabs, Spinner, Toast, toast } from "@heroui/react";
 import { TEAMS, MATCHES, CHAMP_BONUS } from "@/data";
 import { api } from "@/lib/api.js";
 import { score, known } from "@/lib/scoring.js";
@@ -37,7 +37,6 @@ export default function App() {
   const [autoOpenEntra, setAutoOpenEntra] = useState(0);
   const [openMatchN, setOpenMatchN] = useState(null);
   const [broadcastN, setBroadcastN] = useState(null);
-  const [toast, setToast] = useState("");
   const saveTimer = useRef({});
 
   const me = user?.kuerzel || null;
@@ -104,7 +103,7 @@ export default function App() {
     return () => navigator.serviceWorker.removeEventListener("message", onMsg);
   }, [user, me]);
 
-  const flash = (m) => { setToast(m); setTimeout(() => setToast(""), 1600); };
+  const flash = (m) => toast(m, { variant: "success" }); // action-completed confirmation
 
   const handleLoggedIn = async (u) => { setUser(u); await load(false); };
   const handleLogout = async () => { await apiLogout(); setUser(null); setAdminOpen(false); setSt(EMPTY_STATE); setBoard([]); setMatchdays([]); };
@@ -142,9 +141,12 @@ export default function App() {
     api("/champ", { method: "POST", body: JSON.stringify({ code }) }).then(() => flash("Weltmeister-Tipp gespeichert"));
   };
   const doSync = async () => {
-    flash("Sync läuft …");
-    const r = await api("/sync", { method: "POST" });
-    if (r.error) flash(r.error); else { await load(true); flash("Synchronisiert"); }
+    try {
+      await toast.promise(
+        (async () => { const r = await api("/sync", { method: "POST" }); if (r?.error) throw new Error(r.error); await load(true); })(),
+        { loading: "Synchronisiere …", success: "Synchronisiert", error: (e) => e?.message || "Sync fehlgeschlagen" },
+      );
+    } catch { /* the error toast already surfaced it */ }
   };
 
   if (!authChecked) {
@@ -304,11 +306,7 @@ export default function App() {
         isAdmin={user.isAdmin}
       />
 
-      {toast && (
-        <div className="bottom-safe-4 fixed left-1/2 z-50 -translate-x-1/2 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground shadow-lg">
-          {toast}
-        </div>
-      )}
+      <Toast.Provider placement="bottom" />
     </div>
     </PlayersContext.Provider>
   );
