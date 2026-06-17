@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { livePhase, clockBoundary, liveBaseSeconds, formatClock, clockRunning } from "@/lib/matchtime.js";
 
-// Local match clock. Re-anchors only on a MINUTE or PHASE change (not on every
-// sync), so the seconds free-run smoothly and reset to :00 at each new minute.
-// On a fresh anchor (open app / phase change) it uses the server staleness for an
-// accurate absolute start; within a phase it stays MONOTONIC (never rewinds when a
-// correction nudges it). Returns { short:"67'"/"45+2'", long:"67:23"/"45+2" } or
-// null. Only active when liveMinute is supported. Source is minute-resolution, so
-// the seconds are approximate (±~poll interval) but smooth.
+// Local match clock. The authoritative time is the feed minute + server staleness
+// (serverNow − as_of) — skew-free and identical on every device. Re-anchors on each
+// sync (and minute/phase change): within a phase it moves FORWARD and ticks smoothly,
+// but is capped so the local free-run can never drift more than DRIFT_TOL ahead of the
+// feed (a delayed/coarse minute can't run away, and all devices converge). Returns
+// { short:"67'"/"45+2'", long:"67:23"/"45+2" } or null. Only active when liveMinute is
+// supported; minute-resolution source → seconds are approximate but smooth.
+const DRIFT_TOL = 90; // s the local tick may lead the feed before being pulled back
+
 function useLiveClock(live, serverNow, enabled) {
   const [, tick] = useState(0);
   const anchor = useRef(null); // { at, baseSec, boundary, running, phase }
@@ -17,14 +19,15 @@ function useLiveClock(live, serverNow, enabled) {
     const a = anchor.current;
     const samePhase = a && a.phase === live.phase;
     const cur = a ? a.baseSec + (a.running ? Math.max(0, (Date.now() - a.at) / 1000) : 0) : 0;
-    const minuteBase = live.minute * 60;
-    // fresh anchor → add server staleness for absolute accuracy; same-phase flip →
-    // max(minuteBase, current) so the clock only ever moves forward.
-    const baseSec = samePhase ? Math.max(minuteBase, cur) : liveBaseSeconds(live, serverNow);
+    const feedSec = liveBaseSeconds(live, serverNow); // feed minute + server staleness (skew-free)
+    // same phase → keep moving forward, but clamp within [feedSec, feedSec + DRIFT_TOL]
+    // so it never rewinds yet can't run minutes ahead of the (delayed) feed; new phase
+    // → anchor straight to the feed.
+    const baseSec = samePhase ? Math.min(Math.max(feedSec, cur), feedSec + DRIFT_TOL) : feedSec;
     anchor.current = { at: Date.now(), baseSec, boundary: clockBoundary(live), running: clockRunning(live), phase: live.phase };
     tick((x) => x + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, live?.minute, live?.phase]); // intentionally NOT asOf/serverNow → no per-sync reset
+  }, [enabled, live?.minute, live?.phase, serverNow]); // re-sync to the feed on every sync
 
   useEffect(() => {
     if (!enabled || !clockRunning(live)) return;
