@@ -176,6 +176,8 @@ if (!db.prepare("PRAGMA table_info(live)").all().some((c) => c.name === "as_of")
   if (!cols.includes("ai_model")) db.exec("ALTER TABLE users ADD COLUMN ai_model TEXT");
   if (!cols.includes("ai_key_enc")) db.exec("ALTER TABLE users ADD COLUMN ai_key_enc TEXT");
   if (!cols.includes("ai_logo")) db.exec("ALTER TABLE users ADD COLUMN ai_logo TEXT");
+  if (!cols.includes("ai_test_ok")) db.exec("ALTER TABLE users ADD COLUMN ai_test_ok INTEGER");   // last connection test: 1 ok, 0 fail, null untested
+  if (!cols.includes("ai_test_at")) db.exec("ALTER TABLE users ADD COLUMN ai_test_at TEXT");
 }
 
 // ---------- settings (kv, JSON-encoded) ----------
@@ -636,6 +638,16 @@ export function updateAiPlayer(id, { name, provider, model, apiKey, logo, is_act
   if (is_active !== undefined) fields.is_active = !!is_active;
   if (apiKey) fields.ai_key_enc = encryptSecret(apiKey);
   return updateUser(id, fields);
+}
+
+// Record the outcome of a connection test (shown as a status dot in the admin UI).
+export function setAiTestResult(id, ok) {
+  db.prepare("UPDATE users SET ai_test_ok=?, ai_test_at=datetime('now') WHERE id=? AND is_ai=1").run(ok ? 1 : 0, id);
+}
+// Success ratio of an AI player's actual tips: { done, total } over ai_predictions.
+export function aiPlayerStats(userId) {
+  const r = db.prepare("SELECT COUNT(*) AS total, COALESCE(SUM(status='done'),0) AS done FROM ai_predictions WHERE user_id=?").get(userId);
+  return { done: r.done || 0, total: r.total || 0 };
 }
 
 // kuerzel → { name, isAi, provider, logo } for ALL players (drives frontend display).

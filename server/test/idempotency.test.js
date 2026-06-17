@@ -26,3 +26,15 @@ test("champion claim is single-shot per player", async () => {
   assert.equal(db.claimAiChamp(p.id, "anthropic", null), true);
   assert.equal(db.claimAiChamp(p.id, "anthropic", null), false);
 });
+
+test("aiPlayerStats counts done/total; setAiTestResult records the connection status", async () => {
+  const db = await import("../db.js");
+  const p = db.createAiPlayer({ kuerzel: "IDM4", name: "s", provider: "openai", apiKey: "k" });
+  db.claimAiPrediction(p.id, 7, "openai", "m"); db.finishAiPrediction(p.id, 7, { status: "done", tip: { h: "1", a: "0" } });
+  db.claimAiPrediction(p.id, 8, "openai", "m"); db.finishAiPrediction(p.id, 8, { status: "failed", error: "x" });
+  const s = db.aiPlayerStats(p.id);
+  assert.equal(s.total, 2);
+  assert.equal(s.done, 1);
+  db.setAiTestResult(p.id, true);
+  assert.equal(db.getAiPlayerById(p.id).ai_test_ok, 1);
+});

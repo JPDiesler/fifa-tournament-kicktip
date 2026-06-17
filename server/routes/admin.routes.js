@@ -10,8 +10,14 @@ import {
   getProviderToken, setProviderToken, providerTokenFromDb, getProviderCaps, setProviderCaps,
   getSourceConfig, setSourceConfig, getLivePollSeconds, setLivePollSeconds, getProviderDelay,
   listAiPlayers, createAiPlayer, updateAiPlayer, getAiPlayerById, getAiPlayerKey,
+  setAiTestResult, aiPlayerStats,
 } from "../db.js";
+import { MATCHES } from "../data.js";
+import { kickoff } from "../services/locks.js";
 import { AI_PROVIDERS, getAiAdapter, isKnownProvider } from "../services/ai/index.js";
+import { buildBundle } from "../services/ai/bundle.js";
+import { matchSystemPrompt } from "../services/ai/prompt.js";
+import { validateMatchPrediction } from "../services/ai/schema.js";
 import { requireAdmin, adminUserDto, hashPassword } from "../middleware/auth.js";
 import { sync, runBackfill } from "../services/sync.js";
 import { activeSource, probeSource, getAdapter, listAdapters, DEFAULT_SOURCE } from "../services/sources/index.js";
@@ -217,10 +223,15 @@ router.delete("/admin/users/:id", requireAdmin, (req, res) => {
 router.get("/admin/ai-players", requireAdmin, (req, res) => {
   res.json({
     providers: AI_PROVIDERS, // [{ id, name, defaultModel }]
-    players: listAiPlayers().map((u) => ({
-      id: u.id, kuerzel: u.kuerzel, name: u.name, provider: u.ai_provider,
-      model: u.ai_model, logo: u.ai_logo, isActive: !!u.is_active, hasKey: !!u.ai_key_enc,
-    })),
+    players: listAiPlayers().map((u) => {
+      const { done, total } = aiPlayerStats(u.id);
+      return {
+        id: u.id, kuerzel: u.kuerzel, name: u.name, provider: u.ai_provider,
+        model: u.ai_model, isActive: !!u.is_active, hasKey: !!u.ai_key_enc,
+        testOk: u.ai_test_ok == null ? null : !!u.ai_test_ok, testAt: u.ai_test_at || null,
+        done, total, // successful / attempted tips → "3/5"
+      };
+    }),
   });
 });
 router.post("/admin/ai-players", requireAdmin, (req, res) => {
@@ -257,8 +268,34 @@ router.post("/admin/ai-players/:id/test", requireAdmin, async (req, res) => {
   const adapter = getAiAdapter(provider);
   if (!adapter) return res.status(400).json({ error: "Unbekannter Provider" });
   if (!apiKey) return res.status(400).json({ error: "Kein API-Key" });
-  try { await adapter.testConnection({ apiKey, model }); res.json({ ok: true }); }
-  catch (e) { res.json({ ok: false, error: String(e?.message || e).split(apiKey).join("***").slice(0, 300) }); }
+  try { await adapter.testConnection({ apiKey, model }); if (u) setAiTestResult(u.id, true); res.json({ ok: true }); }
+  catch (e) { if (u) setAiTestResult(u.id, false); res.json({ ok: false, error: String(e?.message || e).split(apiKey).join("***").slice(0, 300) }); }
+});
+
+// Real end-to-end test: run a full prediction for the NEXT upcoming match (with data)
+// and return the tip + reasoning WITHOUT saving it — verifies the whole pipeline.
+router.post("/admin/ai-players/:id/test-tip", requireAdmin, async (req, res) => {
+  const u = +req.params.id ? getAiPlayerById(+req.params.id) : null;
+  const provider = (req.body?.provider || u?.ai_provider || "").trim();
+  const model = (req.body?.model || u?.ai_model || "").trim() || undefined;
+  const apiKey = (req.body?.apiKey || "").trim() || (u ? getAiPlayerKey(u.id) : null);
+  const adapter = getAiAdapter(provider);
+  if (!adapter) return res.status(400).json({ error: "Unbekannter Provider" });
+  if (!apiKey) return res.status(400).json({ error: "Kein API-Key" });
+  const now = Date.now();
+  const upcoming = MATCHES.filter((m) => kickoff(m.n) > now).sort((a, b) => kickoff(a.n) - kickoff(b.n));
+  let bundle = null, match = null;
+  for (const m of upcoming) { const b = await buildBundle(m.n); if (b) { bundle = b; match = m; break; } }
+  if (!bundle) return res.status(400).json({ error: "Kein anstehendes Spiel mit Daten verfügbar" });
+  try {
+    const { prediction, latencyMs, tokens } = await adapter.predict({ systemPrompt: matchSystemPrompt(), bundle, apiKey, model });
+    const { tip } = validateMatchPrediction(prediction);
+    if (u) setAiTestResult(u.id, true);
+    res.json({ ok: true, match: { n: match.n, home: bundle.fixture.home, away: bundle.fixture.away, kickoff: match.dt }, tip, prediction, latencyMs, tokens });
+  } catch (e) {
+    if (u) setAiTestResult(u.id, false);
+    res.json({ ok: false, error: String(e?.message || e).split(apiKey).join("***").slice(0, 300) });
+  }
 });
 
 export default router;

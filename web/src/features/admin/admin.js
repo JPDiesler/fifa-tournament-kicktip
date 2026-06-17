@@ -62,6 +62,10 @@ export async function patchAiPlayer(id, fields) {
 export async function testAiPlayer(id, body) {
   return j(await post(`/api/admin/ai-players/${id}/test`, body), "Test fehlgeschlagen"); // { ok, error? }
 }
+// Real end-to-end test: a full prediction for the next upcoming match (not saved).
+export async function testAiTip(id, body) {
+  return j(await post(`/api/admin/ai-players/${id}/test-tip`, body), "Test fehlgeschlagen"); // { ok, match, tip, prediction, error? }
+}
 
 // Download the one-time credentials PDF (available only right after create/reset).
 export async function downloadCredentialsPdf(id, username) {

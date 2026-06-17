@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Table, Button, Switch, Chip, Modal, TextField, Input, Label, Spinner } from "@heroui/react";
 import { UserPlus, Users as UsersIcon, FileDown, KeyRound, Trash2, Pencil, Bot } from "lucide-react";
-import { listUsers, createBasic, createEntra, patchUser, resetPassword, deleteUser, downloadCredentialsPdf, listAiPlayers, createAiPlayer, testAiPlayer } from "./admin.js";
+import { listUsers, createBasic, createEntra, patchUser, resetPassword, deleteUser, downloadCredentialsPdf, listAiPlayers, createAiPlayer, patchAiPlayer, testAiPlayer, testAiTip } from "./admin.js";
+import ProviderLogo from "@/components/ProviderLogo.jsx";
 import { fetchEntraUsers } from "@/features/auth/msal.js";
 
 function Field({ label, ...props }) {
@@ -185,39 +186,44 @@ function EditModal({ user, onOpenChange, onSaved }) {
   );
 }
 
-// --- create an AI player (provider + model + encrypted API key) ---
-function AiPlayerModal({ open, onOpenChange, providers, onCreated }) {
+// --- create OR edit an AI player (same form). `player` set = edit mode. ---
+function AiPlayerModal({ open, onOpenChange, providers, player, onSaved }) {
+  const editing = !!player;
   const [kuerzel, setKuerzel] = useState("");
   const [name, setName] = useState("");
   const [provider, setProvider] = useState("");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [logo, setLogo] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const [test, setTest] = useState(null); // null | "testing" | { ok, error }
+  const [conn, setConn] = useState(null); // null | "testing" | { ok, error }
+  const [tip, setTip] = useState(null);   // null | "testing" | { ok, error, match, tip, prediction }
 
   useEffect(() => {
     if (!open) return;
-    const first = providers?.[0];
-    setKuerzel(""); setName(""); setLogo(""); setApiKey(""); setErr(""); setTest(null);
-    setProvider(first?.id || ""); setModel(first?.defaultModel || "");
-  }, [open, providers]);
+    setErr(""); setConn(null); setTip(null); setApiKey("");
+    if (player) {
+      setKuerzel(player.kuerzel || ""); setName(player.name || "");
+      setProvider(player.provider || providers?.[0]?.id || ""); setModel(player.model || "");
+    } else {
+      const first = providers?.[0];
+      setKuerzel(""); setName(""); setProvider(first?.id || ""); setModel(first?.defaultModel || "");
+    }
+  }, [open, player, providers]);
 
-  const onProvider = (id) => {
-    setProvider(id);
-    setModel(providers?.find((x) => x.id === id)?.defaultModel || "");
-    setTest(null);
-  };
-  const doTest = async () => {
-    setTest("testing"); setErr("");
-    try { setTest(await testAiPlayer(0, { provider, model, apiKey })); }
-    catch (e) { setTest({ ok: false, error: e.message }); }
-  };
+  const id = player?.id || 0;
+  const body = { provider, model, apiKey }; // apiKey "" in edit → server uses the stored key
+  const canTest = !!provider && (editing || !!apiKey);
+  const onProvider = (pid) => { setProvider(pid); setModel(providers?.find((x) => x.id === pid)?.defaultModel || ""); setConn(null); setTip(null); };
+  const doConn = async () => { setConn("testing"); setErr(""); try { setConn(await testAiPlayer(id, body)); } catch (e) { setConn({ ok: false, error: e.message }); } };
+  const doTip = async () => { setTip("testing"); setErr(""); try { setTip(await testAiTip(id, body)); } catch (e) { setTip({ ok: false, error: e.message }); } };
   const submit = async () => {
     setErr(""); setBusy(true);
-    try { await createAiPlayer({ kuerzel, name, provider, model, apiKey, logo }); onCreated?.(); onOpenChange(false); }
-    catch (e) { setErr(e.message); } finally { setBusy(false); }
+    try {
+      if (editing) await patchAiPlayer(id, { kuerzel, name, provider, model, ...(apiKey ? { apiKey } : {}) });
+      else await createAiPlayer({ kuerzel, name, provider, model, apiKey });
+      onSaved?.(); onOpenChange(false);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
 
   return (
@@ -225,7 +231,7 @@ function AiPlayerModal({ open, onOpenChange, providers, onCreated }) {
       <Modal.Container placement="center">
         <Modal.Dialog className="w-full sm:max-w-[440px]">
           <Modal.CloseTrigger />
-          <Modal.Header><Modal.Heading>KI-Spieler hinzufügen</Modal.Heading></Modal.Header>
+          <Modal.Header><Modal.Heading>{editing ? "KI-Spieler bearbeiten" : "KI-Spieler hinzufügen"}</Modal.Heading></Modal.Header>
           <Modal.Body>
             <div className="flex flex-col gap-3">
               <Field label="Kürzel (z. B. CLD) *" value={kuerzel} onChange={setKuerzel} />
@@ -239,24 +245,33 @@ function AiPlayerModal({ open, onOpenChange, providers, onCreated }) {
               </div>
               <Field label="Modell" value={model} onChange={setModel} />
               <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted">API-Key * (verschlüsselt gespeichert, nie wieder sichtbar)</span>
-                <TextField value={apiKey} onChange={setApiKey}><Input type="password" placeholder="sk-…" /></TextField>
+                <span className="text-xs text-muted">API-Key {editing ? "(leer lassen = unverändert)" : "* (verschlüsselt, nie wieder sichtbar)"}</span>
+                <TextField value={apiKey} onChange={setApiKey}><Input type="password" placeholder={editing ? "••••••••" : "sk-…"} /></TextField>
               </div>
-              <Field label="Logo-URL (optional)" value={logo} onChange={setLogo} />
-              <div className="flex items-center gap-2">
-                <Button variant="secondary" size="sm" onPress={doTest} isDisabled={!provider || !apiKey || test === "testing"}>
-                  {test === "testing" ? "Teste …" : "Verbindung testen"}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="secondary" size="sm" onPress={doConn} isDisabled={!canTest || conn === "testing"}>
+                  {conn === "testing" ? "Teste …" : "Verbindung testen"}
                 </Button>
-                {test && test !== "testing" && (test.ok
+                <Button variant="secondary" size="sm" onPress={doTip} isDisabled={!canTest || tip === "testing"}>
+                  {tip === "testing" ? "Tippt …" : "Echter Test (nächstes Spiel)"}
+                </Button>
+                {conn && conn !== "testing" && (conn.ok
                   ? <span className="text-xs text-success">✓ Verbindung ok</span>
-                  : <span className="min-w-0 truncate text-xs text-danger">✗ {test.error || "Fehler"}</span>)}
+                  : <span className="min-w-0 truncate text-xs text-danger">✗ {conn.error || "Fehler"}</span>)}
               </div>
+              {tip && tip !== "testing" && (tip.ok ? (
+                <div className="rounded-lg border border-border bg-overlay p-2 text-xs">
+                  <div className="font-semibold">Spiel {tip.match?.n}: {tip.match?.home?.name} – {tip.match?.away?.name}
+                    <span className="ml-1 tabular-nums text-app-accent">{tip.tip?.h}:{tip.tip?.a}</span></div>
+                  {tip.prediction?.reasoning && <div className="mt-1 text-muted">{tip.prediction.reasoning}</div>}
+                </div>
+              ) : <div className="rounded-lg border border-danger/40 bg-danger/10 p-2 text-xs text-danger">✗ {tip.error || "Test fehlgeschlagen"}</div>)}
               {err && <div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{err}</div>}
             </div>
           </Modal.Body>
           <Modal.Footer>
             <Button slot="close" variant="secondary">Abbrechen</Button>
-            <Button variant="primary" onPress={submit} isPending={busy} isDisabled={!kuerzel || !provider || !apiKey}>Anlegen</Button>
+            <Button variant="primary" onPress={submit} isPending={busy} isDisabled={!kuerzel || !provider || (!editing && !apiKey)}>{editing ? "Speichern" : "Anlegen"}</Button>
           </Modal.Footer>
         </Modal.Dialog>
       </Modal.Container>
@@ -269,13 +284,14 @@ export default function AdminUsersTab({ entra, meId, onFlash, autoOpenEntra }) {
   const [err, setErr] = useState("");
   const [basicOpen, setBasicOpen] = useState(false);
   const [entraOpen, setEntraOpen] = useState(false);
-  const [aiOpen, setAiOpen] = useState(false);
+  const [aiTarget, setAiTarget] = useState(undefined); // undefined=closed | null=create | player=edit
   const [providers, setProviders] = useState([]);
+  const [aiInfo, setAiInfo] = useState({}); // id → { testOk, done, total, … }
   const [edit, setEdit] = useState(null);
 
   const reload = async () => { try { setUsers(await listUsers()); setErr(""); } catch (e) { setErr(e.message); } };
-  useEffect(() => { reload(); }, []);
-  useEffect(() => { listAiPlayers().then((d) => setProviders(d.providers || [])).catch(() => {}); }, []);
+  const loadAi = async () => { try { const d = await listAiPlayers(); setProviders(d.providers || []); setAiInfo(Object.fromEntries((d.players || []).map((p) => [p.id, p]))); } catch { /* admin-only, ignore */ } };
+  useEffect(() => { reload(); loadAi(); }, []);
   // Resume the Entra picker after a Microsoft redirect round-trip.
   useEffect(() => { if (autoOpenEntra) setEntraOpen(true); }, [autoOpenEntra]);
 
@@ -297,7 +313,7 @@ export default function AdminUsersTab({ entra, meId, onFlash, autoOpenEntra }) {
         <h2 className="mr-auto text-sm font-bold uppercase tracking-wider text-muted">Benutzerverwaltung</h2>
         <Button variant="primary" size="sm" onPress={() => setBasicOpen(true)}><UserPlus size={15} /> Basic anlegen</Button>
         {entra && <Button variant="secondary" size="sm" onPress={() => setEntraOpen(true)}><UsersIcon size={15} /> Aus Entra wählen</Button>}
-        <Button variant="secondary" size="sm" onPress={() => setAiOpen(true)}><Bot size={15} /> KI-Spieler</Button>
+        <Button variant="secondary" size="sm" onPress={() => setAiTarget(null)}><Bot size={15} /> KI-Spieler</Button>
       </div>
 
       {err && <div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{err}</div>}
@@ -326,7 +342,19 @@ export default function AdminUsersTab({ entra, meId, onFlash, autoOpenEntra }) {
                       <div className="font-semibold">{u.name || "—"}</div>
                       <div className="text-xs text-muted">{u.username || u.upn}</div>
                     </Table.Cell>
-                    <Table.Cell><span className="text-xs text-muted">{u.isAi ? `KI · ${u.aiProvider || "?"}` : u.kind === "entra" ? "Entra" : "Basic"}</span></Table.Cell>
+                    <Table.Cell>
+                      {u.isAi ? (
+                        <div className="flex flex-col gap-0.5 text-xs">
+                          <span className="flex items-center gap-1 text-muted"><ProviderLogo provider={u.aiProvider} size={12} /> {u.aiProvider || "?"}</span>
+                          {aiInfo[u.id] && (
+                            <span className="flex items-center gap-1.5" title={aiInfo[u.id].testOk === true ? "Verbindung ok" : aiInfo[u.id].testOk === false ? "Verbindung fehlgeschlagen" : "ungetestet"}>
+                              <span className={`size-2 rounded-full ${aiInfo[u.id].testOk === true ? "bg-success" : aiInfo[u.id].testOk === false ? "bg-danger" : "bg-muted/40"}`} />
+                              <span className="tabular-nums text-muted">{aiInfo[u.id].done}/{aiInfo[u.id].total}</span>
+                            </span>
+                          )}
+                        </div>
+                      ) : <span className="text-xs text-muted">{u.kind === "entra" ? "Entra" : "Basic"}</span>}
+                    </Table.Cell>
                     <Table.Cell>
                       <Switch size="sm" aria-label="Admin" isSelected={u.isAdmin} isDisabled={u.id === meId} onChange={(v) => toggle(u, "is_admin", v)}>
                         <Switch.Control><Switch.Thumb /></Switch.Control>
@@ -339,7 +367,8 @@ export default function AdminUsersTab({ entra, meId, onFlash, autoOpenEntra }) {
                     </Table.Cell>
                     <Table.Cell>
                       <div className="flex items-center gap-1">
-                        <Button aria-label="Bearbeiten" variant="tertiary" size="sm" isIconOnly onPress={() => setEdit(u)}><Pencil size={14} /></Button>
+                        <Button aria-label="Bearbeiten" variant="tertiary" size="sm" isIconOnly
+                          onPress={() => (u.isAi ? setAiTarget(aiInfo[u.id] || { id: u.id, kuerzel: u.kuerzel, name: u.name, provider: u.aiProvider, model: u.aiModel }) : setEdit(u))}><Pencil size={14} /></Button>
                         {u.kind === "basic" && (
                           <>
                             <Button aria-label="PDF" variant="tertiary" size="sm" isIconOnly onPress={() => onPdf(u)}><FileDown size={14} /></Button>
@@ -359,7 +388,8 @@ export default function AdminUsersTab({ entra, meId, onFlash, autoOpenEntra }) {
 
       <BasicModal open={basicOpen} onOpenChange={setBasicOpen} onCreated={reload} />
       {entra && <EntraModal open={entraOpen} onOpenChange={setEntraOpen} onCreated={reload} />}
-      <AiPlayerModal open={aiOpen} onOpenChange={setAiOpen} providers={providers} onCreated={reload} />
+      <AiPlayerModal open={aiTarget !== undefined} player={aiTarget || null} providers={providers}
+        onOpenChange={(o) => !o && setAiTarget(undefined)} onSaved={() => { reload(); loadAi(); }} />
       <EditModal user={edit} onOpenChange={(o) => !o && setEdit(null)} onSaved={reload} />
     </div>
   );
