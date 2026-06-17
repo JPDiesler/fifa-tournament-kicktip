@@ -14,6 +14,7 @@ import {
   setMatchDetail, setMatchFinalTime, setMatchLineups, setMatchStats, setMatchPreview, detailByMatch, setMatchExtIds,
 } from "../db.js";
 import { notifyKickoff, notifyGoal, notifyFinal } from "./push.js";
+import { publishLive } from "./liveStream.js";
 
 // Nominal final clock from the play length: regular → 90', extra time / penalties → 120'.
 function finalClockFromRecord(rec) {
@@ -159,6 +160,9 @@ export async function sync(reason = "cron") {
     for (const [n, o] of Object.entries(liveOdds)) { if (liveMap[n]) liveMap[n].odds = o; }
     for (const n of Object.keys(liveMap)) { if (liveMap[n].odds == null && prevLive[n]?.odds) liveMap[n].odds = prevLive[n].odds; }
     replaceLive(liveMap);
+    // Push the fresh live state to SSE subscribers (throttled to ~5s; forced at once on a
+    // goal/kickoff/final so the score/clock update instantly in open clients).
+    publishLive({ serverNow: Date.now(), live: liveByMatch() }, { force: events.length > 0 });
 
     let champMsg = "";
     if (championCode && getChampionActual() !== championCode) {

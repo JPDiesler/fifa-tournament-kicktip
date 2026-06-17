@@ -15,6 +15,7 @@ import { liveDelayMs } from "./services/coordinator.js";
 import { applyRights, syncBroadcasts } from "./services/broadcasts.js";
 import { runTipReminders, runChampReminder, runDailySummary } from "./services/push.js";
 import { runAiScheduler } from "./services/ai/scheduler.js";
+import { pingClients } from "./services/liveStream.js";
 
 bootstrapAdmin();
 // One-off heal: earlier syncs could cross-assign API fixtures to the wrong match
@@ -57,6 +58,9 @@ cron.schedule(process.env.REMINDER_CRON || "*/10 * * * *", () => {
 // the one-off champion tip. Idempotent (one LLM call per player+match), so a per-minute
 // cadence only affects timeliness, never duplicates.
 cron.schedule(process.env.AI_TIP_CRON || "* * * * *", () => runAiScheduler().catch((e) => console.error("aiScheduler", e)));
+// Keep-alive comment for open SSE clients so an idle stream (no live match) isn't
+// dropped by a proxy. The live payload itself is pushed from the sync loop.
+setInterval(() => pingClients(), 20_000);
 
 app.listen(PORT, () => {
   console.log(`WM-Tippspiel läuft auf :${PORT}`);

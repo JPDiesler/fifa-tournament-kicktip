@@ -40,6 +40,7 @@ export default function App() {
   const saveTimer = useRef({});
 
   const me = user?.kuerzel || null;
+  const hasLive = Object.keys(st.live || {}).length > 0; // any match currently in play?
 
   const load = async (keepMine = true) => {
     try {
@@ -102,6 +103,30 @@ export default function App() {
     navigator.serviceWorker.addEventListener("message", onMsg);
     return () => navigator.serviceWorker.removeEventListener("message", onMsg);
   }, [user, me]);
+  // Live sync: while a match runs, subscribe to the SSE stream (scores/minute/phase/
+  // odds + serverNow) so the local match clock re-anchors continuously and stays
+  // drift-free across devices. Falls back to polling /api/live every 5s if the stream
+  // can't be established (e.g. a buffering proxy). Only active while something is live.
+  useEffect(() => {
+    if (!user || !hasLive) return;
+    const applyLive = (p) => { if (p?.live) setSt((prev) => ({ ...prev, live: p.live, locks: { ...prev.locks, serverNow: p.serverNow ?? prev.locks?.serverNow } })); };
+    let es = null, pollTimer = null, openTimer = null, opened = false, stopped = false;
+    const startPoll = () => {
+      if (pollTimer || stopped) return;
+      const tick = async () => { try { const r = await fetch("/api/live"); if (r.ok) applyLive(await r.json()); } catch {} };
+      tick();
+      pollTimer = setInterval(tick, 5000);
+    };
+    try {
+      es = new EventSource("/api/live/stream");
+      es.onopen = () => { opened = true; };
+      es.onmessage = (e) => { try { applyLive(JSON.parse(e.data)); } catch {} };
+      es.onerror = () => { if (!opened) { try { es.close(); } catch {} es = null; startPoll(); } }; // never connected → poll
+      openTimer = setTimeout(() => { if (!opened) { try { es?.close(); } catch {} es = null; startPoll(); } }, 8000);
+    } catch { startPoll(); }
+    return () => { stopped = true; clearTimeout(openTimer); try { es?.close(); } catch {} clearInterval(pollTimer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, hasLive]);
 
   const flash = (m) => toast(m, { variant: "success" }); // action-completed confirmation
 

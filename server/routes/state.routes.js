@@ -1,12 +1,30 @@
 // Player-facing data: state, leaderboard, matchdays, tips, champion. Mounted at /api.
 import { Router } from "express";
-import { stateForUser, leaderboard, matchdayBreakdown, setUserTips, setChamp, getUserByKuerzel, getAiPrediction, getSetting } from "../db.js";
+import { stateForUser, leaderboard, matchdayBreakdown, setUserTips, setChamp, getUserByKuerzel, getAiPrediction, getSetting, liveByMatch } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { isChampLocked, kickoff, isTipLocked } from "../services/locks.js";
+import { addClient } from "../services/liveStream.js";
 
 const router = Router();
 
 router.get("/state", requireAuth, (req, res) => res.json(stateForUser(req.user.kuerzel)));
+
+// Lightweight live snapshot — the in-play map (scores/minute/phase/odds) + the server
+// clock, for the client to re-anchor its match clock. Polled by the client as the SSE
+// fallback. Reads only the cached DB → no external API call.
+router.get("/live", requireAuth, (req, res) => res.json({ serverNow: Date.now(), live: liveByMatch() }));
+
+// SSE stream of the same payload, pushed by the sync loop (~every 5s, immediately on a
+// goal/kickoff/final). The client falls back to polling /api/live if the stream can't
+// be established (e.g. a buffering reverse proxy).
+router.get("/live/stream", requireAuth, (req, res) => {
+  res.set({ "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+  res.flushHeaders?.();
+  req.socket?.setTimeout?.(0); // never time out an open SSE connection
+  res.write("retry: 5000\n");
+  res.write(`data: ${JSON.stringify({ serverNow: Date.now(), live: liveByMatch() })}\n\n`); // immediate snapshot
+  addClient(res);
+});
 router.get("/leaderboard", requireAuth, (req, res) => res.json(leaderboard()));
 router.get("/matchdays", requireAuth, (req, res) => res.json(matchdayBreakdown()));
 
