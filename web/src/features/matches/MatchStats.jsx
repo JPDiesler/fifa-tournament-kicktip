@@ -1,6 +1,9 @@
-// Per-team match statistics as mirrored bars (home left, away right). `stats` =
-// { home:{possession,shots,xg,…}, away:{…} } from api-football (values may be raw
-// strings like "56%"). Only rows with at least one value are shown.
+import Bar from "@/components/Bar.jsx";
+
+// Per-team match statistics as two-tone HeroUI bars (home share filled in the home
+// colour, remainder in the away colour). `stats` = { home:{possession,shots,xg,…},
+// away:{…} } from api-football (values may be raw strings like "56%"). Only rows with
+// at least one value are shown.
 const STAT_ROWS = [
   ["possession", "Ballbesitz"], ["xg", "xG"], ["shots", "Schüsse"], ["shotsOnGoal", "aufs Tor"],
   ["corners", "Ecken"], ["fouls", "Fouls"], ["offsides", "Abseits"], ["saves", "Paraden"],
@@ -9,7 +12,7 @@ const STAT_ROWS = [
 const num = (v) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.\-]/g, "")); return Number.isFinite(n) ? n : 0; };
 const show = (v) => (v == null || v === "" ? "–" : String(v));
 
-export default function MatchStats({ stats }) {
+export default function MatchStats({ stats, homeColor = "#22c55e", awayColor = "#64748b" }) {
   const h = stats?.home || {}, a = stats?.away || {};
   const rows = STAT_ROWS.filter(([k]) => h[k] != null || a[k] != null);
   if (!rows.length) return <p className="p-4 text-center text-xs text-muted">Noch keine Statistik verfügbar.</p>;
@@ -17,7 +20,7 @@ export default function MatchStats({ stats }) {
     <div className="space-y-2.5 pb-2">
       {rows.map(([k, label]) => {
         const hv = num(h[k]), av = num(a[k]), tot = hv + av;
-        const hp = tot ? (hv / tot) * 100 : 50, ap = tot ? (av / tot) * 100 : 50;
+        const hp = tot ? (hv / tot) * 100 : 50;
         return (
           <div key={k}>
             <div className="mb-0.5 flex items-center justify-between text-xs">
@@ -25,10 +28,7 @@ export default function MatchStats({ stats }) {
               <span className="text-muted">{label}</span>
               <span className="font-semibold tabular-nums">{show(a[k])}</span>
             </div>
-            <div className="flex items-center gap-1">
-              <div className="flex flex-1 justify-end"><div className="h-1.5 rounded-l-full bg-app-accent" style={{ width: `${hp}%` }} /></div>
-              <div className="flex flex-1 justify-start"><div className="h-1.5 rounded-r-full bg-foreground/30" style={{ width: `${ap}%` }} /></div>
-            </div>
+            <Bar value={hp} fill={homeColor} track={awayColor} label={label} />
           </div>
         );
       })}
