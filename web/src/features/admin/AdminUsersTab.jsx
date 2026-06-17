@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Table, Button, Switch, Chip, Modal, TextField, Input, Label, Spinner } from "@heroui/react";
+import { Table, Button, Switch, Chip, Modal, TextField, Input, Label, Spinner, ComboBox, ListBox } from "@heroui/react";
 import { UserPlus, Users as UsersIcon, FileDown, KeyRound, Trash2, Pencil, Bot, Play, RotateCcw } from "lucide-react";
 import { listUsers, createBasic, createEntra, patchUser, resetPassword, deleteUser, downloadCredentialsPdf, listAiPlayers, createAiPlayer, patchAiPlayer, testAiPlayer, testAiTip, listAiPredictions, tipNow, resetAiPrediction, setAiConfig, fetchAiModels } from "./admin.js";
 import ProviderLogo from "@/components/ProviderLogo.jsx";
@@ -265,18 +265,33 @@ function AiPlayerModal({ open, onOpenChange, providers, player, onSaved }) {
               <div className="flex flex-col gap-1">
                 <span className="text-xs text-muted">Modell</span>
                 <div className="flex items-center gap-2">
-                  <input value={model} onChange={(e) => setModel(e.target.value)} list={`aimodels-${id}`}
-                    placeholder="wählen oder eingeben …"
-                    className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
-                  <datalist id={`aimodels-${id}`}>
-                    {models.map((m) => <option key={m.id} value={m.id}>{(m.label || m.id)}{m.contextLimit ? ` · ${Math.round(m.contextLimit / 1000)}k` : ""}</option>)}
-                  </datalist>
+                  <ComboBox allowsCustomValue allowsEmptyCollection menuTrigger="focus" className="min-w-0 flex-1"
+                    inputValue={model} onInputChange={setModel}
+                    onSelectionChange={(key) => { if (key != null) setModel(String(key)); }}>
+                    <ComboBox.InputGroup>
+                      <Input placeholder="wählen oder eingeben …" />
+                      <ComboBox.Trigger />
+                    </ComboBox.InputGroup>
+                    <ComboBox.Popover>
+                      <ListBox>
+                        {models.map((m) => (
+                          <ListBox.Item key={m.id} id={m.id} textValue={m.id}>
+                            <span className="flex w-full items-center justify-between gap-2">
+                              <span className="min-w-0 truncate">{m.id}</span>
+                              <span className="shrink-0 text-[10px] text-muted">{m.contextLimit ? `${Math.round(m.contextLimit / 1000)}k` : ""}</span>
+                            </span>
+                            <ListBox.ItemIndicator />
+                          </ListBox.Item>
+                        ))}
+                      </ListBox>
+                    </ComboBox.Popover>
+                  </ComboBox>
                   <Button variant="secondary" size="sm" onPress={loadModels} isDisabled={!canTest || modelsBusy}>
                     {modelsBusy ? "lädt …" : "Modelle laden"}
                   </Button>
                 </div>
                 {modelsErr ? <span className="text-[11px] text-danger">{modelsErr}</span>
-                  : models.length > 0 ? <span className="text-[11px] text-muted">{models.length} Modelle verfügbar</span> : null}
+                  : models.length > 0 ? <span className="text-[11px] text-muted">{models.length} Modelle · Pfeil-Button öffnet die Liste</span> : null}
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-xs text-muted">API-Key {editing ? "(leer lassen = unverändert)" : "* (verschlüsselt, nie wieder sichtbar)"}</span>
