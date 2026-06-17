@@ -159,6 +159,10 @@ if (!db.prepare("PRAGMA table_info(users)").all().some((c) => c.name === "notif_
 if (!db.prepare("PRAGMA table_info(live)").all().some((c) => c.name === "as_of")) {
   db.exec("ALTER TABLE live ADD COLUMN as_of INTEGER");
 }
+// Migration for DBs created before in-play odds were stored on the live row.
+if (!db.prepare("PRAGMA table_info(live)").all().some((c) => c.name === "odds")) {
+  db.exec("ALTER TABLE live ADD COLUMN odds TEXT"); // JSON { home, draw, away, suspended } in-play 1X2
+}
 // Migration for DBs created before match_detail held the final match clock.
 {
   const cols = db.prepare("PRAGMA table_info(match_detail)").all().map((c) => c.name);
@@ -385,19 +389,19 @@ export function broadcastsByMatch() {
 export function replaceLive(map) {
   const asOf = Date.now(); // capture time → the client anchors its local match clock to this
   const del = db.prepare("DELETE FROM live");
-  const ins = db.prepare("INSERT INTO live(match_n,h,a,phase,minute,injury,as_of) VALUES(?,?,?,?,?,?,?)");
+  const ins = db.prepare("INSERT INTO live(match_n,h,a,phase,minute,injury,as_of,odds) VALUES(?,?,?,?,?,?,?,?)");
   const tx = db.transaction(() => {
     del.run();
     for (const [n, v] of Object.entries(map || {}))
-      ins.run(Number(n), String(v.h ?? ""), String(v.a ?? ""), v.phase ?? null, v.minute ?? null, v.injury ?? null, asOf);
+      ins.run(Number(n), String(v.h ?? ""), String(v.a ?? ""), v.phase ?? null, v.minute ?? null, v.injury ?? null, asOf, v.odds ? JSON.stringify(v.odds) : null);
   });
   tx();
 }
-// { match_n: { h, a, phase, minute, injury, asOf } } for matches currently in play.
+// { match_n: { h, a, phase, minute, injury, asOf, odds } } for matches currently in play.
 export function liveByMatch() {
   const out = {};
-  for (const r of db.prepare("SELECT match_n,h,a,phase,minute,injury,as_of FROM live").all())
-    out[r.match_n] = { h: r.h, a: r.a, phase: r.phase, minute: r.minute, injury: r.injury, asOf: r.as_of };
+  for (const r of db.prepare("SELECT match_n,h,a,phase,minute,injury,as_of,odds FROM live").all())
+    out[r.match_n] = { h: r.h, a: r.a, phase: r.phase, minute: r.minute, injury: r.injury, asOf: r.as_of, odds: r.odds ? JSON.parse(r.odds) : null };
   return out;
 }
 // ---------- per-match scorers/cards/subs + lineups + final clock (display only) ----------

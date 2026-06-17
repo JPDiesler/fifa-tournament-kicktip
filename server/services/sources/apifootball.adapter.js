@@ -156,6 +156,31 @@ async function fetchOdds(extId) {
   return { home, draw, away, bookmaker: bm?.name || null };
 }
 
+// In-play 1X2 odds from /odds/live (paid live feed; NO history — only while the match
+// is in progress). Returns decimal odds for the provider's home/away (caller orients by
+// swap) + a `suspended` flag when the market is stopped/blocked. null if unavailable.
+async function fetchLiveOdds(extId) {
+  const r = await fetch(`${BASE}/odds/live?fixture=${extId}`, H());
+  const j = await r.json();
+  const resp = Array.isArray(j.response) ? j.response[0] : null;
+  if (!resp) return null;
+  // Live odds list bets under `odds` (not bookmakers[].bets). 1X2 = "Fulltime Result".
+  const bet = (resp.odds || []).find((b) => /^(full ?time result|match winner|1x2)$/i.test((b.name || "").trim()) || b.id === 1 || b.id === 59);
+  if (!bet?.values) return null;
+  // Prefer the `main` value for each outcome, then any non-suspended, then the first.
+  const pick = (v) => {
+    const cands = bet.values.filter((e) => new RegExp(`^${v}$`, "i").test(e.value));
+    if (!cands.length) return null;
+    const x = cands.find((c) => c.main) || cands.find((c) => !c.suspended) || cands[0];
+    return x?.odd != null ? Number(x.odd) : null;
+  };
+  const home = pick("Home"), draw = pick("Draw"), away = pick("Away");
+  if (home == null && draw == null && away == null) return null;
+  const marketSuspended = bet.values.some((e) => /^(home|draw|away)$/i.test(e.value) && e.suspended);
+  const suspended = !!(resp.status?.stopped || resp.status?.blocked || marketSuspended);
+  return { home, draw, away, bookmaker: null, suspended };
+}
+
 // Paid real-time provider: assume the full feature set (confirmed by probe).
 const declaredCaps = () => ({ results: true, liveScore: true, phase: true, liveMinute: true, scorers: true, cards: true, realtime: true });
 
@@ -182,5 +207,5 @@ export const apifootball = {
   rateLimit: () => { const o = getProviderLimits("apifootball").rateLimit; return Number.isFinite(o) ? o : Number(process.env.API_RATE_LIMIT || 10); },
   dailyLimit: () => { const o = getProviderLimits("apifootball").dailyLimit; return o === null ? null : Number.isFinite(o) ? o : Number(process.env.API_DAILY_LIMIT || 100); },
   configured: () => !!key(),
-  declaredCaps, fetchFixtures, fetchDetail, fetchLineups, fetchStatistics, fetchPredictions, fetchInjuries, fetchOdds, probe,
+  declaredCaps, fetchFixtures, fetchDetail, fetchLineups, fetchStatistics, fetchPredictions, fetchInjuries, fetchOdds, fetchLiveOdds, probe,
 };

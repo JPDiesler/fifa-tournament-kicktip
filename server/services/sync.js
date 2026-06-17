@@ -6,7 +6,7 @@
 import { TEAMS, MATCHES } from "../data.js";
 import { codeForName, FINAL_N } from "./fixtures.js";
 import { kickoff } from "./locks.js";
-import { fetchMerged, fetchDetails, effectiveCapabilities } from "./coordinator.js";
+import { fetchMerged, fetchDetails, effectiveCapabilities, inplayOddsEnabled } from "./coordinator.js";
 import { buildPreview } from "./ai/bundle.js";
 import {
   setResult, setResolved, clearResolved, replaceLive, liveByMatch,
@@ -112,8 +112,6 @@ export async function sync(reason = "cron") {
       }
     }
 
-    // In-play state is fully derived from this fetch → replacing clears finished/idle matches.
-    replaceLive(liveMap);
     // Fire queued push notifications (each idempotent + self-contained, fire-and-forget).
     for (const ev of events) { try { ev()?.catch?.((e) => console.error("push", e)); } catch (e) { console.error("push", e); } }
     // Recompute the effective feature capabilities for the frontend.
@@ -121,7 +119,9 @@ export async function sync(reason = "cron") {
 
     // Scorers/cards for live matches + finished matches lacking detail OR a final
     // clock (the latter forces ONE post-finish refetch → complete stoppage-time cards
-    // + an accurate final clock). Only via a provider whose caps support it.
+    // + an accurate final clock) + in-play odds for live matches. Only via a provider
+    // whose caps support it.
+    let liveOdds = {};
     try {
       const need = new Set([
         ...Object.keys(liveMap).map(Number),
@@ -130,10 +130,13 @@ export async function sync(reason = "cron") {
       const lineupNs = new Set([...need].filter((n) => !have[n]?.lineups)); // fetch each lineup once
       // statistics: refresh while live, fetch once for finished matches that lack them
       const statsNs = new Set([...Object.keys(liveMap).map(Number), ...fixtures.filter((f) => f.finished && !have[f.n]?.stats).map((f) => f.n)]);
+      // in-play odds: live matches only (no history → meaningless once finished)
+      const oddsNs = inplayOddsEnabled() ? new Set(Object.keys(liveMap).map(Number)) : null;
       let details = {};
       if (need.size) {
-        const r = await fetchDetails(fixtures, byProvider, routing, need, { lineupNs, statsNs });
+        const r = await fetchDetails(fixtures, byProvider, routing, need, { lineupNs, statsNs, oddsNs });
         details = r.details;
+        liveOdds = r.liveOdds || {};
         for (const [n, d] of Object.entries(details)) writeDetail(n, d, have);
         for (const [n, lu] of Object.entries(r.lineups)) setMatchLineups(n, lu);
         for (const [n, s] of Object.entries(r.stats || {})) setMatchStats(n, s);
@@ -148,6 +151,14 @@ export async function sync(reason = "cron") {
         if (finalTot(cand) > finalTot(have[f.n]?.final)) setMatchFinalTime(f.n, cand);
       }
     } catch (e) { console.error("detail", e); }
+
+    // Persist in-play state LAST, with the just-fetched in-play odds merged in (one
+    // authoritative live write per sync → clears finished/idle matches). Carry the
+    // last-known in-play odds forward when a poll returns none, so the Quoten view
+    // doesn't blink (the live-odds feed is transient and keeps no history).
+    for (const [n, o] of Object.entries(liveOdds)) { if (liveMap[n]) liveMap[n].odds = o; }
+    for (const n of Object.keys(liveMap)) { if (liveMap[n].odds == null && prevLive[n]?.odds) liveMap[n].odds = prevLive[n].odds; }
+    replaceLive(liveMap);
 
     let champMsg = "";
     if (championCode && getChampionActual() !== championCode) {

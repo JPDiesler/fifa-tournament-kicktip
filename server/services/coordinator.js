@@ -146,17 +146,18 @@ export function mergeFixtures(byProvider, fetched, routing) {
 // whose caps declare scorers/cards true are used → no extra calls on the free
 // default (football-data, caps null). Returns { details:{n:{scorers,cards}}, capped }.
 const DETAIL_MAX = Number(process.env.DETAIL_MAX_PER_SYNC || 8);
-export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max = DETAIL_MAX, lineupNs = null, statsNs = null } = {}) {
+export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max = DETAIL_MAX, lineupNs = null, statsNs = null, oddsNs = null } = {}) {
   const capsOf = (id) => getProviderCaps(id) || getAdapter(id)?.declaredCaps() || {};
   const sProv = (routing.scorers || []).find((id) => capsOf(id).scorers === true);
   const cProv = (routing.cards || []).find((id) => capsOf(id).cards === true);
-  if (!sProv && !cProv) return { details: {}, lineups: {}, stats: {}, capped: false, capable: false, queried: [] };
+  if (!sProv && !cProv) return { details: {}, lineups: {}, stats: {}, liveOdds: {}, capped: false, capable: false, queried: [] };
   const lProv = [sProv, cProv].find((id) => id && getAdapter(id)?.fetchLineups); // provider for the starting lineup
   const stProv = [sProv, cProv].find((id) => id && getAdapter(id)?.fetchStatistics); // provider for match statistics
+  const oProv = [sProv, cProv].find((id) => id && getAdapter(id)?.fetchLiveOdds); // provider for in-play odds
 
   const targets = fixtures.filter((f) => (f.live || f.finished) && (!matchNs || matchNs.has(f.n)));
   const cache = new Map(); // `${id}:${n}` → {scorers,cards,subs}|null
-  const details = {}, lineups = {}, stats = {};
+  const details = {}, lineups = {}, stats = {}, liveOdds = {};
   const queried = new Set(); // matches we fully fetched (events + lineup if requested)
   let calls = 0, capped = false;
 
@@ -197,6 +198,21 @@ export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max
     catch { return null; }
   };
 
+  // In-play odds: separate live endpoint, fetched for matches in oddsNs (live only).
+  // Outcomes are the provider's home/away → orient by swap. Rate/daily-gated, piggybacks.
+  const getLiveOdds = async (n) => {
+    const fx = byProvider[oProv]?.[n];
+    if (fx?.extId == null) return null;
+    const ad = getAdapter(oProv);
+    if (!rateOk(oProv, ad.rateLimit()) || !dailyOk(oProv, ad.dailyLimit())) { capped = true; return null; }
+    try {
+      noteCall(oProv); calls++;
+      const o = await ad.fetchLiveOdds(fx.extId);
+      if (!o) return null;
+      return fx.swap ? { home: o.away, draw: o.draw, away: o.home, bookmaker: o.bookmaker, suspended: o.suspended } : o;
+    } catch { return null; }
+  };
+
   for (const f of targets) {
     const sd = await get(sProv, f.n);
     const cd = sProv === cProv ? sd : await get(cProv, f.n);
@@ -206,10 +222,14 @@ export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max
     let lineupOk = true;
     if (lineupNs?.has(f.n) && lProv) { const lu = await getLineups(f.n); if (lu) lineups[f.n] = lu; else lineupOk = false; }
     if (statsNs?.has(f.n) && stProv) { const s = await getStats(f.n); if (s) stats[f.n] = s; }
+    if (oddsNs?.has(f.n) && oProv) { const o = await getLiveOdds(f.n); if (o) liveOdds[f.n] = o; }
     if (eventsOk && lineupOk) queried.add(f.n); // fully done → don't keep retrying
   }
-  return { details, lineups, stats, capped, capable: true, queried: [...queried] };
+  return { details, lineups, stats, liveOdds, capped, capable: true, queried: [...queried] };
 }
+
+// In-play odds polling enabled? (default on; set INPLAY_ODDS_ENABLED=off to disable.)
+export const inplayOddsEnabled = () => process.env.INPLAY_ODDS_ENABLED !== "off";
 
 const RESERVE = Math.min(0.5, Math.max(0, Number(process.env.POLL_BUDGET_RESERVE || 0.15)));
 const MIN_POLL_MS = 10_000, MAX_POLL_MS = 300_000;
@@ -234,6 +254,8 @@ export function liveDelayMs(now = Date.now()) {
   const capsOf = (id) => getProviderCaps(id) || getAdapter(id)?.declaredCaps() || {};
   const sProv = (routing.scorers || []).find((id) => capsOf(id).scorers === true);
   const cProv = (routing.cards || []).find((id) => capsOf(id).cards === true);
+  const oProv = [sProv, cProv].find((id) => id && getAdapter(id)?.fetchLiveOdds); // in-play odds provider
+  const oddsOn = inplayOddsEnabled();
 
   let auto = null, manualFloor = 0;
   for (const id of needed) {
@@ -243,7 +265,8 @@ export function liveDelayMs(now = Date.now()) {
     const used = pc && pc.date === today ? pc.count : 0;
     const usable = Math.max(1, (limit - used) * (1 - RESERVE));
     const feedsDetail = id === sProv || id === cProv;
-    const demandSec = coverageSec + (feedsDetail ? sumActiveSec : 0); // call-demand integral
+    const feedsLiveOdds = oddsOn && id === oProv; // an extra per-live-match call when enabled
+    const demandSec = coverageSec + (feedsDetail ? sumActiveSec : 0) + (feedsLiveOdds ? sumActiveSec : 0); // call-demand integral
     const reqMs = (demandSec / usable) * 1000;
     if (cfg.providers?.[id]?.rateLimit != null) manualFloor = Math.max(manualFloor, reqMs); // manual: protect only
     else auto = Math.max(auto ?? 0, reqMs);                                                  // auto: optimal target
