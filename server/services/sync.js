@@ -95,9 +95,15 @@ export async function sync(reason = "cron") {
         updated++;
         events.push(() => notifyFinal(n, rec.homeGoals, rec.awayGoals));
       } else if (rec.live) {
-        const h = rec.homeGoals ?? 0, a = rec.awayGoals ?? 0; // default 0:0 so a running card always shows a score
-        liveMap[n] = { h: String(h), a: String(a), phase: rec.phase, minute: rec.minute, injury: rec.injuryTime };
         const prev = prevLive[n];
+        const h = rec.homeGoals ?? 0, a = rec.awayGoals ?? 0; // default 0:0 so a running card always shows a score
+        // A fast poll that missed the realtime provider (per-minute rate limit) can fall
+        // back to a delayed source with no minute/phase — keep the last-known ones so the
+        // live clock doesn't blank out ("läuft" flicker) between two good snapshots.
+        const minute = rec.minute != null ? rec.minute : (prev?.minute ?? null);
+        const injury = rec.minute != null ? rec.injuryTime : (prev?.injury ?? null);
+        const phase = rec.phase || prev?.phase || null;
+        liveMap[n] = { h: String(h), a: String(a), phase, minute, injury };
         if (!prev) {
           events.push(() => notifyKickoff(n));
         } else {
