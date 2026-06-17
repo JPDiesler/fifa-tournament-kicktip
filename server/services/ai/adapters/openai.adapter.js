@@ -6,11 +6,11 @@ import { extractJson } from "../parse.js";
 
 export const meta = { id: "openai", name: "ChatGPT (OpenAI)", defaultModel: "gpt-5.1" };
 
-// gpt-5.x are reasoning models: without a capped effort they "think" long enough to
-// blow a tight timeout. Default to a low effort (env-overridable; "" omits the param
-// for non-reasoning models) and a generous shared timeout. One clean attempt → no retries.
+// gpt-5.x are reasoning models: even a "low" effort can think long enough to blow the
+// timeout. Default to "none" → gpt-5.1 answers without reasoning (fast, no timeouts).
+// Env-overridable (e.g. "low"/"medium"); set "" to omit the param for non-reasoning models.
 const TIMEOUT = Number(process.env.AI_TIMEOUT_MS || 120_000);
-const DEFAULT_EFFORT = process.env.OPENAI_REASONING_EFFORT ?? "low";
+const DEFAULT_EFFORT = process.env.OPENAI_REASONING_EFFORT ?? "none";
 
 export async function predict({ systemPrompt, bundle, apiKey, model, signal, reasoningEffort }) {
   const client = new OpenAI({ apiKey, maxRetries: 0, timeout: TIMEOUT });
