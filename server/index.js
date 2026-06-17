@@ -39,6 +39,9 @@ async function livePoll() {
 // Sparse safety net to catch anything missed (e.g. K.o.-team resolution, late edits),
 // then drain any finished matches still missing scorers/cards/final-clock.
 cron.schedule(process.env.SYNC_CRON || "0 */6 * * *", async () => { await sync("Sicherheits-Sync"); runBackfill("Sicherheits-Sync"); prefetchPreviews().catch((e) => console.error("preview", e)); });
+// Pre-match previews refresh on their own cadence (predictions ~4h, odds ~3h). The
+// recommended hourly poll re-fetches only the stale part of each upcoming match's preview.
+cron.schedule(process.env.PREVIEW_CRON || "0 * * * *", () => prefetchPreviews().catch((e) => console.error("preview", e)));
 // "Where to watch": the EPG only spans a few days and changes slowly, so a daily
 // refresh is plenty (it also re-applies the streaming rights config).
 cron.schedule(process.env.EPG_CRON || "30 4 * * *", () => syncBroadcasts("täglich"));

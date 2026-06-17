@@ -218,24 +218,32 @@ export async function backfillDetails({ force = false, skip = null } = {}) {
   return { remaining, fetched, capable, queried };
 }
 
-// Pre-match preview (predictions/form/h2h/injuries) for upcoming matches — fetched
-// ONCE per match (kept until kickoff), budget-gated + capped. Surfaced to human
-// tippers in the detail carousel. Only api-football provides it.
-export async function prefetchPreviews(now = Date.now(), max = 6) {
+// Pre-match preview (predictions+comparison/radar, form, h2h, injuries, pre-match odds)
+// for upcoming matches, budget-gated + capped. Staleness-based refresh: predictions
+// every ~4h, pre-match odds every ~3h (api-football's refresh cadence) — each part is
+// (re)fetched only when due, merged into the stored preview. Only api-football provides it.
+const H = 3600 * 1000;
+export async function prefetchPreviews(now = Date.now(), max = 8) {
   const have = detailByMatch();
-  const soon = MATCHES
-    .filter((m) => {
-      const ko = kickoff(m.n);
-      if (ko == null || ko <= now || ko - now > 48 * 3600 * 1000) return false; // only upcoming, ≤48h
-      const pv = have[m.n]?.preview;
-      if (!pv) return true;                                  // no preview yet → fetch
-      return !pv.odds && ko - now < 24 * 3600 * 1000;        // have preview but no odds & <24h → retry (odds appear closer to KO)
-    })
-    .sort((a, b) => kickoff(a.n) - kickoff(b.n))
-    .slice(0, max);
-  for (const m of soon) {
-    try { const p = await buildPreview(m.n); if (p) setMatchPreview(m.n, p); }
-    catch (e) { console.error("preview", m.n, e?.message || e); }
+  const due = [];
+  for (const m of MATCHES) {
+    const ko = kickoff(m.n);
+    if (ko == null) continue;
+    const pv = have[m.n]?.preview;
+    const upcoming = ko > now && ko - now <= 48 * H; // before kickoff, within the prefetch window
+    // In-progress match whose preview predates the rich data (no comparison) → upgrade it
+    // once so its Prognose shows the radar/bars (predictions persist after kickoff).
+    const liveUpgrade = ko <= now && now - ko < 3 * H && !pv?.comparison;
+    if (!upcoming && !liveUpgrade) continue;
+    const predStale = !pv || !pv.predAt || now - pv.predAt > 4 * H || liveUpgrade; // predictions ~every 4h
+    const oddsStale = upcoming && (!pv?.odds || !pv?.oddsAt || now - pv.oddsAt > 3 * H); // pre-match odds ~every 3h (not once live)
+    if (!predStale && !oddsStale) continue;
+    due.push({ n: m.n, ko, pv, want: { predictions: predStale, odds: oddsStale, injuries: predStale } });
+  }
+  due.sort((a, b) => a.ko - b.ko);
+  for (const d of due.slice(0, max)) {
+    try { const p = await buildPreview(d.n, { want: d.want, prev: d.pv }); if (p) setMatchPreview(d.n, p); }
+    catch (e) { console.error("preview", d.n, e?.message || e); }
   }
 }
 

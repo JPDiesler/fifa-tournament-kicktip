@@ -132,9 +132,36 @@ async function footballDataBundle(extId, home, away) {
   return out;
 }
 
+// Per-team radar stats from a predictions response, oriented to our home/away (swap).
+// last_5.{form,att,def} are percent strings; league.fixtures/goals are season totals.
+function teamRadar(pred, swap) {
+  const one = (t) => {
+    if (!t) return null;
+    const l5 = t.last_5 || {};
+    const fx = t.league?.fixtures || {};
+    const g = t.league?.goals || {};
+    return {
+      last5: { form: l5.form ?? null, att: l5.att ?? null, def: l5.def ?? null },
+      wins: fx.wins?.total ?? null,
+      draws: fx.draws?.total ?? null,
+      loses: fx.loses?.total ?? null,
+      played: fx.played?.total ?? null,
+      goalsFor: g.for?.total?.total ?? null,
+      goalsAgainst: g.against?.total?.total ?? null,
+    };
+  };
+  return {
+    home: one(swap ? pred.teams?.away : pred.teams?.home),
+    away: one(swap ? pred.teams?.home : pred.teams?.away),
+  };
+}
+
 // Human-facing pre-match preview (api-football only) — oriented to our home/away:
-// win-percentages, advice, recent form, h2h summary, injuries. null if no data.
-export async function buildPreview(matchN) {
+// win-percentages, advice, form, h2h, injuries, pre-match odds, AND the prediction
+// `comparison` (7 metrics → bars) + per-team radar stats. null if no data.
+// `want` selects which parts to (re)fetch; `prev` lets a partial refresh reuse the
+// stored orientation + merge into the existing preview (budget-aware staleness refresh).
+export async function buildPreview(matchN, { want = { predictions: true, odds: true, injuries: true }, prev = null } = {}) {
   const m = matchByN.get(Number(matchN));
   if (!m) return null;
   const sides = sidesFor(m, matchN);
@@ -144,27 +171,41 @@ export async function buildPreview(matchN) {
   const ad = getAdapter("apifootball");
   if (!ad?.configured?.() || !ext.apifootball) return null;
   const [pred, injuries, odds] = await Promise.all([
-    budgetedCall("apifootball", () => ad.fetchPredictions(ext.apifootball)),
-    budgetedCall("apifootball", () => ad.fetchInjuries(ext.apifootball)),
-    budgetedCall("apifootball", () => ad.fetchOdds(ext.apifootball)),
+    want.predictions ? budgetedCall("apifootball", () => ad.fetchPredictions(ext.apifootball)) : null,
+    want.injuries ? budgetedCall("apifootball", () => ad.fetchInjuries(ext.apifootball)) : null,
+    want.odds ? budgetedCall("apifootball", () => ad.fetchOdds(ext.apifootball)) : null,
   ]);
   const hasInj = Array.isArray(injuries) && injuries.length;
   if (!pred && !hasInj && !odds) return null;
 
   // Orient provider home/away to OUR home/away (the away team's data is swapped when
-  // api-football lists our away side as its "home"). Derived from the predictions teams.
+  // api-football lists our away side as its "home"). Derived from fresh predictions, or
+  // reused from a prior preview on an odds-only refresh.
   const apiHomeCode = pred ? codeForName(pred.teams?.home?.name) : null;
-  const swap = !!apiHomeCode && apiHomeCode !== home.code;
+  const swap = pred ? (!!apiHomeCode && apiHomeCode !== home.code) : !!prev?.swap;
   const pick = (ht, at) => (swap ? { home: at, away: ht } : { home: ht, away: at });
 
-  const out = { home: home.name, away: away.name };
+  // Upgrade-only merge: each (re)fetch fills in fields it has and NEVER nulls a field
+  // that's missing this time — so a sparse refresh can't make a populated Prognose/
+  // Quoten section flicker away. Stale fields are simply overwritten when fresh data exists.
+  const now = Date.now();
+  const out = { ...(prev || {}), home: home.name, away: away.name, swap };
   if (pred) {
-    out.percent = pred.predictions?.percent ? pick(pred.predictions.percent.home, pred.predictions.percent.away) : null;
-    out.advice = pred.predictions?.advice || null;
-    out.form = pick(pred.teams?.home?.league?.form || null, pred.teams?.away?.league?.form || null); // "WWDLW"-ish, best effort
-    if (Array.isArray(pred.h2h)) out.h2h = pred.h2h.slice(-5).map((g) => ({ date: g.fixture?.date, home: g.teams?.home?.name, away: g.teams?.away?.name, goals: g.goals }));
+    out.predAt = now;
+    if (pred.predictions?.percent) { const pc = pred.predictions.percent; const op = pick(pc.home, pc.away); out.percent = { home: op.home, draw: pc.draw, away: op.away }; }
+    if (pred.predictions?.advice) out.advice = pred.predictions.advice;
+    const form = pick(pred.teams?.home?.league?.form || null, pred.teams?.away?.league?.form || null); // "WWDLW"-ish, best effort
+    if (form.home || form.away) out.form = form;
+    if (pred.comparison) {
+      const cmp = {};
+      for (const k of Object.keys(pred.comparison)) cmp[k] = pick(pred.comparison[k]?.home, pred.comparison[k]?.away);
+      out.comparison = cmp;
+    }
+    const radar = teamRadar(pred, swap);
+    if (radar.home || radar.away) out.teams = radar;
+    if (Array.isArray(pred.h2h) && pred.h2h.length) out.h2h = pred.h2h.slice(-5).map((g) => ({ date: g.fixture?.date, home: g.teams?.home?.name, away: g.teams?.away?.name, goals: g.goals }));
   }
-  if (odds) { const o = pick(odds.home, odds.away); out.odds = { home: o.home, draw: odds.draw, away: o.away, bookmaker: odds.bookmaker }; }
+  if (odds) { out.oddsAt = now; const o = pick(odds.home, odds.away); out.odds = { home: o.home, draw: odds.draw, away: o.away, bookmaker: odds.bookmaker }; }
   if (hasInj) out.injuries = injuries.map((i) => ({ team: i.team?.name, player: i.player?.name, reason: i.player?.reason }));
   return out;
 }
