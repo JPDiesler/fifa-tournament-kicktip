@@ -7,12 +7,15 @@ import { extractJson } from "../parse.js";
 
 export const meta = { id: "anthropic", name: "Claude (Anthropic)", defaultModel: "claude-sonnet-4-6" };
 
+// Shared request timeout (the reasoning bundle can be slow). One clean attempt → no retries.
+const TIMEOUT = Number(process.env.AI_TIMEOUT_MS || 120_000);
+
 // Opus 4.7/4.8, Fable 5 & Mythos 5 think ADAPTIVELY — they reject a manual `thinking`
 // block, so we omit it (they still reason internally).
 const ADAPTIVE_THINKING = /opus-4-(7|8)|fable|mythos/i;
 
 export async function predict({ systemPrompt, bundle, apiKey, model, signal, thinkingBudget = 4000 }) {
-  const client = new Anthropic({ apiKey, maxRetries: 0, timeout: 60_000 });
+  const client = new Anthropic({ apiKey, maxRetries: 0, timeout: TIMEOUT });
   const mdl = model || meta.defaultModel;
   const manualThinking = thinkingBudget > 0 && !ADAPTIVE_THINKING.test(mdl);
   const req = {
@@ -36,4 +39,11 @@ export async function testConnection({ apiKey, model }) {
   const client = new Anthropic({ apiKey, maxRetries: 0, timeout: 30_000 });
   await client.messages.create({ model: model || meta.defaultModel, max_tokens: 8, messages: [{ role: "user", content: "ping" }] });
   return true;
+}
+
+// Available models for the admin model picker.
+export async function listModels({ apiKey }) {
+  const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 30_000 });
+  const r = await client.models.list({ limit: 100 });
+  return (r.data || []).map((m) => ({ id: m.id, label: m.display_name || m.id }));
 }

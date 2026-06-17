@@ -51,6 +51,8 @@ services:
       AI_REASONING_VISIBLE_AFTER: "${AI_REASONING_VISIBLE_AFTER:-kickoff}" # kickoff | lock — ab wann die KI-Begründung sichtbar ist
       AI_FALLBACK: "${AI_FALLBACK:-off}"                # off = bei LLM-Fehler kein Tipp; on = deterministischer 1:1-Fallback (kein Prompt)
       AI_PROMPT_DIR: "${AI_PROMPT_DIR:-}"               # optional: Pfad zu den Prompt-Dateien (Default: server/prompts)
+      AI_TIMEOUT_MS: "${AI_TIMEOUT_MS:-120000}"         # Timeout je LLM-Call (Reasoning-Modelle brauchen länger; verhindert ChatGPT-Timeouts)
+      OPENAI_REASONING_EFFORT: "${OPENAI_REASONING_EFFORT:-low}" # gpt-5.x: low/medium/high/minimal; "" = weglassen (Nicht-Reasoning-Modelle)
     volumes:
       - wm_data:/data
       # Prompts ohne Rebuild editierbar machen (optional): das Verzeichnis mounten,

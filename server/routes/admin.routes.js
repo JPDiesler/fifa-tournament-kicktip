@@ -312,6 +312,20 @@ router.post("/admin/ai-players/:id/test-tip", requireAdmin, async (req, res) => 
   }
 });
 
+// Live model list from the provider (for the admin model picker). Uses the saved key
+// (id) or an unsaved one (body.apiKey). Includes context limits where the API gives them.
+router.post("/admin/ai-players/:id/models", requireAdmin, async (req, res) => {
+  const u = +req.params.id ? getAiPlayerById(+req.params.id) : null;
+  const provider = (req.body?.provider || u?.ai_provider || "").trim();
+  const apiKey = (req.body?.apiKey || "").trim() || (u ? getAiPlayerKey(u.id) : null);
+  const adapter = getAiAdapter(provider);
+  if (!adapter) return res.status(400).json({ error: "Unbekannter Provider" });
+  if (!adapter.listModels) return res.json({ models: [] });
+  if (!apiKey) return res.status(400).json({ error: "Kein API-Key" });
+  try { res.json({ models: await adapter.listModels({ apiKey }) }); }
+  catch (e) { res.status(400).json({ error: String(e?.message || e).split(apiKey).join("***").slice(0, 300) }); }
+});
+
 // Recent attempts (diagnostics): match, status, tip, error, tokens, latency.
 router.get("/admin/ai-players/:id/predictions", requireAdmin, (req, res) => {
   const u = getAiPlayerById(+req.params.id);

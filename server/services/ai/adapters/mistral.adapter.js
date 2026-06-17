@@ -30,3 +30,12 @@ export async function testConnection({ apiKey, model }) {
   await client.chat.complete({ model: model || meta.defaultModel, messages: [{ role: "user", content: "ping" }], maxTokens: 8 });
   return true;
 }
+
+// Available chat models for the admin model picker (with context length where given).
+export async function listModels({ apiKey }) {
+  const client = new Mistral({ apiKey });
+  const r = await client.models.list();
+  return (r.data || [])
+    .filter((m) => m.id && (m.capabilities?.completionChat ?? m.capabilities?.completion_chat ?? true))
+    .map((m) => ({ id: m.id, label: m.name || m.id, contextLimit: m.maxContextLength || m.max_context_length || null }));
+}

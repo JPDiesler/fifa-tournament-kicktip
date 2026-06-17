@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Table, Button, Switch, Chip, Modal, TextField, Input, Label, Spinner } from "@heroui/react";
 import { UserPlus, Users as UsersIcon, FileDown, KeyRound, Trash2, Pencil, Bot, Play, RotateCcw } from "lucide-react";
-import { listUsers, createBasic, createEntra, patchUser, resetPassword, deleteUser, downloadCredentialsPdf, listAiPlayers, createAiPlayer, patchAiPlayer, testAiPlayer, testAiTip, listAiPredictions, tipNow, resetAiPrediction, setAiConfig } from "./admin.js";
+import { listUsers, createBasic, createEntra, patchUser, resetPassword, deleteUser, downloadCredentialsPdf, listAiPlayers, createAiPlayer, patchAiPlayer, testAiPlayer, testAiTip, listAiPredictions, tipNow, resetAiPrediction, setAiConfig, fetchAiModels } from "./admin.js";
 import ProviderLogo from "@/components/ProviderLogo.jsx";
 import { fetchEntraUsers } from "@/features/auth/msal.js";
 
@@ -204,11 +204,14 @@ function AiPlayerModal({ open, onOpenChange, providers, player, onSaved }) {
   const [tip, setTip] = useState(null);   // null | "testing" | { ok, error, match, tip, prediction }
   const [preds, setPreds] = useState(null);
   const [diagBusy, setDiagBusy] = useState(false);
+  const [models, setModels] = useState([]);
+  const [modelsBusy, setModelsBusy] = useState(false);
+  const [modelsErr, setModelsErr] = useState("");
 
   const refreshPreds = () => { if (player) listAiPredictions(player.id).then((d) => setPreds(d.predictions || [])).catch(() => setPreds([])); };
   useEffect(() => {
     if (!open) return;
-    setErr(""); setConn(null); setTip(null); setApiKey(""); setPreds(null);
+    setErr(""); setConn(null); setTip(null); setApiKey(""); setPreds(null); setModels([]); setModelsErr("");
     if (player) {
       setKuerzel(player.kuerzel || ""); setName(player.name || "");
       setProvider(player.provider || providers?.[0]?.id || ""); setModel(player.model || "");
@@ -222,7 +225,13 @@ function AiPlayerModal({ open, onOpenChange, providers, player, onSaved }) {
   const id = player?.id || 0;
   const body = { provider, model, apiKey }; // apiKey "" in edit → server uses the stored key
   const canTest = !!provider && (editing || !!apiKey);
-  const onProvider = (pid) => { setProvider(pid); setModel(providers?.find((x) => x.id === pid)?.defaultModel || ""); setConn(null); setTip(null); };
+  const onProvider = (pid) => { setProvider(pid); setModel(providers?.find((x) => x.id === pid)?.defaultModel || ""); setConn(null); setTip(null); setModels([]); setModelsErr(""); };
+  const loadModels = async () => {
+    setModelsBusy(true); setModelsErr("");
+    try { const d = await fetchAiModels(id, body); setModels(d.models || []); }
+    catch (e) { setModelsErr(e.message); }
+    finally { setModelsBusy(false); }
+  };
   const doConn = async () => { setConn("testing"); setErr(""); try { setConn(await testAiPlayer(id, body)); } catch (e) { setConn({ ok: false, error: e.message }); } };
   const doTip = async () => { setTip("testing"); setErr(""); try { setTip(await testAiTip(id, body)); } catch (e) { setTip({ ok: false, error: e.message }); } };
   const doTipNow = async (matchN) => { setDiagBusy(true); setErr(""); try { await tipNow(player.id, matchN); refreshPreds(); onSaved?.(); } catch (e) { setErr(e.message); } finally { setDiagBusy(false); } };
@@ -253,7 +262,22 @@ function AiPlayerModal({ open, onOpenChange, providers, player, onSaved }) {
                   {(providers || []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
-              <Field label="Modell" value={model} onChange={setModel} />
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted">Modell</span>
+                <div className="flex items-center gap-2">
+                  <input value={model} onChange={(e) => setModel(e.target.value)} list={`aimodels-${id}`}
+                    placeholder="wählen oder eingeben …"
+                    className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
+                  <datalist id={`aimodels-${id}`}>
+                    {models.map((m) => <option key={m.id} value={m.id}>{(m.label || m.id)}{m.contextLimit ? ` · ${Math.round(m.contextLimit / 1000)}k` : ""}</option>)}
+                  </datalist>
+                  <Button variant="secondary" size="sm" onPress={loadModels} isDisabled={!canTest || modelsBusy}>
+                    {modelsBusy ? "lädt …" : "Modelle laden"}
+                  </Button>
+                </div>
+                {modelsErr ? <span className="text-[11px] text-danger">{modelsErr}</span>
+                  : models.length > 0 ? <span className="text-[11px] text-muted">{models.length} Modelle verfügbar</span> : null}
+              </div>
               <div className="flex flex-col gap-1">
                 <span className="text-xs text-muted">API-Key {editing ? "(leer lassen = unverändert)" : "* (verschlüsselt, nie wieder sichtbar)"}</span>
                 <TextField value={apiKey} onChange={setApiKey}><Input type="password" placeholder={editing ? "••••••••" : "sk-…"} /></TextField>

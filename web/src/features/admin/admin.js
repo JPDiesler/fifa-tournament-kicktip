@@ -78,6 +78,10 @@ export async function resetAiPrediction(id, matchN) {
 export async function setAiConfig(body) {
   return j(await post("/api/admin/ai-config", body), "Speichern fehlgeschlagen"); // { reasoningVisibleAfter }
 }
+// Live model list from the provider (id 0 = use the key in the body).
+export async function fetchAiModels(id, body) {
+  return j(await post(`/api/admin/ai-players/${id}/models`, body), "Modelle nicht ladbar"); // { models: [{id,label?,contextLimit?}] }
+}
 
 // Download the one-time credentials PDF (available only right after create/reset).
 export async function downloadCredentialsPdf(id, username) {
