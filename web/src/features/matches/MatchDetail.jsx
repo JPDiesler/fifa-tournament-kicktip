@@ -173,11 +173,11 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
                         <span className="flex min-w-0 items-center gap-1.5 font-semibold">
                           {effRes && <span className="w-4 shrink-0 text-right text-xs tabular-nums text-muted">{i + 1}</span>}
                           <PlayerName kuerzel={o.k} />{o.isMe && <span className="shrink-0 text-[10px] text-app-accent">du</span>}
+                          {isAi && <Info size={13} className="shrink-0 text-muted" />}
                         </span>
                         <span className="flex shrink-0 items-center gap-2">
                           <span className="tabular-nums">{o.tip.h}:{o.tip.a}</span>
                           <PointsBadge points={o.pts} />
-                          {isAi && <Info size={13} className="text-muted" />}
                         </span>
                       </div>
                     );
