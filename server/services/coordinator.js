@@ -232,7 +232,9 @@ export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max
 export const inplayOddsEnabled = () => process.env.INPLAY_ODDS_ENABLED !== "off";
 
 const RESERVE = Math.min(0.5, Math.max(0, Number(process.env.POLL_BUDGET_RESERVE || 0.15)));
-const MIN_POLL_MS = 10_000, MAX_POLL_MS = 300_000;
+// Floor for the live poll. Default 1s so a large daily budget (e.g. 75k/day) can drive
+// near-real-time polling; the budget sizer (below) keeps it from overrunning a small cap.
+const MIN_POLL_MS = Math.max(250, Number(process.env.MIN_POLL_MS || 1_000)), MAX_POLL_MS = 300_000;
 
 // Live-poll delay (ms) while a match runs. For a daily-capped provider WITHOUT a
 // manual rate override → AUTO: spread the remaining daily budget over the remaining

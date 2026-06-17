@@ -537,7 +537,7 @@ export function getProviderLimits(id) {
 
 // Base live-poll interval (seconds) while a match runs. Default 60 (= prior cron).
 export const getLivePollSeconds = () => Number(getSetting("livePollSeconds", 60)) || 60;
-export const setLivePollSeconds = (s) => setSetting("livePollSeconds", Math.max(10, Math.min(600, Math.round(Number(s) || 60))));
+export const setLivePollSeconds = (s) => setSetting("livePollSeconds", Math.max(1, Math.min(600, Math.round(Number(s) || 60))));
 
 // Estimated inherent display delay (seconds) of a provider's LIVE data — shown to
 // users and used to gate "real-time" capabilities. Admin-set per provider; sensible
