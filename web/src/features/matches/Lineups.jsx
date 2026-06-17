@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ChevronLeft, ChevronRight, Hash, UserRound } from "lucide-react";
 import { Popover, ToggleButton, ToggleButtonGroup } from "@heroui/react";
 import Flag from "@/components/Flag.jsx";
-import { flagColor, textOn } from "@/lib/flagColor.js";
+import { textOn } from "@/lib/teamColors.js";
 import { playerPhoto, coachPhoto } from "@/lib/media.js";
 
 const surname = (name) => (name ? name.split(" ").pop() : "");
@@ -182,25 +182,17 @@ function Bench({ team, kit, color, txt }) {
 // back to a flag-derived colour; names are always shown.
 export default function Lineups({ lineups, home, away }) {
   const [idx, setIdx] = useState(0);
-  const [color, setColor] = useState(null);
   const [mode, setMode] = useState("number"); // pitch dots: "number" | "photo"
 
   const sides = [];
   if (lineups?.home?.startXI?.length) sides.push({ team: lineups.home, meta: home });
   if (lineups?.away?.startXI?.length) sides.push({ team: lineups.away, meta: away });
   const cur = sides.length ? sides[Math.min(idx, sides.length - 1)] : null;
-  const code = cur?.meta?.code;
-
-  useEffect(() => {
-    let alive = true;
-    setColor(null);
-    flagColor(code).then((c) => { if (alive) setColor(c); });
-    return () => { alive = false; };
-  }, [code]);
 
   if (!sides.length) return null;
+  const kit = cur.team?.colors || null;        // real match kit colours (api-football)
+  const color = hex(kit?.player?.primary);     // pitch fallback bg = kit primary (or neutral default in dotStyle)
   const txt = textOn(color);
-  const kit = cur.team?.colors || null; // real match kit colours (api-football), else flag fallback
   const arrow = "flex size-7 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-surface hover:text-foreground disabled:opacity-30";
 
   return (
