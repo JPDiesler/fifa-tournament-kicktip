@@ -1,6 +1,6 @@
 // Player-facing data: state, leaderboard, matchdays, tips, champion. Mounted at /api.
 import { Router } from "express";
-import { stateForUser, leaderboard, matchdayBreakdown, setUserTips, setChamp, getUserByKuerzel, getAiPrediction, getSetting, liveByMatch } from "../db.js";
+import { stateForUser, leaderboard, matchdayBreakdown, setUserTips, setChamp, getUserByKuerzel, getAiPrediction, getSetting, liveByMatch, getTeamMetaRow } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { isChampLocked, kickoff, isTipLocked } from "../services/locks.js";
 import { addClient } from "../services/liveStream.js";
@@ -33,6 +33,18 @@ router.get("/live/stream", requireAuth, (req, res) => {
 });
 router.get("/leaderboard", requireAuth, (req, res) => res.json(leaderboard()));
 router.get("/matchdays", requireAuth, (req, res) => res.json(matchdayBreakdown()));
+
+// Admin-uploaded team logo (federation crest override) — served from the DB data URI
+// with a long cache (the URL is version-busted via ?v=updated_at). 404 → client falls
+// back to the build-bundled crest, then team initials.
+router.get("/team-logo/:code", requireAuth, (req, res) => {
+  const row = getTeamMetaRow(req.params.code);
+  const m = row?.logo && /^data:([^;]+);base64,(.*)$/s.exec(row.logo);
+  if (!m) return res.status(404).end();
+  res.set("Content-Type", m[1]);
+  res.set("Cache-Control", "public, max-age=31536000, immutable");
+  res.send(Buffer.from(m[2], "base64"));
+});
 
 // Player profile/bio (age, nationality, height/weight, season totals) — lazy + cached.
 router.get("/player/:pid", requireAuth, async (req, res) => {

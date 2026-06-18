@@ -53,8 +53,10 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   const hasResult = result && result.h !== "" && result.a !== "";
   const locked = (st.locks?.lockedMatches || []).includes(n);
   const myTip = (st.tips[me] || {})[n] || { h: "", a: "" };
-  const home = { label: teamLabel(match, "h"), code: teamCode(match, "h") };
-  const away = { label: teamLabel(match, "a"), code: teamCode(match, "a") };
+  // Admin team overrides: nickname + logo (logo served via a versioned URL, not in state).
+  const teamMetaFor = (code) => { const m = st.teamMeta?.[code]; return { nickname: m?.nickname, logo: m?.logoVer ? `/api/team-logo/${code}?v=${m.logoVer}` : undefined }; };
+  const home = { label: teamLabel(match, "h"), code: teamCode(match, "h"), ...teamMetaFor(teamCode(match, "h")) };
+  const away = { label: teamLabel(match, "a"), code: teamCode(match, "a"), ...teamMetaFor(teamCode(match, "a")) };
   const ready = !!(home.code && away.code); // pairing fixed (both teams known)?
   const phaseLabel = PHASES.find((p) => p.code === match.ph)?.label || "";
   const knockout = ["R32", "R16", "QF", "SF", "P3", "FIN"].includes(match.ph); // group games (A–L) have no extra time

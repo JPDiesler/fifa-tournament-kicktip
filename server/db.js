@@ -107,6 +107,16 @@ CREATE TABLE IF NOT EXISTS match_detail (
   final_phase  TEXT,
   updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- Admin overrides for team display (nickname + federation logo). Build-seeded defaults
+-- live in the frontend (NICKNAMES map + bundled crests); a row here overrides one. The
+-- logo is a data URI (image/svg+xml or image/png); served via /api/team-logo, never in
+-- the state poll. updated_at (ms) doubles as the logo cache-busting version.
+CREATE TABLE IF NOT EXISTS team_meta (
+  code       TEXT PRIMARY KEY,
+  nickname   TEXT,
+  logo       TEXT,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
 -- AI players' per-match LLM predictions (exactly one attempt per match). The
 -- (user_id,match_n) PRIMARY KEY is the idempotency guard: a row is CLAIMED
 -- (status 'pending') BEFORE the LLM call, so a concurrent/repeated job can never
@@ -306,6 +316,7 @@ export function stateForUser(meKuerzel) {
     me: meKuerzel,
     tips, champs, results, resolved, live: liveByMatch(), broadcasts: broadcastsByMatch(),
     details: detailByMatch(),
+    teamMeta: teamMetaState(),
     players: playersMeta(),
     championActual: getSetting("championActual", ""),
     capabilities: getSetting("capabilities", null),
@@ -477,6 +488,42 @@ export const hasResult = (n) => {
   const r = db.prepare("SELECT h,a FROM results WHERE match_n=?").get(n);
   return !!(r && r.h !== "" && r.a !== "");
 };
+
+// ---------- team meta (admin nickname + logo overrides) ----------
+// Partial upsert: a key present in `patch` is written (value or null to clear); an absent
+// key is left untouched. nickname is capped; logo is a data URI (or null).
+export function setTeamMeta(code, patch = {}) {
+  const c = String(code || "").toUpperCase();
+  if (!c) return;
+  const cols = [], vals = [];
+  if (Object.prototype.hasOwnProperty.call(patch, "nickname")) { cols.push("nickname"); vals.push(patch.nickname ? String(patch.nickname).slice(0, 60) : null); }
+  if (Object.prototype.hasOwnProperty.call(patch, "logo")) { cols.push("logo"); vals.push(patch.logo || null); }
+  if (!cols.length) return;
+  const names = cols.join(","), ph = cols.map(() => "?").join(","), upd = cols.map((k) => `${k}=excluded.${k}`).join(", ");
+  db.prepare(`INSERT INTO team_meta(code,${names},updated_at) VALUES(?,${ph},?)
+    ON CONFLICT(code) DO UPDATE SET ${upd}, updated_at=excluded.updated_at`).run(c, ...vals, Date.now());
+}
+export function getTeamMetaRow(code) {
+  return db.prepare("SELECT code,nickname,logo,updated_at FROM team_meta WHERE code=?").get(String(code || "").toUpperCase()) || null;
+}
+// Player-facing state: only the deltas, WITHOUT the logo bytes (served via /api/team-logo).
+// logoVer = updated_at, used by the client to cache-bust the logo URL.
+export function teamMetaState() {
+  const out = {};
+  for (const r of db.prepare("SELECT code,nickname,logo,updated_at FROM team_meta").all()) {
+    const m = {};
+    if (r.nickname) m.nickname = r.nickname;
+    if (r.logo) m.logoVer = r.updated_at;
+    if (Object.keys(m).length) out[r.code] = m;
+  }
+  return out;
+}
+// Admin editor: nickname override + whether a logo override exists, per code.
+export function teamOverrides() {
+  const out = {};
+  for (const r of db.prepare("SELECT code,nickname,logo FROM team_meta").all()) out[r.code] = { nickname: r.nickname || null, hasLogo: !!r.logo };
+  return out;
+}
 
 // ---------- web push (subscriptions, per-user prefs, idempotency) ----------
 const parsePrefs = (raw) => { try { return raw ? JSON.parse(raw) : {}; } catch { return {}; } };

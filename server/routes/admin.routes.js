@@ -11,9 +11,9 @@ import {
   getSourceConfig, setSourceConfig, getLivePollSeconds, setLivePollSeconds, getProviderDelay,
   listAiPlayers, createAiPlayer, updateAiPlayer, getAiPlayerById, getAiPlayerKey,
   setAiTestResult, aiPlayerStats, aiLastError, recentAiPredictions, deleteAiPrediction,
-  aiRanking, getSetting, setSetting,
+  aiRanking, getSetting, setSetting, setTeamMeta, teamOverrides,
 } from "../db.js";
-import { MATCHES } from "../data.js";
+import { MATCHES, TEAMS } from "../data.js";
 import { kickoff } from "../services/locks.js";
 import { AI_PROVIDERS, getAiAdapter, isKnownProvider } from "../services/ai/index.js";
 import { buildBundle } from "../services/ai/bundle.js";
@@ -30,6 +30,26 @@ import { genPassword, cacheCredential, getCredential, streamCredentialsPdf } fro
 
 const router = Router();
 const cleanKuerzel = (k) => ((k || "").trim().toUpperCase() || null);
+
+// Team display overrides (nickname + federation logo). Defaults are build-seeded in the
+// frontend; these rows override them. Logo is a data URI (PNG/SVG, ~500 KB cap).
+const TEAM_CODES = new Set(Object.keys(TEAMS));
+router.get("/admin/teams", requireAdmin, (req, res) => res.json(teamOverrides()));
+router.post("/admin/teams/:code", requireAdmin, (req, res) => {
+  const code = (req.params.code || "").toUpperCase();
+  if (!TEAM_CODES.has(code)) return res.status(400).json({ error: "unbekanntes Team" });
+  const b = req.body || {}, patch = {};
+  if (Object.prototype.hasOwnProperty.call(b, "nickname")) patch.nickname = typeof b.nickname === "string" && b.nickname.trim() ? b.nickname.trim() : null;
+  if (Object.prototype.hasOwnProperty.call(b, "logo")) {
+    if (!b.logo) patch.logo = null;
+    else if (!/^data:image\/(svg\+xml|png|jpeg|webp);base64,/.test(b.logo)) return res.status(400).json({ error: "Logo muss PNG/SVG/WEBP sein" });
+    else if (b.logo.length > 720_000) return res.status(413).json({ error: "Logo zu groß (max ~500 KB)" });
+    else patch.logo = b.logo;
+  }
+  if (!Object.keys(patch).length) return res.status(400).json({ error: "nichts zu ändern" });
+  setTeamMeta(code, patch);
+  res.json({ ok: true, overrides: teamOverrides() });
+});
 
 router.post("/sync", requireAdmin, async (req, res) => { await sync("manuell"); runBackfill("manuell"); prefetchPreviews().catch((e) => console.error("preview", e)); res.json({ meta: getMeta() }); });
 // Force a full re-fetch of scorers/cards/final-clock for ALL finished matches (repairs
