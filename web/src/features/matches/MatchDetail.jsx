@@ -154,7 +154,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   if (detail && (detail.scorers?.length > 0 || detail.cards?.length > 0 || detail.subs?.length > 0))
     sections.push({ id: "verlauf", label: "Spielverlauf", content: <div className="pb-4"><MatchTimeline detail={detail} home={home} away={away} /></div> });
   if (detail?.lineups)
-    sections.push({ id: "aufstellung", label: "Aufstellung", content: <div className="pb-4"><Lineups lineups={detail.lineups} home={home} away={away} /></div> });
+    sections.push({ id: "aufstellung", label: "Aufstellung", content: <div className="pb-4"><Lineups lineups={detail.lineups} home={home} away={away} cards={detail.cards} playerStats={detail.playerStats} /></div> });
   if (hasStats)
     sections.push({ id: "statistik", label: "Statistik", content: <div className="pb-4"><MatchStats stats={detail.stats} homeColor={homeColor} awayColor={awayColor} /></div> });
   if (hasPrognose)
