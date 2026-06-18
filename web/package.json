@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node scripts/download-flags.mjs && node scripts/download-broadcasters.mjs",
+    "prebuild": "node scripts/download-flags.mjs && node scripts/download-broadcasters.mjs && node scripts/download-team-logos.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },
