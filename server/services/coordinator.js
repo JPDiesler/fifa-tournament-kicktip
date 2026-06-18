@@ -43,6 +43,15 @@ function dailyOk(id, limit) {
   return !pc || pc.date !== today || pc.count < limit;
 }
 
+// Lazy player profile/bio (on a player-detail open). Routed to a provider that supports
+// it, budget-gated like every other ancillary call. null if unavailable/over budget.
+export async function getPlayerProfile(pid, season) {
+  const id = (effectiveConfig().routing.scorers || []).find((p) => getAdapter(p)?.fetchPlayerProfile && getAdapter(p)?.configured?.()) || DEFAULT_SOURCE;
+  const ad = getAdapter(id);
+  if (!ad?.fetchPlayerProfile || !ad.configured?.()) return null;
+  return budgetedCall(id, () => ad.fetchPlayerProfile(pid, season));
+}
+
 // Budget-gated ancillary single call (used by the AI-player bundle builder). Returns
 // null if over the provider's per-minute or daily budget — or on error — otherwise
 // notes the call against the SAME budgets the sync uses and returns fn()'s result.
@@ -147,18 +156,19 @@ export function mergeFixtures(byProvider, fetched, routing) {
 // whose caps declare scorers/cards true are used → no extra calls on the free
 // default (football-data, caps null). Returns { details:{n:{scorers,cards}}, capped }.
 const DETAIL_MAX = Number(process.env.DETAIL_MAX_PER_SYNC || 8);
-export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max = DETAIL_MAX, lineupNs = null, statsNs = null, oddsNs = null } = {}) {
+export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max = DETAIL_MAX, lineupNs = null, statsNs = null, oddsNs = null, playerStatsNs = null } = {}) {
   const capsOf = (id) => getProviderCaps(id) || getAdapter(id)?.declaredCaps() || {};
   const sProv = (routing.scorers || []).find((id) => capsOf(id).scorers === true);
   const cProv = (routing.cards || []).find((id) => capsOf(id).cards === true);
-  if (!sProv && !cProv) return { details: {}, lineups: {}, stats: {}, liveOdds: {}, capped: false, capable: false, queried: [] };
+  if (!sProv && !cProv) return { details: {}, lineups: {}, stats: {}, liveOdds: {}, playerStats: {}, capped: false, capable: false, queried: [] };
   const lProv = [sProv, cProv].find((id) => id && getAdapter(id)?.fetchLineups); // provider for the starting lineup
   const stProv = [sProv, cProv].find((id) => id && getAdapter(id)?.fetchStatistics); // provider for match statistics
   const oProv = [sProv, cProv].find((id) => id && getAdapter(id)?.fetchLiveOdds); // provider for in-play odds
+  const psProv = [sProv, cProv].find((id) => id && getAdapter(id)?.fetchPlayerStats); // provider for per-player stats + captain
 
   const targets = fixtures.filter((f) => (f.live || f.finished) && (!matchNs || matchNs.has(f.n)));
   const cache = new Map(); // `${id}:${n}` → {scorers,cards,subs}|null
-  const details = {}, lineups = {}, stats = {}, liveOdds = {};
+  const details = {}, lineups = {}, stats = {}, liveOdds = {}, playerStats = {};
   const queried = new Set(); // matches we fully fetched (events + lineup if requested)
   let calls = 0, capped = false;
 
@@ -213,6 +223,18 @@ export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max
     } catch { return null; }
   };
 
+  // Per-player stats: separate /fixtures/players endpoint, fetched for matches in
+  // playerStatsNs (live → refresh, finished → once; only populated from kickoff). Also
+  // carries the captain flag. Rate/daily-gated, piggybacks the pass (not max-bound).
+  const getPlayerStats = async (n) => {
+    const fx = byProvider[psProv]?.[n];
+    if (fx?.extId == null) return null;
+    const ad = getAdapter(psProv);
+    if (!rateOk(psProv, ad.rateLimit()) || !dailyOk(psProv, ad.dailyLimit())) { capped = true; return null; }
+    try { noteCall(psProv); calls++; return await ad.fetchPlayerStats(fx.extId); }
+    catch { return null; }
+  };
+
   for (const f of targets) {
     const sd = await get(sProv, f.n);
     const cd = sProv === cProv ? sd : await get(cProv, f.n);
@@ -223,9 +245,10 @@ export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max
     if (lineupNs?.has(f.n) && lProv) { const lu = await getLineups(f.n); if (lu) lineups[f.n] = lu; else lineupOk = false; }
     if (statsNs?.has(f.n) && stProv) { const s = await getStats(f.n); if (s) stats[f.n] = s; }
     if (oddsNs?.has(f.n) && oProv) { const o = await getLiveOdds(f.n); if (o) liveOdds[f.n] = o; }
+    if (playerStatsNs?.has(f.n) && psProv) { const ps = await getPlayerStats(f.n); if (ps) playerStats[f.n] = ps; }
     if (eventsOk && lineupOk) queried.add(f.n); // fully done → don't keep retrying
   }
-  return { details, lineups, stats, liveOdds, capped, capable: true, queried: [...queried] };
+  return { details, lineups, stats, liveOdds, playerStats, capped, capable: true, queried: [...queried] };
 }
 
 // In-play odds polling enabled? (default on; set INPLAY_ODDS_ENABLED=off to disable.)

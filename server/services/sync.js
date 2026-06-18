@@ -11,7 +11,7 @@ import { buildPreview } from "./ai/bundle.js";
 import {
   setResult, setResolved, clearResolved, replaceLive, liveByMatch,
   getMeta, setMeta, getChampionActual, setChampionActual, setCapabilities,
-  setMatchDetail, setMatchFinalTime, setMatchLineups, setMatchStats, setMatchPreview, detailByMatch, setMatchExtIds,
+  setMatchDetail, setMatchFinalTime, setMatchLineups, setMatchStats, setMatchPlayerStats, setMatchPreview, detailByMatch, setMatchExtIds,
 } from "../db.js";
 import { notifyKickoff, notifyGoal, notifyFinal } from "./push.js";
 import { publishLive } from "./liveStream.js";
@@ -132,21 +132,38 @@ export async function sync(reason = "cron") {
     try {
       const need = new Set([
         ...Object.keys(liveMap).map(Number),
-        ...fixtures.filter((f) => f.finished && (have[f.n]?.final == null || !(have[f.n]?.scorers?.length || have[f.n]?.cards?.length) || !have[f.n]?.stats)).map((f) => f.n),
+        ...fixtures.filter((f) => f.finished && (have[f.n]?.final == null || !(have[f.n]?.scorers?.length || have[f.n]?.cards?.length) || !have[f.n]?.stats || !have[f.n]?.playerStats)).map((f) => f.n),
       ]);
       const lineupNs = new Set([...need].filter((n) => !have[n]?.lineups)); // fetch each lineup once
       // statistics: refresh while live, fetch once for finished matches that lack them
       const statsNs = new Set([...Object.keys(liveMap).map(Number), ...fixtures.filter((f) => f.finished && !have[f.n]?.stats).map((f) => f.n)]);
       // in-play odds: live matches only (no history → meaningless once finished)
       const oddsNs = inplayOddsEnabled() ? new Set(Object.keys(liveMap).map(Number)) : null;
+      // per-player stats (/fixtures/players): refresh while live, fetch once for finished
+      // matches that lack them. The same call carries the captain flag (only populated
+      // from kickoff) → marked on the stored lineup once.
+      const hasCaptain = (lu) => lu && [lu.home, lu.away].some((t) => [...(t?.startXI || []), ...(t?.bench || [])].some((p) => p.captain));
+      const playerStatsNs = new Set([...Object.keys(liveMap).map(Number), ...fixtures.filter((f) => f.finished && !have[f.n]?.playerStats).map((f) => f.n)]);
       let details = {};
       if (need.size) {
-        const r = await fetchDetails(fixtures, byProvider, routing, need, { lineupNs, statsNs, oddsNs });
+        const r = await fetchDetails(fixtures, byProvider, routing, need, { lineupNs, statsNs, oddsNs, playerStatsNs });
         details = r.details;
         liveOdds = r.liveOdds || {};
         for (const [n, d] of Object.entries(details)) writeDetail(n, d, have);
         for (const [n, lu] of Object.entries(r.lineups)) setMatchLineups(n, lu);
         for (const [n, s] of Object.entries(r.stats || {})) setMatchStats(n, s);
+        for (const [n, ps] of Object.entries(r.playerStats || {})) {
+          setMatchPlayerStats(n, ps);
+          // Mark the captain on the stored lineup once (match by player id → name format
+          // and side orientation don't matter). Patches the fresh or stored lineup.
+          const lu = r.lineups[n] || have[n]?.lineups;
+          if (!lu || hasCaptain(lu)) continue;
+          const capIds = new Set(Object.entries(ps).filter(([, s]) => s.captain).map(([id]) => Number(id)));
+          if (!capIds.size) continue;
+          const mark = (arr) => (arr || []).map((p) => (capIds.has(p.pid) ? { ...p, captain: true } : p));
+          const patch = (t) => (t ? { ...t, startXI: mark(t.startXI), bench: mark(t.bench) } : t);
+          setMatchLineups(n, { ...lu, home: patch(lu.home), away: patch(lu.away) });
+        }
         if (r.capped) console.log("Detail-Limit erreicht – einige Spiele ausgelassen.");
       }
       // Final match clock from the best source (live snapshot / events / nominal).

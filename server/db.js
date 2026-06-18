@@ -173,6 +173,7 @@ if (!db.prepare("PRAGMA table_info(live)").all().some((c) => c.name === "odds"))
   if (!cols.includes("lineups")) db.exec("ALTER TABLE match_detail ADD COLUMN lineups TEXT");
   if (!cols.includes("stats")) db.exec("ALTER TABLE match_detail ADD COLUMN stats TEXT");      // per-team match statistics (possession/shots/xG/…)
   if (!cols.includes("preview")) db.exec("ALTER TABLE match_detail ADD COLUMN preview TEXT");   // pre-match: predictions/form/h2h/injuries
+  if (!cols.includes("player_stats")) db.exec("ALTER TABLE match_detail ADD COLUMN player_stats TEXT"); // per-player match stats keyed by player id
 }
 // Migration for DBs created before AI players existed.
 {
@@ -433,6 +434,13 @@ export function setMatchStats(n, stats) {
     ON CONFLICT(match_n) DO UPDATE SET stats=excluded.stats, updated_at=datetime('now')`)
     .run(Number(n), stats ? JSON.stringify(stats) : null);
 }
+// Per-player match statistics keyed by player id ({ [pid]:{rating,goals,…} }). Upserts
+// only the player_stats column.
+export function setMatchPlayerStats(n, ps) {
+  db.prepare(`INSERT INTO match_detail(match_n,player_stats) VALUES(?,?)
+    ON CONFLICT(match_n) DO UPDATE SET player_stats=excluded.player_stats, updated_at=datetime('now')`)
+    .run(Number(n), ps ? JSON.stringify(ps) : null);
+}
 // Pre-match preview (predictions/form/h2h/injuries). Upserts only the preview column.
 export function setMatchPreview(n, preview) {
   db.prepare(`INSERT INTO match_detail(match_n,preview) VALUES(?,?)
@@ -448,7 +456,7 @@ export function setMatchFinalTime(n, f) {
 }
 export function detailByMatch() {
   const out = {};
-  for (const r of db.prepare("SELECT match_n,scorers,cards,subs,lineups,stats,preview,final_minute,final_injury,final_phase FROM match_detail").all()) {
+  for (const r of db.prepare("SELECT match_n,scorers,cards,subs,lineups,stats,preview,player_stats,final_minute,final_injury,final_phase FROM match_detail").all()) {
     try {
       out[r.match_n] = {
         scorers: JSON.parse(r.scorers || "[]"),
@@ -457,6 +465,7 @@ export function detailByMatch() {
         lineups: r.lineups ? JSON.parse(r.lineups) : null,
         stats: r.stats ? JSON.parse(r.stats) : null,
         preview: r.preview ? JSON.parse(r.preview) : null,
+        playerStats: r.player_stats ? JSON.parse(r.player_stats) : null,
         final: r.final_minute != null ? { minute: r.final_minute, injury: r.final_injury, phase: r.final_phase } : null,
       };
     } catch { /* skip */ }

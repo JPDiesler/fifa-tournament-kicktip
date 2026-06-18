@@ -4,8 +4,14 @@ import { stateForUser, leaderboard, matchdayBreakdown, setUserTips, setChamp, ge
 import { requireAuth } from "../middleware/auth.js";
 import { isChampLocked, kickoff, isTipLocked } from "../services/locks.js";
 import { addClient } from "../services/liveStream.js";
+import { getPlayerProfile } from "../services/coordinator.js";
 
 const router = Router();
+
+// Lazy player profile/bio for the player-detail card. One upstream call per player,
+// cached in-memory (bio changes rarely) → repeated opens are free. null → 404.
+const profileCache = new Map(); // pid → { at, data }
+const PROFILE_TTL = 12 * 3600 * 1000;
 
 router.get("/state", requireAuth, (req, res) => res.json(stateForUser(req.user.kuerzel)));
 
@@ -27,6 +33,20 @@ router.get("/live/stream", requireAuth, (req, res) => {
 });
 router.get("/leaderboard", requireAuth, (req, res) => res.json(leaderboard()));
 router.get("/matchdays", requireAuth, (req, res) => res.json(matchdayBreakdown()));
+
+// Player profile/bio (age, nationality, height/weight, season totals) — lazy + cached.
+router.get("/player/:pid", requireAuth, async (req, res) => {
+  const pid = Number(req.params.pid);
+  if (!Number.isInteger(pid) || pid <= 0) return res.status(400).json({ error: "bad id" });
+  const c = profileCache.get(pid);
+  if (c && Date.now() - c.at < PROFILE_TTL) return res.json(c.data);
+  try {
+    const data = await getPlayerProfile(pid);
+    if (!data) return res.status(404).json({ error: "not found" });
+    profileCache.set(pid, { at: Date.now(), data });
+    res.json(data);
+  } catch { res.status(502).json({ error: "fetch failed" }); }
+});
 
 // AI-player reasoning for one (match, player). GATED so the analysis can't leak a tip
 // advantage: visible only after kickoff (default) or after the tip lock (configurable

@@ -65,7 +65,7 @@ async function fetchDetail(extId, ctx) {
     .map((e) => ({ team: e.team?.name || null, player: e.player?.name || null, minute: e.time?.elapsed ?? null, injury: e.time?.extra ?? null, type: goalType(e.detail), side: sideOf(e.team?.name, ctx) }));
   const cards = ev
     .filter((e) => e.type === "Card")
-    .map((e) => ({ team: e.team?.name || null, player: e.player?.name || null, minute: e.time?.elapsed ?? null, injury: e.time?.extra ?? null, card: e.detail || null, side: sideOf(e.team?.name, ctx) }));
+    .map((e) => ({ team: e.team?.name || null, player: e.player?.name || null, pid: e.player?.id ?? null, minute: e.time?.elapsed ?? null, injury: e.time?.extra ?? null, card: e.detail || null, side: sideOf(e.team?.name, ctx) }));
   // Substitutions: api-football's subst event carries the player going OFF in `player`
   // and the one coming ON in `assist` (verified against live data, despite the docs).
   const subs = ev
@@ -171,6 +171,53 @@ async function fetchLiveOdds(extId) {
   return { update: resp.update || null, suspended, bookmakers };
 }
 
+// Per-player match stats via /fixtures/players (also the only source of the captain
+// flag — the lineup endpoint has none). Keyed by player id → compact stat block; only
+// populates from kickoff. Powers the player-detail card + captain badge. null if empty.
+async function fetchPlayerStats(extId) {
+  const r = await fetch(`${BASE}/fixtures/players?fixture=${extId}`, H());
+  const j = await r.json();
+  const arr = Array.isArray(j.response) ? j.response : [];
+  const out = {};
+  for (const t of arr) for (const p of t.players || []) {
+    const id = p.player?.id, s = p.statistics?.[0];
+    if (id == null || !s) continue;
+    out[id] = {
+      rating: s.games?.rating ?? null, min: s.games?.minutes ?? null, pos: s.games?.position ?? null,
+      captain: !!s.games?.captain, sub: !!s.games?.substitute,
+      goals: s.goals?.total ?? null, assists: s.goals?.assists ?? null, conceded: s.goals?.conceded ?? null, saves: s.goals?.saves ?? null,
+      shots: s.shots?.total ?? null, shotsOn: s.shots?.on ?? null,
+      passes: s.passes?.total ?? null, passAcc: s.passes?.accuracy ?? null, keyPasses: s.passes?.key ?? null,
+      tackles: s.tackles?.total ?? null, interceptions: s.tackles?.interceptions ?? null, blocks: s.tackles?.blocks ?? null,
+      duelsWon: s.duels?.won ?? null, duelsTotal: s.duels?.total ?? null,
+      dribSucc: s.dribbles?.success ?? null, dribAtt: s.dribbles?.attempts ?? null,
+      foulsDrawn: s.fouls?.drawn ?? null, foulsComm: s.fouls?.committed ?? null,
+      yellow: s.cards?.yellow ?? 0, red: s.cards?.red ?? 0,
+      penScored: s.penalty?.scored ?? null, penMissed: s.penalty?.missed ?? null, penSaved: s.penalty?.saved ?? null,
+    };
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+// Season profile/bio for one player (/players?id=&season=) — static bio + a season-total
+// block (prefers the World Cup). Fetched lazily on a player-detail open (cached by the
+// caller, 1 call per player). null when unavailable.
+async function fetchPlayerProfile(pid, season = process.env.API_SEASON || "2026") {
+  const r = await fetch(`${BASE}/players?id=${pid}&season=${season}`, H());
+  const j = await r.json();
+  const resp = Array.isArray(j.response) ? j.response[0] : null;
+  const pl = resp?.player;
+  if (!pl) return null;
+  const stx = resp.statistics || [];
+  const best = stx.find((s) => /world cup/i.test(s.league?.name || "")) || stx.slice().sort((a, b) => (b.games?.appearences || 0) - (a.games?.appearences || 0))[0] || null;
+  return {
+    name: pl.name || null, firstname: pl.firstname || null, lastname: pl.lastname || null, age: pl.age ?? null,
+    birth: pl.birth || null, nationality: pl.nationality || null, height: pl.height || null, weight: pl.weight || null,
+    injured: !!pl.injured, photo: pl.photo || null,
+    season: best ? { league: best.league?.name || null, apps: best.games?.appearences ?? null, goals: best.goals?.total ?? null, assists: best.goals?.assists ?? null } : null,
+  };
+}
+
 // Paid real-time provider: assume the full feature set (confirmed by probe).
 const declaredCaps = () => ({ results: true, liveScore: true, phase: true, liveMinute: true, scorers: true, cards: true, realtime: true });
 
@@ -197,5 +244,5 @@ export const apifootball = {
   rateLimit: () => { const o = getProviderLimits("apifootball").rateLimit; return Number.isFinite(o) ? o : Number(process.env.API_RATE_LIMIT || 10); },
   dailyLimit: () => { const o = getProviderLimits("apifootball").dailyLimit; return o === null ? null : Number.isFinite(o) ? o : Number(process.env.API_DAILY_LIMIT || 100); },
   configured: () => !!key(),
-  declaredCaps, fetchFixtures, fetchDetail, fetchLineups, fetchStatistics, fetchPredictions, fetchInjuries, fetchOdds, fetchLiveOdds, probe,
+  declaredCaps, fetchFixtures, fetchDetail, fetchLineups, fetchStatistics, fetchPlayerStats, fetchPlayerProfile, fetchPredictions, fetchInjuries, fetchOdds, fetchLiveOdds, probe,
 };
