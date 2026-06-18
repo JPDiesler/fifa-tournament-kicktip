@@ -1,41 +1,50 @@
 // Pre-match prognosis for human tippers (api-football /predictions). `preview` =
-// { home, away, percent:{home,draw,away}, advice, form:{home,away}, h2h[], injuries[],
-//   comparison:{total,att,def,poisson_distribution,h2h,goals,form} (each {home,away} %),
-//   teams:{home,away} radar stats }. Shows a single info line when there's nothing solid.
+// { home, away, percent, advice, form:{home,away}, h2h[], injuries[], comparison{…},
+//   teams:{home,away}{ last5:{form,att,def}, wins,draws,loses,played, goalsFor/Against,
+//   gfAvg, gaAvg, timing:{goalsFor,goalsAgainst,yellow,red:[8 %]} } }.
 import RadarChart from "@/components/RadarChart.jsx";
-import Bar from "@/components/Bar.jsx";
+import EventTiming from "./EventTiming.jsx";
 
-const NEUTRAL = "#6b7280"; // remis / draw
 const pct = (v) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.]/g, "")); return Number.isFinite(n) ? n : 0; }; // "45%" → 45
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const FORMC = { W: "bg-emerald-500/80", D: "bg-zinc-500/70", L: "bg-red-500/80" };
 
-// Comparison metric → German label (order matches the reference layout).
-const CMP_ROWS = [
-  ["total", "Stärke"], ["att", "Angriff"], ["def", "Abwehr"],
-  ["poisson_distribution", "Poisson"], ["h2h", "Direktvergleich"], ["goals", "Tore (H2H)"], ["form", "Siegchance"],
+// The full strength comparison — ALWAYS shown. Attack/defence/form use each team's
+// ABSOLUTE last-5 rating (0–100), so the shown % are real (e.g. 6 % vs 0 %), not the
+// head-to-head split that turns 6-vs-0 into 100-vs-0. The remaining metrics are only
+// available as the model's head-to-head % and show "keine Daten" when empty.
+const CMP_BARS = [
+  { key: "total", label: "Stärke" },
+  { key: "att", label: "Angriff", rating: "att" },
+  { key: "def", label: "Abwehr", rating: "def" },
+  { key: "form", label: "Form", rating: "form" },
+  { key: "poisson_distribution", label: "Poisson" },
+  { key: "h2h", label: "Direktvergleich" },
+  { key: "goals", label: "Tore (H2H)" },
 ];
-// Radar axes from per-team season stats; only used when the provider has them (0 at a tournament start).
-const RADAR_TEAM = [
-  { key: "form", label: "Stärke", kind: "pct" }, { key: "att", label: "Angriff", kind: "pct" }, { key: "def", label: "Abwehr", kind: "pct" },
-  { key: "wins", label: "Siege", kind: "rate" }, { key: "draws", label: "Remis", kind: "rate" }, { key: "loses", label: "Niederl.", kind: "rate" },
-  { key: "goalsFor", label: "Tore", kind: "goals" }, { key: "goalsAgainst", label: "Gegent.", kind: "goals" },
-];
-// Radar axes from the head-to-head comparison %, which the model provides when it has a prediction.
-const RADAR_CMP = [["total", "Stärke"], ["att", "Angriff"], ["def", "Abwehr"], ["poisson_distribution", "Poisson"], ["h2h", "H2H"], ["goals", "Tore"], ["form", "Sieg"]];
+function barData(b, cmp, teams) {
+  let h, a;
+  if (b.rating) { h = pct(teams?.home?.last5?.[b.rating]); a = pct(teams?.away?.last5?.[b.rating]); } // absolute rating
+  else { const v = cmp?.[b.key]; h = pct(v?.home); a = pct(v?.away); }                                // head-to-head %
+  return h === 0 && a === 0 ? null : { home: h, away: a };
+}
 
-function teamAxes(teams) {
+// Curated radar axes from the always-present per-team ratings (0–100), not the sparse
+// W/D/L counts (degenerate at a tournament start). [] when there's no signal at all.
+function radarFrom(teams, cmp) {
   const h = teams?.home, a = teams?.away;
-  if (!h && !a) return null;
-  const maxG = { goalsFor: Math.max(num(h?.goalsFor), num(a?.goalsFor), 1), goalsAgainst: Math.max(num(h?.goalsAgainst), num(a?.goalsAgainst), 1) };
-  const val = (t, ax) => {
-    if (!t) return 0;
-    if (ax.kind === "pct") return pct(t.last5?.[ax.key]);
-    if (ax.kind === "rate") { const p = num(t.played) || (num(t.wins) + num(t.draws) + num(t.loses)); return p ? (num(t[ax.key]) / p) * 100 : 0; }
-    return maxG[ax.key] ? (num(t[ax.key]) / maxG[ax.key]) * 100 : 0;
-  };
-  const axes = RADAR_TEAM.map((ax) => ({ label: ax.label, home: val(h, ax), away: val(a, ax) }));
-  return axes.reduce((s, x) => s + x.home + x.away, 0) > 0 ? axes : null; // null when the provider has no stats yet
+  if (!h && !a) return [];
+  const gs = (v) => (v == null ? 0 : Math.min(num(v) / 3, 1) * 100);        // goals/game → 0–100 (3+/g = full)
+  const ds = (v) => (v == null ? 0 : (1 - Math.min(num(v) / 3, 1)) * 100);  // fewer conceded = higher
+  const axes = [
+    { label: "Angriff", home: pct(h?.last5?.att), away: pct(a?.last5?.att) },
+    { label: "Abwehr", home: pct(h?.last5?.def), away: pct(a?.last5?.def) },
+    { label: "Form", home: pct(h?.last5?.form), away: pct(a?.last5?.form) },
+    { label: "Stärke", home: pct(cmp?.total?.home), away: pct(cmp?.total?.away) },
+    { label: "Tore", home: gs(h?.gfAvg), away: gs(a?.gfAvg) },
+    { label: "Defensive", home: ds(h?.gaAvg), away: ds(a?.gaAvg) },
+  ];
+  return axes.reduce((s, x) => s + x.home + x.away, 0) > 0 ? axes : [];
 }
 
 function FormPills({ s }) {
@@ -48,30 +57,91 @@ function FormPills({ s }) {
   );
 }
 
-// One outcome (home / draw / away) as a labelled HeroUI bar.
-function OutcomeRow({ label, value, color }) {
+// Win probability as ONE three-colour bar (home | draw | away), in the HeroUI bar look.
+function WinBar({ h, d, a, homeColor, awayColor, homeLabel, awayLabel }) {
+  const tot = h + d + a || 1;
   return (
     <div>
-      <div className="mb-0.5 flex items-center justify-between gap-2 text-xs">
-        <span className="min-w-0 truncate">{label}</span>
-        <span className="shrink-0 font-semibold tabular-nums">{Math.round(value)}%</span>
+      <div className="mb-1 flex justify-between gap-2 text-[11px] text-muted">
+        <span className="min-w-0 truncate">{homeLabel}</span>
+        <span className="shrink-0">Remis</span>
+        <span className="min-w-0 truncate text-right">{awayLabel}</span>
       </div>
-      <Bar value={value} fill={color} label={label} />
+      <div className="flex h-3 overflow-hidden rounded-full bg-overlay">
+        <div style={{ width: `${(h / tot) * 100}%`, background: homeColor }} />
+        <div className="bg-foreground/30" style={{ width: `${(d / tot) * 100}%` }} />
+        <div style={{ width: `${(a / tot) * 100}%`, background: awayColor }} />
+      </div>
+      <div className="mt-1 flex justify-between text-xs font-semibold tabular-nums">
+        <span>{Math.round(h)}%</span><span>{Math.round(d)}%</span><span>{Math.round(a)}%</span>
+      </div>
     </div>
   );
 }
 
-// Comparison metric (home% vs away%) as a two-tone HeroUI bar.
-function CmpBar({ label, c, homeColor, awayColor }) {
-  const h = pct(c?.home), a = pct(c?.away), tot = h + a || 1;
+// Two-team comparison bar: each side fills its OWN value (0–100) from the centre out, so
+// the bar widths match the shown percentages exactly (no head-to-head normalisation).
+function MirrorBar({ label, home, away, homeColor, awayColor }) {
+  const hw = Math.max(0, Math.min(100, home)), aw = Math.max(0, Math.min(100, away));
   return (
     <div>
       <div className="mb-0.5 flex items-center justify-between text-xs">
-        <span className="font-semibold tabular-nums">{Math.round(h)}%</span>
+        <span className="font-semibold tabular-nums">{Math.round(home)}%</span>
         <span className="text-muted">{label}</span>
-        <span className="font-semibold tabular-nums">{Math.round(a)}%</span>
+        <span className="font-semibold tabular-nums">{Math.round(away)}%</span>
       </div>
-      <Bar value={(h / tot) * 100} fill={homeColor} track={awayColor} label={label} />
+      <div className="flex h-2 gap-0.5">
+        <div className="flex h-full flex-1 justify-end overflow-hidden rounded-l-full bg-overlay">
+          <div className="h-full rounded-l-full" style={{ width: `${hw}%`, background: homeColor }} />
+        </div>
+        <div className="flex h-full flex-1 overflow-hidden rounded-r-full bg-overlay">
+          <div className="h-full rounded-r-full" style={{ width: `${aw}%`, background: awayColor }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// A bar row with no data — keeps the layout consistent + flags the gap.
+function EmptyBar({ label }) {
+  return (
+    <div className="opacity-60">
+      <div className="mb-0.5 flex items-center justify-between text-xs">
+        <span className="text-muted">{label}</span>
+        <span className="text-[10px] text-muted">keine Daten</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-overlay" />
+    </div>
+  );
+}
+
+// Per-team absolute stats — always present once a team has played. home | label | away.
+function StatTable({ teams, homeLabel, awayLabel }) {
+  const h = teams?.home, a = teams?.away;
+  if (!h && !a) return null;
+  const g = (v) => (v == null || v === "" ? "–" : String(v));
+  const rec = (t) => (t ? `${num(t.wins)}·${num(t.draws)}·${num(t.loses)}` : "–");
+  const rows = [
+    { label: "Ø Tore", h: g(h?.gfAvg), a: g(a?.gfAvg) },
+    { label: "Ø Gegentore", h: g(h?.gaAvg), a: g(a?.gaAvg) },
+    { label: "Bilanz S·U·N", h: rec(h), a: rec(a) },
+  ];
+  return (
+    <div>
+      <div className="mb-1 grid grid-cols-3 gap-2 text-[11px] font-bold uppercase tracking-wider text-muted">
+        <span className="min-w-0 truncate">{homeLabel}</span>
+        <span className="text-center">Statistik</span>
+        <span className="min-w-0 truncate text-right">{awayLabel}</span>
+      </div>
+      <div className="rounded-xl border border-border">
+        {rows.map((r, i) => (
+          <div key={r.label} className={`grid grid-cols-3 items-center gap-2 px-3 py-1.5 text-xs ${i ? "border-t border-border" : ""}`}>
+            <span className="font-semibold tabular-nums">{r.h}</span>
+            <span className="text-center text-muted">{r.label}</span>
+            <span className="text-right font-semibold tabular-nums">{r.a}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -80,50 +150,40 @@ export default function PreMatch({ preview, home, away, homeColor = "#22c55e", a
   if (!preview) return null;
   const p = preview.percent;
   const homeLabel = home?.label || preview.home, awayLabel = away?.label || preview.away;
-  const cmp = preview.comparison;
-  // Only metrics that carry a value — api-football returns all-0% for fixtures without a real prediction.
-  const cmpRows = cmp ? CMP_ROWS.filter(([k]) => cmp[k] && (pct(cmp[k].home) > 0 || pct(cmp[k].away) > 0)) : [];
-  const cmpAxes = cmp ? RADAR_CMP.map(([k, label]) => (cmp[k] ? { label, home: pct(cmp[k].home), away: pct(cmp[k].away) } : null)).filter(Boolean) : [];
-  const cmpSignal = cmpAxes.reduce((s, a) => s + a.home + a.away, 0);
-  const radarAxes = teamAxes(preview.teams) || (cmpSignal > 0 ? cmpAxes : []);
+  const cmp = preview.comparison, teams = preview.teams;
+
+  const bars = CMP_BARS.map((b) => ({ ...b, d: barData(b, cmp, teams) }));
+  const hasAnyBar = bars.some((b) => b.d);
+  const radarAxes = radarFrom(teams, cmp);
 
   const pH = pct(p?.home), pD = pct(p?.draw), pA = pct(p?.away);
   const meaningfulPct = !!p && !(pH === pD && pD === pA); // 33/33/33 = "no edge" → not meaningful
   const advice = preview.advice && !/no predictions available/i.test(preview.advice) ? preview.advice : null;
   const hasForm = !!(preview.form && (preview.form.home || preview.form.away));
   const hasH2h = preview.h2h?.length > 0;
-  const reliable = meaningfulPct || radarAxes.length >= 3 || cmpRows.length > 0 || hasForm || hasH2h || advice;
+  const hasStats = !!(teams && (teams.home || teams.away));
+  const reliable = meaningfulPct || hasAnyBar || radarAxes.length >= 3 || hasH2h || advice;
 
   if (!reliable) return <p className="px-2 py-6 text-center text-xs text-muted">Für dieses Spiel liegen keine belastbaren Prognosedaten vor.</p>;
 
   return (
     <div className="space-y-4 pb-2 text-sm">
-      {meaningfulPct && (
-        <div className="space-y-2">
-          <OutcomeRow label={`Sieg ${homeLabel}`} value={pH} color={homeColor} />
-          <OutcomeRow label="Remis" value={pD} color={NEUTRAL} />
-          <OutcomeRow label={`Sieg ${awayLabel}`} value={pA} color={awayColor} />
-        </div>
-      )}
-
-      {radarAxes.length >= 3 && (
-        <div>
-          <div className="mb-1 flex items-center justify-center gap-4 text-[11px]">
-            <span className="flex items-center gap-1"><span className="size-2 rounded-full" style={{ background: homeColor }} /><span className="min-w-0 truncate">{homeLabel}</span></span>
-            <span className="flex items-center gap-1"><span className="size-2 rounded-full" style={{ background: awayColor }} /><span className="min-w-0 truncate">{awayLabel}</span></span>
-          </div>
-          <RadarChart axes={radarAxes} homeColor={homeColor} awayColor={awayColor} homeLabel={homeLabel} awayLabel={awayLabel} />
-        </div>
-      )}
-
-      {cmpRows.length > 0 && (
-        <div className="space-y-2.5">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-muted">Vergleich</div>
-          {cmpRows.map(([k, label]) => <CmpBar key={k} label={label} c={cmp[k]} homeColor={homeColor} awayColor={awayColor} />)}
-        </div>
-      )}
+      {meaningfulPct && <WinBar h={pH} d={pD} a={pA} homeColor={homeColor} awayColor={awayColor} homeLabel={homeLabel} awayLabel={awayLabel} />}
 
       {advice && <div className="rounded-lg border border-border bg-overlay p-2 text-xs"><span className="font-semibold">Hinweis:</span> {advice}</div>}
+
+      <div className="space-y-2.5">
+        <div className="text-[11px] font-bold uppercase tracking-wider text-muted">Kräftevergleich</div>
+        {bars.map((b) => (b.d
+          ? <MirrorBar key={b.key} label={b.label} home={b.d.home} away={b.d.away} homeColor={homeColor} awayColor={awayColor} />
+          : <EmptyBar key={b.key} label={b.label} />))}
+      </div>
+
+      {radarAxes.length >= 3 && <RadarChart axes={radarAxes} homeColor={homeColor} awayColor={awayColor} homeLabel={homeLabel} awayLabel={awayLabel} />}
+
+      {teams && (teams.home?.timing || teams.away?.timing) && (
+        <EventTiming timing={{ home: teams.home?.timing, away: teams.away?.timing }} homeColor={homeColor} awayColor={awayColor} homeLabel={homeLabel} awayLabel={awayLabel} />
+      )}
 
       {hasForm && (
         <div className="flex items-center justify-between text-xs">
@@ -132,6 +192,8 @@ export default function PreMatch({ preview, home, away, homeColor = "#22c55e", a
           <FormPills s={preview.form.away} />
         </div>
       )}
+
+      {hasStats && <StatTable teams={teams} homeLabel={homeLabel} awayLabel={awayLabel} />}
 
       {hasH2h && (
         <div>

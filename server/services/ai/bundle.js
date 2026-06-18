@@ -133,6 +133,11 @@ async function footballDataBundle(extId, home, away) {
   return out;
 }
 
+// 15-minute windows api-football buckets goal/card timing into (extra time = last two).
+const MINUTE_BUCKETS = ["0-15", "16-30", "31-45", "46-60", "61-75", "76-90", "91-105", "106-120"];
+// → array of 8 percentages (share of the team's events in each window), 0 where empty.
+const minuteSeries = (obj) => MINUTE_BUCKETS.map((b) => { const v = obj?.[b]?.percentage; const n = v == null ? 0 : parseFloat(String(v)); return Number.isFinite(n) ? Math.round(n) : 0; });
+
 // Per-team radar stats from a predictions response, oriented to our home/away (swap).
 // last_5.{form,att,def} are percent strings; league.fixtures/goals are season totals.
 function teamRadar(pred, swap) {
@@ -141,6 +146,7 @@ function teamRadar(pred, swap) {
     const l5 = t.last_5 || {};
     const fx = t.league?.fixtures || {};
     const g = t.league?.goals || {};
+    const c = t.league?.cards || {};
     return {
       last5: { form: l5.form ?? null, att: l5.att ?? null, def: l5.def ?? null },
       wins: fx.wins?.total ?? null,
@@ -149,6 +155,10 @@ function teamRadar(pred, swap) {
       played: fx.played?.total ?? null,
       goalsFor: g.for?.total?.total ?? null,
       goalsAgainst: g.against?.total?.total ?? null,
+      gfAvg: l5.goals?.for?.average ?? null,      // recent goals scored per game ("1.0")
+      gaAvg: l5.goals?.against?.average ?? null,  // recent goals conceded per game
+      // Event timing: share (%) of the team's goals/cards per 15-min window → timing chart.
+      timing: { goalsFor: minuteSeries(g.for?.minute), goalsAgainst: minuteSeries(g.against?.minute), yellow: minuteSeries(c.yellow), red: minuteSeries(c.red) },
     };
   };
   return {
