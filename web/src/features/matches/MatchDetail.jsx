@@ -57,6 +57,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   const away = { label: teamLabel(match, "a"), code: teamCode(match, "a") };
   const ready = !!(home.code && away.code); // pairing fixed (both teams known)?
   const phaseLabel = PHASES.find((p) => p.code === match.ph)?.label || "";
+  const knockout = ["R32", "R16", "QF", "SF", "P3", "FIN"].includes(match.ph); // group games (A–L) have no extra time
   const cd = !hasResult ? countdown(match.dt) : null;
   const past = hasResult || kickoffMs(match.dt) + 3 * 3600000 < Date.now(); // match over → hide "where to watch"
   const live = st.live?.[n];
@@ -157,7 +158,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   if (hasStats)
     sections.push({ id: "statistik", label: "Statistik", content: <div className="pb-4"><MatchStats stats={detail.stats} homeColor={homeColor} awayColor={awayColor} /></div> });
   if (hasPrognose)
-    sections.push({ id: "prognose", label: "Prognose", content: <div className="pb-4"><PreMatch preview={preview} home={home} away={away} homeColor={homeColor} awayColor={awayColor} /></div> });
+    sections.push({ id: "prognose", label: "Prognose", content: <div className="pb-4"><PreMatch preview={preview} home={home} away={away} homeColor={homeColor} awayColor={awayColor} knockout={knockout} /></div> });
   if (hasOdds)
     sections.push({ id: "quoten", label: "Quoten", content: <div className="pb-4"><OddsView odds={preview?.odds} live={liveOdds} model={preview?.percent} home={home} away={away} homeColor={homeColor} awayColor={awayColor} /></div> });
 

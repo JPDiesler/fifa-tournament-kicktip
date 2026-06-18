@@ -146,7 +146,7 @@ function StatTable({ teams, homeLabel, awayLabel }) {
   );
 }
 
-export default function PreMatch({ preview, home, away, homeColor = "#22c55e", awayColor = "#64748b" }) {
+export default function PreMatch({ preview, home, away, homeColor = "#22c55e", awayColor = "#64748b", knockout = false }) {
   if (!preview) return null;
   const p = preview.percent;
   const homeLabel = home?.label || preview.home, awayLabel = away?.label || preview.away;
@@ -182,7 +182,7 @@ export default function PreMatch({ preview, home, away, homeColor = "#22c55e", a
       {radarAxes.length >= 3 && <RadarChart axes={radarAxes} homeColor={homeColor} awayColor={awayColor} homeLabel={homeLabel} awayLabel={awayLabel} />}
 
       {teams && (teams.home?.timing || teams.away?.timing) && (
-        <EventTiming timing={{ home: teams.home?.timing, away: teams.away?.timing }} homeColor={homeColor} awayColor={awayColor} homeLabel={homeLabel} awayLabel={awayLabel} />
+        <EventTiming timing={{ home: teams.home?.timing, away: teams.away?.timing }} knockout={knockout} homeColor={homeColor} awayColor={awayColor} homeLabel={homeLabel} awayLabel={awayLabel} />
       )}
 
       {hasForm && (

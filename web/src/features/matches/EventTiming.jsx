@@ -4,16 +4,20 @@ import { useLayoutEffect, useRef, useState } from "react";
 // 15-min windows and gives the SHARE (%) per window. Smooth monotone lines over time,
 // styled like the leaderboard's Punkteverlauf (y-grid, hover guide + tooltip, segmented
 // switcher). "Tore" = ONE line per team for when that team scores: A's own scoring timing
-// blended with B's conceding timing (A scores ⇔ B concedes). Phase markers (Halbzeit /
-// Verlängerung / Verl.-Pause) divide the timeline. `timing` =
-// { home:{goalsFor,goalsAgainst,yellow,red:[8 %]}, away:{…} }.
-const TICKS = ["15", "30", "45", "60", "75", "90", "105", "120"];
+// blended with B's conceding timing (A scores ⇔ B concedes). Knockout matches run to 120'
+// with Verlängerung / Verl.-Pause markers; group games stop at 90' (no extra time).
+// `timing` = { home:{goalsFor,goalsAgainst,yellow,red:[8 %]}, away:{…} }.
+const ALL_TICKS = ["15", "30", "45", "60", "75", "90", "105", "120"];
+const ALL_MARKERS = [{ i: 2, label: "HZ" }, { i: 5, label: "Verl." }, { i: 6, label: "Pause" }]; // 45' / 90' / 105'
 const METRICS = [["goals", "Tore"], ["yellow", "Gelb"], ["red", "Rot"]];
-const MARKERS = [{ i: 2, label: "HZ" }, { i: 5, label: "Verl." }, { i: 6, label: "Pause" }]; // 45' / 90' / 105'
 const YTICKS = [0, 25, 50, 75, 100];
-const N = TICKS.length, H = 196, pad = { t: 12, r: 12, b: 26, l: 26 };
+const H = 196, pad = { t: 12, r: 12, b: 26, l: 26 };
 
-export default function EventTiming({ timing, homeColor = "#22c55e", awayColor = "#64748b", homeLabel = "Heim", awayLabel = "Gast" }) {
+export default function EventTiming({ timing, knockout = false, homeColor = "#22c55e", awayColor = "#64748b", homeLabel = "Heim", awayLabel = "Gast" }) {
+  // Group stage ends at 90' (6 windows, only the Halbzeit marker); knockout adds extra time.
+  const TICKS = knockout ? ALL_TICKS : ALL_TICKS.slice(0, 6);
+  const MARKERS = knockout ? ALL_MARKERS : ALL_MARKERS.filter((m) => m.i < 3);
+  const N = TICKS.length;
   const wrapRef = useRef(null);
   const [w, setW] = useState(0);
   const [metric, setMetric] = useState("goals");
