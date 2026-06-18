@@ -203,7 +203,15 @@ export async function buildPreview(matchN, { want = { predictions: true, odds: t
   const out = { ...(prev || {}), home: home.name, away: away.name, swap };
   if (pred) {
     out.predAt = now;
-    if (pred.predictions?.percent) { const pc = pred.predictions.percent; const op = pick(pc.home, pc.away); out.percent = { home: op.home, draw: pc.draw, away: op.away }; }
+    if (pred.predictions?.percent) {
+      const pc = pred.predictions.percent, op = pick(pc.home, pc.away);
+      const next = { home: op.home, draw: pc.draw, away: op.away };
+      // api-football collapses the win % to a flat 33/33/33 once it has no real
+      // prediction (commonly at/after kickoff). Never let that clobber a meaningful
+      // value we already captured pre-match → the win chances stay shown through live.
+      const flat = (x) => { const v = (s) => parseFloat(String(s ?? "").replace(/[^0-9.]/g, "")) || 0; return v(x.home) === v(x.draw) && v(x.draw) === v(x.away); };
+      if (!flat(next) || !out.percent) out.percent = next;
+    }
     if (pred.predictions?.advice) out.advice = pred.predictions.advice;
     const form = pick(pred.teams?.home?.league?.form || null, pred.teams?.away?.league?.form || null); // "WWDLW"-ish, best effort
     if (form.home || form.away) out.form = form;
