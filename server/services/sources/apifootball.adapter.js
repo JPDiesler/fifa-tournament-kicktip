@@ -1,6 +1,7 @@
 // API-Football (v3.football.api-sports.io) adapter. Real-time data on paid plans
 // (live minute, scorers, cards); season 2026 typically requires a subscription.
 import { getProviderToken, getProviderLimits } from "../../db.js";
+import { pickMarkets } from "./oddsParse.js";
 
 const BASE = "https://v3.football.api-sports.io";
 const key = () => getProviderToken("apifootball"); // DB override (admin) → env API_FOOTBALL_KEY
@@ -141,44 +142,33 @@ async function fetchInjuries(extId) {
   const j = await r.json();
   return Array.isArray(j.response) ? j.response : [];
 }
-// Pre-match 1X2 odds from the first bookmaker → decimal odds (provider home/away;
-// the bundle builder orients them). null if no bookmaker/bet is available.
+// Pre-match odds for ALL bookmakers → curated markets (1X2, O/U 2.5, BTTS) per book,
+// provider home/away (the bundle builder orients). { update, bookmakers:[…] } | null.
 async function fetchOdds(extId) {
   const r = await fetch(`${BASE}/odds?fixture=${extId}`, H());
   const j = await r.json();
   const resp = Array.isArray(j.response) ? j.response[0] : null;
-  const bm = resp?.bookmakers?.[0];
-  const bet = bm?.bets?.find((b) => b.id === 1 || /match winner/i.test(b.name || ""));
-  if (!bet?.values) return null;
-  const odd = (v) => { const x = bet.values.find((e) => new RegExp(`^${v}$`, "i").test(e.value)); return x ? Number(x.odd) : null; };
-  const home = odd("Home"), draw = odd("Draw"), away = odd("Away");
-  if (home == null && draw == null && away == null) return null;
-  return { home, draw, away, bookmaker: bm?.name || null };
+  if (!resp) return null;
+  const bookmakers = (resp.bookmakers || []).map((bm) => ({ name: bm.name, ...pickMarkets(bm.bets) })).filter((bm) => bm.mw || bm.ou25 || bm.btts);
+  if (!bookmakers.length) return null;
+  return { update: resp.update || null, bookmakers };
 }
 
-// In-play 1X2 odds from /odds/live (paid live feed; NO history — only while the match
-// is in progress). Returns decimal odds for the provider's home/away (caller orients by
-// swap) + a `suspended` flag when the market is stopped/blocked. null if unavailable.
+// In-play odds from /odds/live (paid live feed; NO history — only while the match runs).
+// Same curated shape + a `suspended` flag. Live is an aggregated feed (usually one
+// "bookmaker"); we keep the array shape and surface Next Goal when present. null if none.
 async function fetchLiveOdds(extId) {
   const r = await fetch(`${BASE}/odds/live?fixture=${extId}`, H());
   const j = await r.json();
   const resp = Array.isArray(j.response) ? j.response[0] : null;
   if (!resp) return null;
-  // Live odds list bets under `odds` (not bookmakers[].bets). 1X2 = "Fulltime Result".
-  const bet = (resp.odds || []).find((b) => /^(full ?time result|match winner|1x2)$/i.test((b.name || "").trim()) || b.id === 1 || b.id === 59);
-  if (!bet?.values) return null;
-  // Prefer the `main` value for each outcome, then any non-suspended, then the first.
-  const pick = (v) => {
-    const cands = bet.values.filter((e) => new RegExp(`^${v}$`, "i").test(e.value));
-    if (!cands.length) return null;
-    const x = cands.find((c) => c.main) || cands.find((c) => !c.suspended) || cands[0];
-    return x?.odd != null ? Number(x.odd) : null;
-  };
-  const home = pick("Home"), draw = pick("Draw"), away = pick("Away");
-  if (home == null && draw == null && away == null) return null;
-  const marketSuspended = bet.values.some((e) => /^(home|draw|away)$/i.test(e.value) && e.suspended);
-  const suspended = !!(resp.status?.stopped || resp.status?.blocked || marketSuspended);
-  return { home, draw, away, bookmaker: null, suspended };
+  const suspended = !!(resp.status?.stopped || resp.status?.blocked);
+  const bookmakers = (Array.isArray(resp.bookmakers) && resp.bookmakers.length
+    ? resp.bookmakers.map((bm) => ({ name: bm.name, ...pickMarkets(bm.bets) }))
+    : [{ name: "Live", ...pickMarkets(resp.odds) }]
+  ).filter((bm) => bm.mw || bm.ou25 || bm.btts || bm.nextGoal);
+  if (!bookmakers.length) return null;
+  return { update: resp.update || null, suspended, bookmakers };
 }
 
 // Paid real-time provider: assume the full feature set (confirmed by probe).

@@ -165,6 +165,15 @@ export async function sync(reason = "cron") {
     // doesn't blink (the live-odds feed is transient and keeps no history).
     for (const [n, o] of Object.entries(liveOdds)) { if (liveMap[n]) liveMap[n].odds = o; }
     for (const n of Object.keys(liveMap)) { if (liveMap[n].odds == null && prevLive[n]?.odds) liveMap[n].odds = prevLive[n].odds; }
+    // In-play odds movement: tag each bookmaker's 1X2 with the previous poll's odds so the
+    // client can show ↓/↑ arrows (and by how much) without keeping its own history.
+    for (const n of Object.keys(liveMap)) {
+      const o = liveMap[n].odds;
+      if (!o?.bookmakers) continue;
+      const prevByName = {};
+      for (const b of prevLive[n]?.odds?.bookmakers || []) if (b?.mw) prevByName[b.name] = b.mw;
+      for (const bm of o.bookmakers) { const pm = prevByName[bm.name]; if (pm && bm.mw) bm.mwPrev = pm; }
+    }
     replaceLive(liveMap);
     // Push the fresh live state to SSE subscribers (throttled to ~5s; forced at once on a
     // goal/kickoff/final so the score/clock update instantly in open clients).

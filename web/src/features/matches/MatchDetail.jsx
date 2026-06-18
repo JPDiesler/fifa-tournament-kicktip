@@ -145,9 +145,9 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   // The tab appears whenever we have a preview; PreMatch itself shows an info line when
   // the data isn't solid (api-football has no real prediction for some fixtures).
   const hasPrognose = !hasResult && !!preview;
-  // Quoten: pre-match before/at kickoff, in-play once it arrives (pre-match stays as the
-  // fallback until then). Shown while not finished; OddsView shows an info line if empty.
-  const hasOdds = !hasResult && (!!preview || !!liveOdds);
+  // Quoten: pre-match (all bookmakers) and/or in-play. Shown while not finished and there
+  // are actual odds to display.
+  const hasOdds = !hasResult && ((preview?.odds?.bookmakers?.length) || (liveOdds?.bookmakers?.length));
   // Order: Tipps · Spielverlauf · Aufstellung · Statistik · Prognose · Quoten (only those with data).
   const sections = [{ id: "tipps", label: "Tipps", content: tippsSection }];
   if (detail && (detail.scorers?.length > 0 || detail.cards?.length > 0 || detail.subs?.length > 0))
@@ -159,7 +159,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   if (hasPrognose)
     sections.push({ id: "prognose", label: "Prognose", content: <div className="pb-4"><PreMatch preview={preview} home={home} away={away} homeColor={homeColor} awayColor={awayColor} /></div> });
   if (hasOdds)
-    sections.push({ id: "quoten", label: "Quoten", content: <div className="pb-4"><OddsView odds={preview?.odds} live={liveOdds} home={home} away={away} homeColor={homeColor} awayColor={awayColor} /></div> });
+    sections.push({ id: "quoten", label: "Quoten", content: <div className="pb-4"><OddsView odds={preview?.odds} live={liveOdds} model={preview?.percent} home={home} away={away} homeColor={homeColor} awayColor={awayColor} /></div> });
 
   return (
     <>

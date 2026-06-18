@@ -9,6 +9,7 @@
 import { matchForFixture } from "./fixtures.js";
 import { remainingLoadToday } from "./poller.js";
 import { getAdapter, DEFAULT_SOURCE } from "./sources/index.js";
+import { orientOdds } from "./sources/oddsParse.js";
 import { getSourceConfig, getProviderCaps, getMeta, setMeta, getLivePollSeconds, getProviderDelay } from "../db.js";
 
 export const FEATURES = ["results", "liveScore", "liveMinute", "phase", "scorers", "cards"];
@@ -208,8 +209,7 @@ export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max
     try {
       noteCall(oProv); calls++;
       const o = await ad.fetchLiveOdds(fx.extId);
-      if (!o) return null;
-      return fx.swap ? { home: o.away, draw: o.draw, away: o.home, bookmaker: o.bookmaker, suspended: o.suspended } : o;
+      return o ? orientOdds(o, fx.swap) : null;
     } catch { return null; }
   };
 

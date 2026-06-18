@@ -7,6 +7,7 @@ import { MATCHES, TEAMS, CHAMP_BONUS } from "../../data.js";
 import { POINTS } from "../scoring.js";
 import { codeForName, known } from "../fixtures.js";
 import { getAdapter } from "../sources/index.js";
+import { orientOdds } from "../sources/oddsParse.js";
 import { budgetedCall } from "../coordinator.js";
 import { extIdsByMatch, getResolved } from "../../db.js";
 
@@ -205,7 +206,7 @@ export async function buildPreview(matchN, { want = { predictions: true, odds: t
     if (radar.home || radar.away) out.teams = radar;
     if (Array.isArray(pred.h2h) && pred.h2h.length) out.h2h = pred.h2h.slice(-5).map((g) => ({ date: g.fixture?.date, home: g.teams?.home?.name, away: g.teams?.away?.name, goals: g.goals }));
   }
-  if (odds) { out.oddsAt = now; const o = pick(odds.home, odds.away); out.odds = { home: o.home, draw: odds.draw, away: o.away, bookmaker: odds.bookmaker }; }
+  if (odds) { out.oddsAt = now; out.odds = orientOdds(odds, swap); }
   if (hasInj) out.injuries = injuries.map((i) => ({ team: i.team?.name, player: i.player?.name, reason: i.player?.reason }));
   return out;
 }
