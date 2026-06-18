@@ -2,7 +2,9 @@ import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Popover } from "@heroui/react";
 import Flag from "@/components/Flag.jsx";
+import TeamLogo from "@/components/TeamLogo.jsx";
 import { textOn } from "@/lib/teamColors.js";
+import { NICKNAMES } from "@/lib/teamNicknames.js";
 import { playerPhoto, coachPhoto } from "@/lib/media.js";
 
 const surname = (name) => (name ? name.split(" ").pop() : "");
@@ -294,34 +296,52 @@ export default function Lineups({ lineups, home, away, cards, playerStats }) {
   const sides = [];
   if (lineups?.home?.startXI?.length) sides.push({ team: lineups.home, meta: home });
   if (lineups?.away?.startXI?.length) sides.push({ team: lineups.away, meta: away });
-  const cur = sides.length ? sides[Math.min(idx, sides.length - 1)] : null;
-
   if (!sides.length) return null;
-  const kit = cur.team?.colors || null;        // real match kit colours (api-football)
-  const color = hex(kit?.player?.primary);     // number-badge fallback bg = kit primary (or neutral default)
-  const txt = textOn(color);
   const cardMap = cardByPid(cards);            // player id → "yellow" | "red" (both teams)
-  const arrow = "flex size-7 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-surface hover:text-foreground disabled:opacity-30";
+  const safeIdx = Math.min(idx, sides.length - 1);
+  const arrowCls = "flex size-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition hover:bg-white/10 hover:text-white";
 
+  // Each slide carries its team's switcher pill AND lineup, so the pill animates together
+  // with the lineup below it. The single arrow flips sides — ▸ on the home team (slide 0),
+  // ◂ on the away team — pointing toward the other team and the slide direction.
   return (
-    <div>
-      <div className="mb-1 flex items-center gap-2">
-        <button type="button" aria-label="Team zurück" className={arrow} disabled={sides.length < 2} onClick={() => setIdx((i) => (i + sides.length - 1) % sides.length)}><ChevronLeft size={18} /></button>
-        <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
-          <Flag code={cur.meta?.code} />
-          <span className="truncate font-bold">{cur.meta?.label || "—"}</span>
-          {cur.team?.formation && <span className="shrink-0 text-xs tabular-nums text-muted">{cur.team.formation}</span>}
-        </div>
-        <button type="button" aria-label="Team weiter" className={arrow} disabled={sides.length < 2} onClick={() => setIdx((i) => (i + 1) % sides.length)}><ChevronRight size={18} /></button>
-      </div>
-      <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start">
-        <div className="mx-auto w-full max-w-[300px] sm:mx-0 sm:w-[54%] sm:max-w-[330px] sm:shrink-0">
-          <Pitch team={cur.team} kit={kit} color={color} txt={txt} cards={cardMap} pstats={playerStats} />
-        </div>
-        <div className="min-w-0 flex-1 space-y-3">
-          {cur.team?.coach && <CoachCard name={cur.team.coach} id={cur.team.coachId} />}
-          <Bench team={cur.team} kit={kit} color={color} txt={txt} cards={cardMap} pstats={playerStats} />
-        </div>
+    <div className="overflow-hidden">
+      <div className="flex transition-transform duration-300 ease-out" style={{ transform: `translateX(-${safeIdx * 100}%)` }}>
+        {sides.map(({ team, meta }, i) => {
+          const k = team?.colors || null, c = hex(k?.player?.primary), tx = textOn(c);
+          const nick = meta?.nickname || NICKNAMES[meta?.code];
+          const isHome = i === 0;
+          return (
+            <div key={meta?.code || i} className="w-full shrink-0 px-0.5">
+              <div className="mb-3 flex items-center gap-2.5 rounded-full bg-zinc-900 px-2 py-1.5 text-white">
+                {sides.length > 1 && !isHome && (
+                  <button type="button" aria-label="Zur Heimmannschaft" className={arrowCls} onClick={() => setIdx((n) => (n - 1 + sides.length) % sides.length)}><ChevronLeft size={18} /></button>
+                )}
+                <TeamLogo code={meta?.code} logo={meta?.logo} name={meta?.label} className="size-10" textClass="text-[11px]" fallbackBg={c} fallbackFg={tx} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate font-bold leading-tight">{meta?.label || "—"}</span>
+                    <Flag code={meta?.code} sm />
+                  </div>
+                  {nick && <div className="truncate text-xs leading-tight text-zinc-400">{nick}</div>}
+                </div>
+                {team?.formation && <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold tabular-nums text-zinc-200">{team.formation}</span>}
+                {sides.length > 1 && isHome && (
+                  <button type="button" aria-label="Zur Gastmannschaft" className={arrowCls} onClick={() => setIdx((n) => (n + 1) % sides.length)}><ChevronRight size={18} /></button>
+                )}
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                <div className="mx-auto w-full max-w-[300px] sm:mx-0 sm:w-[54%] sm:max-w-[330px] sm:shrink-0">
+                  <Pitch team={team} kit={k} color={c} txt={tx} cards={cardMap} pstats={playerStats} />
+                </div>
+                <div className="min-w-0 flex-1 space-y-3">
+                  {team?.coach && <CoachCard name={team.coach} id={team.coachId} />}
+                  <Bench team={team} kit={k} color={c} txt={tx} cards={cardMap} pstats={playerStats} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
