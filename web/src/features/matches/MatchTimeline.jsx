@@ -53,7 +53,7 @@ export default function MatchTimeline({ detail, home, away }) {
               <div className="flex flex-1 justify-end">
                 {!isAway && <div className="flex items-center gap-2 text-right">{<EventBody e={e} />}<EventIcon e={e} /></div>}
               </div>
-              <span className="z-10 w-11 shrink-0 rounded-full bg-overlay py-0.5 text-center text-[11px] font-semibold tabular-nums text-muted ring-1 ring-border">
+              <span className="z-10 w-11 shrink-0 rounded-full bg-surface py-0.5 text-center text-[11px] font-semibold tabular-nums text-muted ring-1 ring-border">
                 {eventMinute(e) || "·"}
               </span>
               <div className="flex flex-1 justify-start">
