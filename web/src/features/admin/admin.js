@@ -46,6 +46,14 @@ export async function deleteUser(id) {
   return j(await fetch(`/api/admin/users/${id}`, { method: "DELETE" }), "Löschen fehlgeschlagen");
 }
 
+// ---- teams (nickname + federation-logo overrides) ----
+export async function getTeamOverrides() {
+  return j(await fetch("/api/admin/teams"), "Mannschaften nicht ladbar"); // { [code]: { nickname, hasLogo } }
+}
+export async function setTeamOverride(code, body) {
+  return j(await post(`/api/admin/teams/${code}`, body), "Speichern fehlgeschlagen"); // { ok, overrides }
+}
+
 // ---- AI players ----
 export async function listAiPlayers() {
   return j(await fetch("/api/admin/ai-players"), "KI-Spieler nicht ladbar"); // { providers, players }
