@@ -63,8 +63,8 @@ function PlayerPop({ p, stats, className = "", children }) {
   const rows = statRows(stats);
   const bioLine = bio && [bio.age != null ? `${bio.age} J` : null, bio.nationality, dim(bio.height, "cm"), dim(bio.weight, "kg")].filter(Boolean).join(" · ");
   return (
-    <Popover>
-      <button type="button" className={className} onClick={load}>{children}</button>
+    <Popover onOpenChange={(open) => { if (open) load(); }}>
+      <Popover.Trigger className={`cursor-pointer ${className}`}>{children}</Popover.Trigger>
       <Popover.Content className="w-64">
         <Popover.Dialog className="p-3">
           <div className="flex items-center gap-3">
