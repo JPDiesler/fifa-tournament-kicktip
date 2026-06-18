@@ -316,6 +316,14 @@ export function stateForUser(meKuerzel) {
 // ---------- writes ----------
 // Lock-aware tip write: upsert each match, but never modify a match that is
 // already locked (server-enforced regardless of what the client sends).
+// Server-side tip validation (never trust the client): a score is "" (clear) or a whole
+// number 0–99; the match must be a real, unlocked fixture. Anything else is rejected.
+const VALID_MATCH_NS = new Set(MATCHES.map((m) => m.n));
+const cleanScore = (v) => {
+  if (v === "" || v == null) return "";
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n <= 99 ? String(n) : null; // null = invalid → reject
+};
 export function setUserTips(kuerzel, tipsObj) {
   const u = ensureUserByKuerzel(kuerzel);
   const ins = db.prepare("INSERT OR REPLACE INTO tips(user_id,match_n,h,a) VALUES(?,?,?,?)");
@@ -323,8 +331,11 @@ export function setUserTips(kuerzel, tipsObj) {
   db.transaction(() => {
     for (const [n, t] of Object.entries(tipsObj || {})) {
       const mn = Number(n);
-      if (isTipLocked(mn)) { rejected++; continue; }
-      ins.run(u.id, mn, String(t.h ?? ""), String(t.a ?? ""));
+      if (!Number.isInteger(mn) || !VALID_MATCH_NS.has(mn)) { rejected++; continue; } // bogus match
+      if (isTipLocked(mn)) { rejected++; continue; }                                   // locked
+      const h = cleanScore(t?.h), a = cleanScore(t?.a);
+      if (h === null || a === null) { rejected++; continue; }                           // garbage score
+      ins.run(u.id, mn, h, a);
     }
   })();
   return { rejected };
