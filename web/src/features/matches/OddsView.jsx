@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight, Check } from "lucide-react";
+import { parsePct as pctNum } from "@/lib/num.js";
 
 // Rich odds card. Pre-match shows ALL bookmakers (switchable); in-play shows the live
 // feed with ↓/↑ movement + "vor X Sek". Per bookmaker: 1X2 (with margin, margin-free
@@ -8,7 +9,6 @@ import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 //   model       = predictions percent { home, draw, away }  (for the value-bet)
 const NEUTRAL = "#6b7280";
 const fmt = (o) => (o != null ? Number(o).toFixed(2) : "–");
-const pctNum = (v) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.]/g, "")); return Number.isFinite(n) ? n : 0; };
 
 function implied(mw = {}) {
   const inv = (o) => (o && o > 0 ? 1 / o : 0);

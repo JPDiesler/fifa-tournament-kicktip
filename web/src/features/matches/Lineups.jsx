@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Popover } from "@heroui/react";
 import Flag from "@/components/Flag.jsx";
 import TeamLogo from "@/components/TeamLogo.jsx";
-import { textOn } from "@/lib/teamColors.js";
+import { hex, textOn } from "@/lib/teamColors.js";
 import { NICKNAMES } from "@/lib/teamNicknames.js";
 import { playerPhoto, coachPhoto } from "@/lib/media.js";
 
@@ -122,8 +122,6 @@ function PlayerPop({ p, stats, className = "", children }) {
   );
 }
 
-// Match kit colour from api-football lineups → "#rrggbb", else null.
-const hex = (c) => { const s = String(c || "").replace(/^#/, ""); return /^[0-9a-fA-F]{6}$/.test(s) ? `#${s}` : null; };
 // Number-badge background/text colour for a player: the real match kit (GK kit for the
 // keeper) when the provider supplies it, otherwise the flag-derived fallback.
 // kit = team.colors { player:{primary,number}, goalkeeper:{…} }.

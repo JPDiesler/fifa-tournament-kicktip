@@ -3,9 +3,9 @@
 //   teams:{home,away}{ last5:{form,att,def}, wins,draws,loses,played, goalsFor/Against,
 //   gfAvg, gaAvg, timing:{goalsFor,goalsAgainst,yellow,red:[8 %]} } }.
 import RadarChart from "@/components/RadarChart.jsx";
+import { parsePct as pct } from "@/lib/num.js"; // "45%" → 45
 import EventTiming from "./EventTiming.jsx";
 
-const pct = (v) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.]/g, "")); return Number.isFinite(n) ? n : 0; }; // "45%" → 45
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const FORMC = { W: "bg-emerald-500/80", D: "bg-zinc-500/70", L: "bg-red-500/80" };
 
