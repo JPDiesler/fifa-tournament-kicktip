@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import {
   getUserById, getUserByUsername, getUserByEntraOid, getUserByEntraUpn,
-  createUser, updateUser, countAdmins,
+  createUser, updateUser,
 } from "../db.js";
 
 // ---------- passwords ----------

@@ -25,7 +25,7 @@ const REASONING_DEFAULT = () => getSetting("aiReasoningVisibleAfter", process.en
 import { requireAdmin, adminUserDto, hashPassword } from "../middleware/auth.js";
 import { sync, runBackfill, prefetchPreviews } from "../services/sync.js";
 import { activeSource, probeSource, getAdapter, listAdapters, DEFAULT_SOURCE } from "../services/sources/index.js";
-import { effectiveCapabilities, effectiveConfig, FEATURES, liveDelayMs } from "../services/coordinator.js";
+import { effectiveCapabilities, FEATURES, liveDelayMs } from "../services/coordinator.js";
 import { genPassword, cacheCredential, getCredential, streamCredentialsPdf } from "../services/credentials.js";
 
 const router = Router();
