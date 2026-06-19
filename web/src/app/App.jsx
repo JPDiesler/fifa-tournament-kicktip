@@ -125,7 +125,6 @@ export default function App() {
       openTimer = setTimeout(() => { if (!opened) { try { es?.close(); } catch {} es = null; startPoll(); } }, 8000);
     } catch { startPoll(); }
     return () => { stopped = true; clearTimeout(openTimer); try { es?.close(); } catch {} clearInterval(pollTimer); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, hasLive]);
 
   const flash = (m) => toast(m, { variant: "success" }); // action-completed confirmation

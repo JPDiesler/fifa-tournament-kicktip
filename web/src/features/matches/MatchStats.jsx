@@ -8,7 +8,7 @@ const STAT_ROWS = [
   ["corners", "Ecken"], ["fouls", "Fouls"], ["offsides", "Abseits"], ["saves", "Paraden"],
   ["passes", "Pässe"], ["passAccuracy", "Passquote"],
 ];
-const num = (v) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.\-]/g, "")); return Number.isFinite(n) ? n : 0; };
+const num = (v) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.-]/g, "")); return Number.isFinite(n) ? n : 0; };
 const show = (v) => (v == null || v === "" ? "–" : String(v));
 
 export default function MatchStats({ stats, homeColor = "#22c55e", awayColor = "#64748b" }) {

@@ -33,7 +33,6 @@ export default function Carousel({ sections, initial = 0, className = "" }) {
     const t = setTimeout(measure, 180); // late image loads
     window.addEventListener("resize", measure);
     return () => { clearTimeout(t); window.removeEventListener("resize", measure); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!sections.length) return null;
