@@ -97,23 +97,24 @@ export default function DataTable({
 
       {total === 0 && <p className="py-6 text-center text-xs text-muted">{empty}</p>}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* left: page-size picker + range summary */}
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <span>Zeilen</span>
-          <Select aria-label="Zeilen pro Seite" className="w-20" value={String(pageSize)} onChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
-            <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {pageSizes.map((n) => <ListBox.Item key={n} id={String(n)} textValue={String(n)}>{n}<ListBox.ItemIndicator /></ListBox.Item>)}
-              </ListBox>
-            </Select.Popover>
-          </Select>
-          {total > 0 && <span className="tabular-nums">{start + 1}–{Math.min(start + pageSize, total)} von {total}</span>}
-        </div>
-        {/* right: page navigation only */}
-        {pages > 1 && (
-          <Pagination size="sm">
+      {/* one row: page-size picker + range (left, via Summary) · page nav (right) */}
+      {total > 0 && (
+        <Pagination size="sm">
+          <Pagination.Summary>
+            <span className="flex items-center gap-2 text-xs text-muted">
+              Zeilen
+              <Select aria-label="Zeilen pro Seite" className="w-20" value={String(pageSize)} onChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+                <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
+                <Select.Popover>
+                  <ListBox>
+                    {pageSizes.map((n) => <ListBox.Item key={n} id={String(n)} textValue={String(n)}>{n}<ListBox.ItemIndicator /></ListBox.Item>)}
+                  </ListBox>
+                </Select.Popover>
+              </Select>
+              <span className="tabular-nums">{start + 1}–{Math.min(start + pageSize, total)} von {total}</span>
+            </span>
+          </Pagination.Summary>
+          {pages > 1 && (
             <Pagination.Content>
               <Pagination.Item>
                 <Pagination.Previous isDisabled={cur <= 1} onPress={() => setPage((p) => Math.max(1, p - 1))}><Pagination.PreviousIcon /></Pagination.Previous>
@@ -127,9 +128,9 @@ export default function DataTable({
                 <Pagination.Next isDisabled={cur >= pages} onPress={() => setPage((p) => Math.min(pages, p + 1))}><Pagination.NextIcon /></Pagination.Next>
               </Pagination.Item>
             </Pagination.Content>
-          </Pagination>
-        )}
-      </div>
+          )}
+        </Pagination>
+      )}
     </div>
   );
 }
