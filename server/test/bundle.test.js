@@ -8,7 +8,7 @@ process.env.SESSION_SECRET ||= "test-session";
 test("buildBundle: group match → real scoring + canonical sides", async () => {
   const { buildBundle } = await import("../services/ai/bundle.js");
   const b = await buildBundle(9); // GER vs CUW
-  assert.equal(b.source, "football-data"); // no provider configured in tests
+  assert.equal(b.source, "api-football"); // api-football is the sole source (unconfigured in tests → minimal bundle)
   assert.deepEqual(b.scoring, { exact: 3, goal_diff: 2, tendency: 1 }); // app's real values, not the spec example 4/3/2
   assert.equal(b.fixture.home.code, "GER");
   assert.equal(b.fixture.away.code, "CUW");

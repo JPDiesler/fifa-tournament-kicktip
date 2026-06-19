@@ -1,8 +1,7 @@
 // Builds the source-dependent data bundle (Anhang B) handed to an AI player's LLM.
-// Prefers api-football (rich: predictions/Poisson/comparison/lineups/injuries) when
-// configured + we have its fixture id; otherwise football-data (lean: standings +
-// recent form + h2h). All provider data is oriented to OUR canonical home/away.
-// Every external call is budget-gated via the coordinator (shared provider budgets).
+// Data comes from api-football (rich: predictions/Poisson/comparison/lineups/injuries)
+// when configured + we have its fixture id, oriented to OUR canonical home/away.
+// Every external call is budget-gated via the coordinator (shared provider budget).
 import { MATCHES, TEAMS, CHAMP_BONUS } from "../../data.js";
 import { POINTS } from "../scoring.js";
 import { codeForName, known } from "../fixtures.js";
@@ -52,13 +51,8 @@ export async function buildBundle(matchN) {
     const rich = await apiFootballBundle(ext.apifootball, home, away);
     if (rich) return { ...base, source: "api-football", ...rich };
   }
-  const fdAd = getAdapter("footballdata");
-  if (fdAd?.configured?.()) {
-    const lean = await footballDataBundle(ext.footballdata, home, away);
-    if (lean) return { ...base, source: "football-data", ...lean };
-  }
   // No external data → minimal bundle; the model leans on its own knowledge.
-  return { ...base, source: apiAd?.configured?.() ? "api-football" : "football-data" };
+  return { ...base, source: "api-football" };
 }
 
 // api-football enrichment, relabeled to our home/away by team code.
@@ -95,42 +89,6 @@ async function apiFootballBundle(extId, home, away) {
   if (Array.isArray(injuries) && injuries.length)
     out.injuries = injuries.map((i) => ({ team: i.team?.name, player: i.player?.name, type: i.player?.type, reason: i.player?.reason }));
   return (out.predictions || out.comparison || out.lineups || out.injuries) ? out : null;
-}
-
-// football-data enrichment: standings rows for both teams + recent form + h2h.
-async function footballDataBundle(extId, home, away) {
-  const ad = getAdapter("footballdata");
-  const standings = await budgetedCall("footballdata", () => ad.fetchStandings());
-  const rows = [];
-  for (const s of standings?.standings || []) for (const row of s.table || []) rows.push(row);
-  const findRow = (code) => rows.find((r) => codeForName(r.team?.name) === code);
-  const homeRow = findRow(home.code), awayRow = findRow(away.code);
-  const trim = (r, name) => (r ? {
-    team: name, position: r.position, playedGames: r.playedGames, points: r.points,
-    won: r.won, draw: r.draw, lost: r.lost, goalsFor: r.goalsFor, goalsAgainst: r.goalsAgainst,
-    goalDifference: r.goalDifference, form: r.form,
-  } : { team: name });
-
-  const out = { standings: { home: trim(homeRow, home.name), away: trim(awayRow, away.name) } };
-
-  const recent = async (row) => {
-    if (!row?.team?.id) return null;
-    const j = await budgetedCall("footballdata", () => ad.fetchTeamMatches(row.team.id, 5));
-    if (!Array.isArray(j?.matches)) return null;
-    return j.matches.map((mt) => ({
-      date: mt.utcDate, home: mt.homeTeam?.shortName || mt.homeTeam?.name,
-      away: mt.awayTeam?.shortName || mt.awayTeam?.name, score: mt.score?.fullTime, competition: mt.competition?.name,
-    }));
-  };
-  const [rh, ra] = await Promise.all([recent(homeRow), recent(awayRow)]);
-  if (rh) out.recent_home = rh;
-  if (ra) out.recent_away = ra;
-
-  if (extId) {
-    const md = await budgetedCall("footballdata", () => ad.fetchMatch(extId));
-    if (md?.head2head) out.h2h = md.head2head;
-  }
-  return out;
 }
 
 // 15-minute windows api-football buckets goal/card timing into (extra time = last two).
@@ -232,22 +190,19 @@ export async function buildPreview(matchN, { want = { predictions: true, odds: t
 // One-off champion (Weltmeister) bundle: the valid team codes + group standings.
 export async function buildChampionBundle() {
   const teams = Object.keys(TEAMS).map((code) => ({ code, name: teamName(code) }));
-  const base = { type: "champion", scoring: { champion_bonus: CHAMP_BONUS }, teams };
-  const fdAd = getAdapter("footballdata");
-  if (fdAd?.configured?.()) {
-    const standings = await budgetedCall("footballdata", () => fdAd.fetchStandings());
-    if (standings?.standings) {
-      base.source = "football-data";
-      base.standings = standings.standings.map((s) => ({
-        group: s.group || s.stage || null,
-        table: (s.table || []).map((r) => ({
-          team: r.team?.name, code: codeForName(r.team?.name), position: r.position,
-          points: r.points, played: r.playedGames, goalsFor: r.goalsFor, goalsAgainst: r.goalsAgainst, form: r.form,
+  const base = { type: "champion", scoring: { champion_bonus: CHAMP_BONUS }, teams, source: "api-football" };
+  const ad = getAdapter("apifootball");
+  if (ad?.configured?.()) {
+    const groups = await budgetedCall("apifootball", () => ad.fetchStandings());
+    if (groups?.length) {
+      base.standings = groups.map((g) => ({
+        group: g.group,
+        table: (g.table || []).map((r) => ({
+          team: r.name, code: codeForName(r.name), position: r.position,
+          points: r.points, played: r.played, goalsFor: r.goalsFor, goalsAgainst: r.goalsAgainst, form: r.form,
         })),
       }));
-      return base;
     }
   }
-  base.source = fdAd?.configured?.() ? "football-data" : "api-football";
   return base;
 }
