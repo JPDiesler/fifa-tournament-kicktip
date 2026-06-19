@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Drawer, Chip } from "@heroui/react";
 import { Lock, Info } from "lucide-react";
 import { MATCHES } from "@/data";
@@ -38,11 +38,33 @@ function buildKitColors(st, teamCode) {
   return out;
 }
 
+// On-screen keyboard inset via the VisualViewport API. A bottom drawer is position:fixed
+// against the LAYOUT viewport, which iOS does NOT shrink when the keyboard opens — so the
+// sheet (and a focused input) end up hidden behind it. We measure the keyboard height and
+// the visible height so the drawer can lift above the keyboard and cap its height.
+function useKeyboardInset() {
+  const [{ kb, vh }, set] = useState({ kb: 0, vh: 0 });
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      set({ kb: inset > 80 ? Math.round(inset) : 0, vh: Math.round(vv.height) }); // ignore URL-bar jitter
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => { vv.removeEventListener("resize", update); vv.removeEventListener("scroll", update); };
+  }, []);
+  return { kb, vh };
+}
+
 // Bottom-sheet detail for one match. A fixed teams+score header on top; below it a
 // swipeable carousel whose sections appear only when their data exists (Tipps always,
 // then Spielverlauf, Aufstellung — Statistik/Pre-Match plug in here too).
 export default function MatchDetail({ match, isOpen, onClose, st, board, me, teamLabel, teamCode, score, onTip }) {
   const [reasonFor, setReasonFor] = useState(null); // kürzel of the AI tip whose reasoning is open
+  const { kb, vh } = useKeyboardInset();
   const broadcasts = match ? (st.broadcasts?.[match.n] || []) : [];
   const kitByCode = useMemo(() => buildKitColors(st, teamCode), [st.details, teamCode]);
   if (!match) {
@@ -168,7 +190,10 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
     <>
     <Drawer.Backdrop isOpen={isOpen} onOpenChange={(o) => !o && onClose()}>
       <Drawer.Content placement="bottom">
-        <Drawer.Dialog className="mx-auto flex max-h-[88vh] w-full max-w-2xl flex-col">
+        <Drawer.Dialog className="mx-auto flex w-full max-w-2xl flex-col"
+          // lift the sheet above the on-screen keyboard + cap it to the visible area
+          // (iOS PWA: the fixed bottom sheet otherwise sits behind the keyboard)
+          style={{ maxHeight: kb ? `${vh - 8}px` : "88vh", marginBottom: kb || undefined, transition: "margin-bottom .15s ease-out" }}>
           <Drawer.Handle />
           <Drawer.CloseTrigger />
           <Drawer.Header>
