@@ -11,22 +11,25 @@ export async function listUsers() {
   return j(await fetch("/api/admin/users"), "Konnte Nutzer nicht laden");
 }
 
-// ---- result sources (multi-provider) + feature routing ----
+// ---- result source (api-football, sole provider) ----
 export async function getSources() {
-  return j(await fetch("/api/admin/sources"), "Quellen nicht ladbar"); // → { sources, features, routing, default, lastSync, lastSyncMsg }
+  return j(await fetch("/api/admin/sources"), "Quelle nicht ladbar"); // → { provider, capabilities, pollSeconds, effectivePollSeconds, inplayOdds, lastSync, lastSyncMsg }
 }
 export async function setProviderToken(id, token) {
   return j(await post(`/api/admin/sources/${id}/token`, { token }), "Speichern fehlgeschlagen");
 }
 export async function testProvider(id) {
-  return j(await post(`/api/admin/sources/${id}/test`), "Test fehlgeschlagen"); // → { ok, client, availableMinute, caps, … }
+  return j(await post(`/api/admin/sources/${id}/test`), "Test fehlgeschlagen"); // → { ok, client, plan, quota, caps, … }
 }
-export async function saveRouting(body) {
-  return j(await post("/api/admin/routing", body), "Speichern fehlgeschlagen"); // body: { routing, providers }
+export async function saveSourceConfig(body) {
+  return j(await post("/api/admin/source-config", body), "Speichern fehlgeschlagen"); // body: { providers?, pollSeconds? }
 }
 // Force a full re-fetch of scorers/cards/final-clock for all finished matches (background).
 export async function refreshDetails() {
   return j(await post("/api/admin/refresh-details"), "Neu laden fehlgeschlagen");
+}
+export async function getRefreshStatus() {
+  return j(await fetch("/api/admin/refresh-details/status"), "Status nicht ladbar"); // → { running, total, done, fetched, … }
 }
 export async function createBasic(body) {
   return j(await post("/api/admin/users/basic", body), "Anlegen fehlgeschlagen"); // { user, password }

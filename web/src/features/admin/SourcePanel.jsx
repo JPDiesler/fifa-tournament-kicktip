@@ -1,255 +1,189 @@
-import { useEffect, useState } from "react";
-import { Button, TextField, Label, Input, Spinner, Switch, Tooltip, Select, ListBox, Chip, toast } from "@heroui/react";
-import { Plug, Check, X, Minus, Clock, RefreshCw, RotateCcw } from "lucide-react";
-import { getSources, setProviderToken, testProvider, saveRouting, refreshDetails } from "./admin.js";
-import Notice from "@/components/Notice.jsx";
+import { useRef, useState, useEffect } from "react";
+import { Button, TextField, Label, Input, Spinner, Chip, Meter, toast } from "@heroui/react";
+import { Plug, RefreshCw, RotateCcw, ChevronDown } from "lucide-react";
+import { getSources, setProviderToken, testProvider, saveSourceConfig, refreshDetails, getRefreshStatus } from "./admin.js";
 
-// Capability pills (per provider), in display order.
-const PILLS = [
-  ["liveScore", "Live-Score"], ["liveMinute", "Live-Spielminute"], ["scorers", "Torschützen"],
-  ["cards", "Karten"], ["phase", "Spielphase"], ["results", "Ergebnisse"],
-];
-const PILL_UI = {
-  green: { c: "bg-green-500/15 text-green-400 ring-green-500/30", Icon: Check },
-  yellow: { c: "bg-amber-500/15 text-amber-400 ring-amber-500/30", Icon: Clock },
-  red: { c: "bg-red-500/15 text-red-400 ring-red-500/30", Icon: X },
-  unknown: { c: "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30", Icon: Minus },
+// Connection state → dot colour + label (single provider, so no capability matrix).
+const STATE = {
+  ok: { label: "verbunden", dot: "bg-success", text: "text-success" },
+  idle: { label: "konfiguriert · ungetestet", dot: "bg-warning", text: "text-warning" },
+  unconfigured: { label: "kein API-Key", dot: "bg-muted/50", text: "text-muted" },
+  error: { label: "Fehler beim letzten Poll", dot: "bg-danger", text: "text-danger" },
 };
-const tri = (v) => (v === true ? "green" : v === false ? "red" : "unknown");
-function capState(key, caps) {
-  if (!caps) return "unknown";
-  if (key === "liveScore") return caps.realtime ? "green" : "yellow";
-  return tri(caps[key]);
-}
-const CAP_DESC = {
-  liveScore: "Spielstand während des laufenden Spiels.", liveMinute: "Aktuelle Spielminute im Live-Spiel.",
-  scorers: "Torschützen je Spiel.", cards: "Gelbe/Rote Karten je Spiel.",
-  phase: "Spielphase: Halbzeit, Verlängerung, Elfmeterschießen.", results: "Endergebnisse der Spiele.",
-};
-const STATE_MEANING = { green: "verfügbar", yellow: "verfügbar, aber verzögert", red: "nicht im Plan", unknown: "nicht getestet" };
-const STATE_PILL = {
-  ok: "bg-green-500/15 text-green-400 ring-green-500/30", idle: "bg-amber-500/15 text-amber-400 ring-amber-500/30",
-  unconfigured: "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30", error: "bg-red-500/15 text-red-400 ring-red-500/30",
-};
-const STATE_LABEL = { ok: "getestet", idle: "konfiguriert", unconfigured: "kein Token", error: "Fehler" };
-const FEATURE_LABEL = { results: "Ergebnisse", liveScore: "Live-Score", liveMinute: "Live-Spielminute", phase: "Spielphase", scorers: "Torschützen", cards: "Karten" };
-
-function CapPill({ capKey, state, label }) {
-  const { c, Icon } = PILL_UI[state] || PILL_UI.unknown;
-  return (
-    <Tooltip delay={0}>
-      <Tooltip.Trigger aria-label={`${label}: ${STATE_MEANING[state]}`}>
-        <span className={`inline-flex cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${c}`}>
-          <Icon size={12} className="shrink-0" /> {label}
-        </span>
-      </Tooltip.Trigger>
-      <Tooltip.Content showArrow className="max-w-56">
-        <Tooltip.Arrow />
-        <p className="font-semibold">{label}</p>
-        <p className="mt-0.5 text-xs text-muted">{CAP_DESC[capKey]} — {STATE_MEANING[state]}</p>
-      </Tooltip.Content>
-    </Tooltip>
-  );
-}
-
 const numInput = "rounded-md border border-border bg-surface px-1.5 py-0.5 text-xs text-foreground";
+const fmtNum = (n) => (Number.isFinite(n) ? n.toLocaleString("de-DE") : "—");
 
-// One provider card: status, capability pills, token + rate-limit management, test.
-function ProviderCard({ src, onChanged, onSaveLimits, onFlash }) {
+// The one api-football card: connection status, a daily-budget meter (live quota once
+// probed, otherwise our own call counter), and key + rate/daily limits behind "Ändern".
+function ProviderCard({ provider, onChanged, onFlash }) {
   const [token, setToken] = useState("");
+  const [open, setOpen] = useState(provider.state === "unconfigured"); // expand the key section if none yet
   const [busy, setBusy] = useState(false);
   const [probe, setProbe] = useState(null);
-  const [rate, setRate] = useState(String(src.rateLimitPerMin ?? ""));
-  const [daily, setDaily] = useState(src.dailyLimit == null ? "" : String(src.dailyLimit));
-  const [delay, setDelay] = useState(String(src.delaySeconds ?? ""));
-  const caps = probe?.caps || src.caps || null;
-  const perMin = src.rateLimitPerMin;
-  const perSec = perMin != null ? (perMin / 60).toFixed(perMin < 60 ? 2 : 1) : "—";
+  const [rate, setRate] = useState(String(provider.rateLimitPerMin ?? ""));
+  const [daily, setDaily] = useState(provider.dailyLimit == null ? "" : String(provider.dailyLimit));
 
-  const saveLimits = async () => {
-    setBusy(true);
-    try {
-      await onSaveLimits({ rateLimit: rate === "" ? undefined : Number(rate), dailyLimit: daily === "" ? null : Number(daily), delaySeconds: delay === "" ? undefined : Number(delay) });
-      onFlash?.("Limits gespeichert");
-    } catch (e) { toast(e.message, { variant: "danger" }); } finally { setBusy(false); }
-  };
+  const quota = probe?.quota || provider.quota || null;
+  const client = probe?.client || provider.client || null;
+  const plan = probe?.plan || provider.plan || null;
+  const st = STATE[provider.state] || STATE.idle;
+
+  // Daily budget: the API's live quota when we have it (authoritative), else our local
+  // per-day call counter vs the configured cap (resets on restart, counts only our calls).
+  const liveDay = quota && Number.isFinite(quota.dayLimit);
+  const dayLimit = liveDay ? quota.dayLimit : provider.dailyLimit;
+  const dayUsed = liveDay
+    ? (Number.isFinite(quota.dayUsed) ? quota.dayUsed : Math.max(0, quota.dayLimit - (quota.dayRemaining ?? quota.dayLimit)))
+    : provider.usedToday;
+  const hasDayCap = Number.isFinite(dayLimit) && dayLimit > 0;
+  const pct = hasDayCap ? Math.min(100, Math.round((dayUsed / dayLimit) * 100)) : 0;
+  const col = pct >= 90 ? "danger" : pct >= 70 ? "warning" : "success";
+  const minLimit = quota?.minuteLimit ?? provider.rateLimitPerMin;
+  const minRem = quota?.minuteRemaining;
 
   const save = async () => {
     setBusy(true);
-    try { await setProviderToken(src.id, token.trim()); setToken(""); onFlash?.("Token gespeichert"); setProbe(await testProvider(src.id)); await onChanged(); }
-    catch (e) { toast(e.message, { variant: "danger" }); } finally { setBusy(false); }
+    try { await setProviderToken(provider.id, token.trim()); setToken(""); const r = await testProvider(provider.id); setProbe(r); onFlash?.(r.ok ? "API-Key gespeichert · verbunden" : "API-Key gespeichert"); await onChanged(); }
+    catch (e) { toast.danger(e.message); } finally { setBusy(false); }
   };
-  const test = async () => { setBusy(true); try { setProbe(await testProvider(src.id)); await onChanged(); } catch (e) { toast(e.message, { variant: "danger" }); } finally { setBusy(false); } };
-  const reset = async () => { setBusy(true); try { await setProviderToken(src.id, ""); onFlash?.("Token zurückgesetzt"); setProbe(null); await onChanged(); } catch (e) { toast(e.message, { variant: "danger" }); } finally { setBusy(false); } };
+  const test = async () => {
+    setBusy(true);
+    try { const r = await testProvider(provider.id); setProbe(r); toast[r.ok ? "success" : "danger"](r.ok ? `Verbunden${r.client ? ` · ${r.client}` : ""}` : `${r.error || "Fehler"}${r.status ? ` (HTTP ${r.status})` : ""}`); await onChanged(); }
+    catch (e) { toast.danger(e.message); } finally { setBusy(false); }
+  };
+  const reset = async () => { setBusy(true); try { await setProviderToken(provider.id, ""); setProbe(null); onFlash?.("API-Key zurückgesetzt"); await onChanged(); } catch (e) { toast.danger(e.message); } finally { setBusy(false); } };
+  const saveLimits = async () => {
+    setBusy(true);
+    try { await saveSourceConfig({ providers: { [provider.id]: { rateLimit: rate === "" ? undefined : Number(rate), dailyLimit: daily === "" ? null : Number(daily) } } }); onFlash?.("Budget gespeichert"); await onChanged(); }
+    catch (e) { toast.danger(e.message); } finally { setBusy(false); }
+  };
 
   return (
-    <div className="rounded-lg border border-border bg-overlay p-2.5">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className="font-semibold">{src.name}</span>
-        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${STATE_PILL[src.state] || STATE_PILL.idle}`}>
-          <span className="inline-block size-1.5 rounded-full bg-current" /> {STATE_LABEL[src.state] || src.state}
-        </span>
-        {src.feeds?.length > 0 && (
-          <span className="ml-auto flex flex-wrap justify-end gap-1">
-            {src.feeds.map((f) => <Chip key={f} size="sm" variant="soft">{FEATURE_LABEL[f] || f}</Chip>)}
-          </span>
+    <div className="rounded-lg border border-border bg-overlay p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`size-2 shrink-0 rounded-full ${st.dot}`} />
+        <span className="font-semibold">{provider.name}</span>
+        <span className={`text-xs font-medium ${st.text}`}>{st.label}</span>
+        {plan && <Chip size="sm" variant="soft">{plan}</Chip>}
+        <Button className="ml-auto" variant="secondary" size="sm" isDisabled={busy || !provider.tokenMasked} onPress={test}><Plug size={13} /> Testen</Button>
+      </div>
+      {client && <div className="mt-0.5 text-[11px] text-muted">Konto: {client}</div>}
+
+      <div className="mt-3">
+        {hasDayCap ? (
+          <Meter aria-label="Tagesbudget" className="w-full gap-1" value={dayUsed} maxValue={dayLimit} color={col} valueLabel={`${fmtNum(dayUsed)} / ${fmtNum(dayLimit)}`}>
+            <div className="flex items-center justify-between text-xs">
+              <Label className="text-muted">Tagesbudget{liveDay ? "" : " (lokal gezählt)"}</Label>
+              <Meter.Output className="tabular-nums text-foreground" />
+            </div>
+            <Meter.Track><Meter.Fill /></Meter.Track>
+          </Meter>
+        ) : (
+          <div className="text-xs text-muted">Tagesbudget: <span className="text-foreground">kein Limit</span> · heute {fmtNum(provider.usedToday)}</div>
+        )}
+        <div className="mt-1 text-[11px] text-muted">
+          {Number.isFinite(minRem) ? <>{fmtNum(minRem)}/{fmtNum(minLimit)} Anfragen pro Minute übrig</> : <>{fmtNum(minLimit)} Anfragen/Minute</>}
+          {!quota && <> · „Testen" zeigt das Live-Kontingent der API</>}
+        </div>
+      </div>
+
+      <div className="mt-3 border-t border-border pt-2">
+        <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-1.5 text-xs text-muted hover:text-foreground">
+          <ChevronDown size={13} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+          <span>API-Key {provider.tokenMasked ? <span className="tabular-nums text-foreground">{provider.tokenMasked}</span> : "—"}{provider.tokenSource === "env" ? " · aus .env" : provider.tokenSource === "db" ? " · im Web gesetzt" : ""}</span>
+          <span className="ml-auto">{open ? "schließen" : "ändern"}</span>
+        </button>
+        {open && (
+          <div className="mt-2 flex flex-col gap-2">
+            <div className="flex flex-wrap items-end gap-2">
+              <TextField aria-label={`${provider.name} API-Key`} type="password" value={token} onChange={setToken} autoComplete="off" className="min-w-44 flex-1">
+                <Label className="text-xs text-muted">Neuer API-Key</Label>
+                <Input placeholder="API-Key einfügen …" />
+              </TextField>
+              <Button variant="primary" size="sm" isDisabled={busy || !token.trim()} onPress={save}>Speichern</Button>
+              {provider.tokenSource === "db" && <Button variant="tertiary" size="sm" isDisabled={busy} onPress={reset}>Zurücksetzen</Button>}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-[11px] text-muted">Rate/min <input type="number" min="1" value={rate} onChange={(e) => setRate(e.target.value)} className={`ml-0.5 w-16 ${numInput}`} /></label>
+              <label className="text-[11px] text-muted">Tageslimit <input type="number" min="0" placeholder="kein" value={daily} onChange={(e) => setDaily(e.target.value)} className={`ml-0.5 w-24 ${numInput}`} /></label>
+              <Button variant="tertiary" size="sm" isDisabled={busy} onPress={saveLimits}>Budget speichern</Button>
+              <span className="text-[10px] text-muted">steuert den Live-Poll-Takt</span>
+            </div>
+          </div>
         )}
       </div>
-      <div className="mb-2 text-[11px] text-muted">
-        Budget: <span className="text-foreground">{perMin}/min</span> (≈ {perSec}/s · {perMin * 60}/h)
-        {src.dailyLimit != null ? <> · <span className="text-foreground">{src.dailyLimit}/Tag</span></> : " · kein Tageslimit"}
-        {" · heute "}<span className="text-foreground">{src.usedToday}{src.dailyLimit != null ? `/${src.dailyLimit}` : ""}</span>
-        {" · ~"}{src.delaySeconds}s Verzug
-      </div>
-      <div className="mb-2 flex flex-wrap gap-1.5">
-        {PILLS.map(([key, label]) => <CapPill key={key} capKey={key} state={capState(key, caps)} label={label} />)}
-      </div>
-      <div className="mb-1.5 text-xs text-muted">
-        Token: <span className="tabular-nums text-foreground">{src.tokenMasked || "—"}</span>
-        {src.tokenSource === "env" && " · aus .env"}{src.tokenSource === "db" && " · im Web gesetzt"}
-      </div>
-      <div className="flex flex-wrap items-end gap-2">
-        <TextField aria-label={`${src.name} Token`} type="password" value={token} onChange={setToken} autoComplete="off" className="min-w-44 flex-1">
-          <Label className="text-xs text-muted">Neuer Token / Key</Label>
-          <Input placeholder="API-Token einfügen …" />
-        </TextField>
-        <Button variant="primary" size="sm" isDisabled={busy || !token.trim()} onPress={save}>Speichern</Button>
-        <Button variant="secondary" size="sm" isDisabled={busy} onPress={test}><Plug size={14} /> Testen</Button>
-        {src.tokenSource === "db" && <Button variant="tertiary" size="sm" isDisabled={busy} onPress={reset}>Zurücksetzen</Button>}
-      </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <label className="text-[11px] text-muted">Rate/min <input type="number" min="1" value={rate} onChange={(e) => setRate(e.target.value)} className={`ml-0.5 w-16 ${numInput}`} /></label>
-        <label className="text-[11px] text-muted">Tageslimit <input type="number" min="0" placeholder="kein" value={daily} onChange={(e) => setDaily(e.target.value)} className={`ml-0.5 w-20 ${numInput}`} /></label>
-        <label className="text-[11px] text-muted">Verzug/s <input type="number" min="0" value={delay} onChange={(e) => setDelay(e.target.value)} className={`ml-0.5 w-16 ${numInput}`} /></label>
-        <Button variant="tertiary" size="sm" isDisabled={busy} onPress={saveLimits}>Limits speichern</Button>
-      </div>
-      {probe && (
-        <Notice status={probe.ok ? "success" : "danger"} className="mt-2">
-          {probe.ok ? `✓ Verbindung OK${probe.client ? ` · Konto: ${probe.client}` : ""}${Number.isFinite(probe.availableMinute) ? ` · ${probe.availableMinute} Requests übrig` : ""}`
-            : `✗ ${probe.error || "Fehler"}${probe.status ? ` (HTTP ${probe.status})` : ""}`}
-        </Notice>
-      )}
     </div>
   );
 }
 
-// Feature → primary provider (+ optional fallback to the others).
-function RoutingMatrix({ data, onSave, onFlash }) {
-  const { sources, features, routing } = data;
-  const opts = sources; // all providers selectable (unconfigured ones simply won't deliver)
-  const others = (primary) => opts.filter((s) => s.id !== primary).map((s) => s.id);
-
-  const setPrimary = (feat, p) => {
-    const fallback = (routing[feat] || []).length > 1;
-    update(feat, fallback ? [p, ...others(p)] : [p]);
-  };
-  const setFallback = (feat, on) => {
-    const p = (routing[feat] || [opts[0]?.id])[0];
-    update(feat, on ? [p, ...others(p)] : [p]);
-  };
-  const update = async (feat, list) => {
-    try { await onSave({ ...routing, [feat]: list }); } catch (e) { onFlash?.(e.message); }
-  };
-
-  return (
-    <div className="rounded-lg border border-border">
-      {features.map((feat, i) => {
-        const list = routing[feat] || [];
-        const primary = list[0] || "";
-        const fallback = list.length > 1;
-        return (
-          <div key={feat} className={`flex flex-wrap items-center gap-2 px-3 py-2 text-sm ${i ? "border-t border-border" : ""}`}>
-            <span className="min-w-28 flex-1 font-medium">{FEATURE_LABEL[feat] || feat}</span>
-            <Select aria-label={`Quelle für ${FEATURE_LABEL[feat] || feat}`} className="w-40" value={primary} onChange={(v) => setPrimary(feat, String(v))}>
-              <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
-              <Select.Popover>
-                <ListBox>
-                  {opts.map((s) => <ListBox.Item key={s.id} id={s.id} textValue={s.name}>{s.name}<ListBox.ItemIndicator /></ListBox.Item>)}
-                </ListBox>
-              </Select.Popover>
-            </Select>
-            {opts.length > 1 && (
-              <Switch size="sm" aria-label="Fallback" isSelected={fallback} onChange={(v) => setFallback(feat, v)}>
-                <Switch.Control><Switch.Thumb /></Switch.Control>
-                <Switch.Content><Label className="text-[11px] text-muted">Fallback</Label></Switch.Content>
-              </Switch>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// "API & Ergebnisse" admin area: manual sync, per-provider token + capabilities,
-// and the feature-routing matrix (which provider feeds which feature).
+// "API & Ergebnisse": manual sync, the api-football card (status, budget, key) and a
+// background "Details neu laden" with a dismissable, self-updating progress toast.
 export default function SourcePanel({ onFlash, onSync }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  const reloadingRef = useRef(false);
 
   const load = async () => { try { setData(await getSources()); } catch (e) { onFlash?.(e.message); } };
   useEffect(() => { load(); }, []);
 
   const runSync = async () => { setBusy(true); try { await onSync?.(); await load(); } finally { setBusy(false); } };
+
+  // Force re-fetch all finished matches' details in the background, then poll the
+  // backend's progress and surface it in one dismissable, self-updating toast.
   const reloadDetails = async () => {
-    setBusy(true);
+    if (reloadingRef.current) return;
+    reloadingRef.current = true; setReloading(true);
     try {
-      await toast.promise(refreshDetails(), {
-        loading: "Details werden neu geladen …",
-        success: "Neu-Laden gestartet (läuft im Hintergrund, kann ein paar Minuten dauern)",
-        error: (e) => e?.message || "Neu laden fehlgeschlagen",
-      });
-    } catch { /* error toast already shown */ } finally { setBusy(false); }
+      try { await refreshDetails(); } catch (e) { toast.danger(e?.message || "Neu laden fehlgeschlagen"); return; }
+      let id = null, last = "", stop = false;
+      const show = (label) => {
+        if (label === last) return; last = label;
+        if (id) toast.close(id);
+        id = toast("Details werden neu geladen …", {
+          description: label, isLoading: true, timeout: 0,
+          actionProps: { children: "Ausblenden", variant: "tertiary", onPress: () => { stop = true; if (id) toast.close(id); } },
+        });
+      };
+      show("startet …");
+      for (let i = 0; i < 600 && !stop; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        let stt; try { stt = await getRefreshStatus(); } catch { continue; }
+        if (!stt.running) {
+          if (id) toast.close(id);
+          toast.success(`Details neu geladen — ${stt.fetched ?? 0} Spiele aktualisiert`);
+          await load();
+          break;
+        }
+        show(stt.total ? `${stt.done}/${stt.total} Spiele` : `${stt.fetched ?? 0} Spiele aktualisiert …`);
+      }
+    } finally { reloadingRef.current = false; setReloading(false); }
   };
-  const onSaveRouting = async (routing) => { await saveRouting({ routing }); await load(); onFlash?.("Routing gespeichert"); };
-  const saveProvider = async (id, patch) => {
-    const providers = { ...(data.providers || {}) };
-    providers[id] = { ...(providers[id] || {}), ...patch };
-    await saveRouting({ providers }); await load();
-  };
-  const savePoll = async (n) => { await saveRouting({ pollSeconds: n }); await load(); onFlash?.("Live-Intervall gespeichert"); };
+
+  const savePoll = async (n) => { await saveSourceConfig({ pollSeconds: n }); await load(); onFlash?.("Live-Intervall gespeichert"); };
 
   if (!data) return <div className="flex items-center gap-2 text-xs text-muted"><Spinner size="sm" /> Lade …</div>;
 
-  const multi = data.sources.length > 1;
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" size="sm" isDisabled={busy} onPress={runSync}><RefreshCw size={15} /> Synchronisieren</Button>
-          <Button variant="tertiary" size="sm" isDisabled={busy} onPress={reloadDetails}><RotateCcw size={15} /> Details neu laden</Button>
-          <label className="ml-auto text-[11px] text-muted">
-            Live-Abruf alle
-            <input type="number" min="10" max="600" defaultValue={data.pollSeconds}
-              onBlur={(e) => Number(e.target.value) !== data.pollSeconds && savePoll(e.target.value)}
-              className={`mx-1 w-16 ${numInput}`} /> Sek
-          </label>
-        </div>
-        {data.effectivePollSeconds != null && data.effectivePollSeconds !== data.pollSeconds && (
-          <div className="text-[11px] text-muted">Aktuell dynamisch: ~{data.effectivePollSeconds}s (aus Tagesbudget + Spielplan berechnet)</div>
-        )}
-        <div className="text-xs text-muted">
-          Letzter Poll: <span className="text-foreground">{data.lastSync ? new Date(data.lastSync).toLocaleString("de-DE") : "—"}</span>
-          {data.lastSyncMsg && <> · {data.lastSyncMsg}</>}
-        </div>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="secondary" size="sm" isDisabled={busy} onPress={runSync}><RefreshCw size={15} /> Synchronisieren</Button>
+        <Button variant="tertiary" size="sm" isPending={reloading} isDisabled={reloading} onPress={reloadDetails}><RotateCcw size={15} /> {reloading ? "lädt …" : "Details neu laden"}</Button>
+        <label className="ml-auto text-[11px] text-muted">
+          Live-Abruf alle
+          <input type="number" min="1" max="600" defaultValue={data.pollSeconds}
+            onBlur={(e) => Number(e.target.value) !== data.pollSeconds && savePoll(e.target.value)}
+            className={`mx-1 w-16 ${numInput}`} /> Sek
+        </label>
       </div>
 
-      <div>
-        <div className="mb-1.5 text-xs font-bold uppercase tracking-wider text-muted">Datenquellen</div>
-        <div className="flex flex-col gap-2">
-          {data.sources.map((src) => <ProviderCard key={src.id} src={src} onChanged={load} onSaveLimits={(patch) => saveProvider(src.id, patch)} onFlash={onFlash} />)}
-        </div>
-      </div>
+      <ProviderCard provider={data.provider} onChanged={load} onFlash={onFlash} />
 
-      <div>
-        <div className="mb-1.5 text-xs font-bold uppercase tracking-wider text-muted">Feature-Routing</div>
-        {multi ? (
-          <RoutingMatrix data={data} onSave={onSaveRouting} onFlash={onFlash} />
-        ) : (
-          <p className="rounded-lg border border-border bg-overlay p-3 text-xs text-muted">
-            Mit nur einer konfigurierten Quelle liefert sie alle Features. Sobald ein zweiter Provider einen Token hat, kannst du hier pro Feature wählen, welche Quelle es liefert (mit Fallback).
-          </p>
-        )}
+      <div className="text-[11px] text-muted">
+        Letzter Poll: <span className="text-foreground">{data.lastSync ? new Date(data.lastSync).toLocaleString("de-DE") : "—"}</span>
+        {data.lastSyncMsg && <> · {data.lastSyncMsg}</>}
+        {data.effectivePollSeconds != null && data.effectivePollSeconds !== data.pollSeconds && <> · dynamisch ~{data.effectivePollSeconds}s</>}
+        {data.inplayOdds === false && <> · In-Play-Quoten aus</>}
       </div>
     </div>
   );
