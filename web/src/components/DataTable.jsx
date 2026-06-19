@@ -98,6 +98,7 @@ export default function DataTable({
       {total === 0 && <p className="py-6 text-center text-xs text-muted">{empty}</p>}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* left: page-size picker + range summary */}
         <div className="flex items-center gap-2 text-xs text-muted">
           <span>Zeilen</span>
           <Select aria-label="Zeilen pro Seite" className="w-20" value={String(pageSize)} onChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
@@ -108,25 +109,24 @@ export default function DataTable({
               </ListBox>
             </Select.Popover>
           </Select>
+          {total > 0 && <span className="tabular-nums">{start + 1}–{Math.min(start + pageSize, total)} von {total}</span>}
         </div>
-        {total > 0 && (
+        {/* right: page navigation only */}
+        {pages > 1 && (
           <Pagination size="sm">
-            <Pagination.Summary>{start + 1}–{Math.min(start + pageSize, total)} von {total}</Pagination.Summary>
-            {pages > 1 && (
-              <Pagination.Content>
-                <Pagination.Item>
-                  <Pagination.Previous isDisabled={cur <= 1} onPress={() => setPage((p) => Math.max(1, p - 1))}><Pagination.PreviousIcon /></Pagination.Previous>
+            <Pagination.Content>
+              <Pagination.Item>
+                <Pagination.Previous isDisabled={cur <= 1} onPress={() => setPage((p) => Math.max(1, p - 1))}><Pagination.PreviousIcon /></Pagination.Previous>
+              </Pagination.Item>
+              {Array.from({ length: pages }, (_, i) => i + 1).map((p) => (
+                <Pagination.Item key={p}>
+                  <Pagination.Link isActive={p === cur} onPress={() => setPage(p)}>{p}</Pagination.Link>
                 </Pagination.Item>
-                {Array.from({ length: pages }, (_, i) => i + 1).map((p) => (
-                  <Pagination.Item key={p}>
-                    <Pagination.Link isActive={p === cur} onPress={() => setPage(p)}>{p}</Pagination.Link>
-                  </Pagination.Item>
-                ))}
-                <Pagination.Item>
-                  <Pagination.Next isDisabled={cur >= pages} onPress={() => setPage((p) => Math.min(pages, p + 1))}><Pagination.NextIcon /></Pagination.Next>
-                </Pagination.Item>
-              </Pagination.Content>
-            )}
+              ))}
+              <Pagination.Item>
+                <Pagination.Next isDisabled={cur >= pages} onPress={() => setPage((p) => Math.min(pages, p + 1))}><Pagination.NextIcon /></Pagination.Next>
+              </Pagination.Item>
+            </Pagination.Content>
           </Pagination>
         )}
       </div>
