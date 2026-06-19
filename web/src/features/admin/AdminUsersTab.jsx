@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Table, Button, Switch, Chip, Modal, TextField, Input, Label, Spinner, AlertDialog } from "@heroui/react";
+import { Button, Switch, Chip, Modal, TextField, Input, Label, Spinner, AlertDialog } from "@heroui/react";
 import { UserPlus, Users as UsersIcon, FileDown, KeyRound, Trash2, Pencil } from "lucide-react";
 import Notice from "@/components/Notice.jsx";
+import DataTable from "@/components/DataTable.jsx";
 import { listUsers, createBasic, createEntra, patchUser, resetPassword, deleteUser, downloadCredentialsPdf } from "./admin.js";
 import { fetchEntraUsers } from "@/features/auth/msal.js";
 
@@ -210,6 +211,52 @@ export default function AdminUsersTab({ entra, meId, onFlash, autoOpenEntra }) {
 
   const humans = (users || []).filter((u) => !u.isAi); // AI players live in the "KI" tab
 
+  const columns = [
+    { key: "kuerzel", header: "Kürzel", sortable: true, sort: (u) => u.kuerzel || "", render: (u) => (u.kuerzel ? <Chip size="sm" variant="soft">{u.kuerzel}</Chip> : <span className="text-muted">—</span>) },
+    { key: "name", header: "Name / Login", isRowHeader: true, sortable: true, sort: (u) => u.name || u.username || u.upn || "", render: (u) => (<div><div className="font-semibold">{u.name || "—"}</div><div className="text-xs text-muted">{u.username || u.upn}</div></div>) },
+    {
+      key: "kind", header: "Typ", sortable: true, sort: (u) => u.kind,
+      filter: { label: "Typ", options: [{ value: "basic", label: "Basic" }, { value: "entra", label: "Entra" }], match: (u, v) => u.kind === v },
+      render: (u) => <span className="text-xs text-muted">{u.kind === "entra" ? "Entra" : "Basic"}</span>,
+    },
+    { key: "admin", header: "Admin", render: (u) => <Switch size="sm" aria-label="Admin" isSelected={u.isAdmin} isDisabled={u.id === meId} onChange={(v) => toggle(u, "is_admin", v)}><Switch.Control><Switch.Thumb /></Switch.Control></Switch> },
+    { key: "active", header: "Aktiv", render: (u) => <Switch size="sm" aria-label="Aktiv" isSelected={u.isActive} isDisabled={u.id === meId} onChange={(v) => toggle(u, "is_active", v)}><Switch.Control><Switch.Thumb /></Switch.Control></Switch> },
+    {
+      key: "actions", header: "Aktionen", render: (u) => (
+        <div className="flex items-center gap-1">
+          <Button aria-label="Bearbeiten" variant="tertiary" size="sm" isIconOnly onPress={() => setEdit(u)}><Pencil size={14} /></Button>
+          {u.kind === "basic" && (
+            <>
+              <Button aria-label="PDF" variant="tertiary" size="sm" isIconOnly onPress={() => onPdf(u)}><FileDown size={14} /></Button>
+              <Button aria-label="Passwort zurücksetzen" variant="tertiary" size="sm" isIconOnly onPress={() => onReset(u)}><KeyRound size={14} /></Button>
+            </>
+          )}
+          <AlertDialog>
+            <Button aria-label="Löschen" variant="tertiary" size="sm" isIconOnly isDisabled={u.id === meId}><Trash2 size={14} /></Button>
+            <AlertDialog.Backdrop>
+              <AlertDialog.Container>
+                <AlertDialog.Dialog className="sm:max-w-[400px]">
+                  <AlertDialog.CloseTrigger />
+                  <AlertDialog.Header>
+                    <AlertDialog.Icon status="danger" />
+                    <AlertDialog.Heading>Nutzer löschen?</AlertDialog.Heading>
+                  </AlertDialog.Header>
+                  <AlertDialog.Body>
+                    <p>„{u.kuerzel || u.username || u.upn}" wird dauerhaft gelöscht (inkl. aller Tipps). Das lässt sich nicht rückgängig machen.</p>
+                  </AlertDialog.Body>
+                  <AlertDialog.Footer>
+                    <Button slot="close" variant="tertiary">Abbrechen</Button>
+                    <Button slot="close" variant="danger" onPress={() => doDelete(u)}>Löschen</Button>
+                  </AlertDialog.Footer>
+                </AlertDialog.Dialog>
+              </AlertDialog.Container>
+            </AlertDialog.Backdrop>
+          </AlertDialog>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -223,76 +270,9 @@ export default function AdminUsersTab({ entra, meId, onFlash, autoOpenEntra }) {
       {users === null ? (
         <div className="flex justify-center py-8"><Spinner /></div>
       ) : (
-        <Table variant="primary" aria-label="Benutzer">
-          <Table.ScrollContainer>
-            <Table.Content aria-label="Benutzer">
-              <Table.Header>
-                <Table.Column isRowHeader>Kürzel</Table.Column>
-                <Table.Column>Name / Login</Table.Column>
-                <Table.Column>Typ</Table.Column>
-                <Table.Column>Admin</Table.Column>
-                <Table.Column>Aktiv</Table.Column>
-                <Table.Column>Aktionen</Table.Column>
-              </Table.Header>
-              <Table.Body>
-                {humans.map((u) => (
-                  <Table.Row key={u.id} id={String(u.id)}>
-                    <Table.Cell>
-                      {u.kuerzel ? <Chip size="sm" variant="soft">{u.kuerzel}</Chip> : <span className="text-muted">—</span>}
-                    </Table.Cell>
-                    <Table.Cell>
-                      <div className="font-semibold">{u.name || "—"}</div>
-                      <div className="text-xs text-muted">{u.username || u.upn}</div>
-                    </Table.Cell>
-                    <Table.Cell><span className="text-xs text-muted">{u.kind === "entra" ? "Entra" : "Basic"}</span></Table.Cell>
-                    <Table.Cell>
-                      <Switch size="sm" aria-label="Admin" isSelected={u.isAdmin} isDisabled={u.id === meId} onChange={(v) => toggle(u, "is_admin", v)}>
-                        <Switch.Control><Switch.Thumb /></Switch.Control>
-                      </Switch>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Switch size="sm" aria-label="Aktiv" isSelected={u.isActive} isDisabled={u.id === meId} onChange={(v) => toggle(u, "is_active", v)}>
-                        <Switch.Control><Switch.Thumb /></Switch.Control>
-                      </Switch>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <div className="flex items-center gap-1">
-                        <Button aria-label="Bearbeiten" variant="tertiary" size="sm" isIconOnly onPress={() => setEdit(u)}><Pencil size={14} /></Button>
-                        {u.kind === "basic" && (
-                          <>
-                            <Button aria-label="PDF" variant="tertiary" size="sm" isIconOnly onPress={() => onPdf(u)}><FileDown size={14} /></Button>
-                            <Button aria-label="Passwort zurücksetzen" variant="tertiary" size="sm" isIconOnly onPress={() => onReset(u)}><KeyRound size={14} /></Button>
-                          </>
-                        )}
-                        <AlertDialog>
-                          <Button aria-label="Löschen" variant="tertiary" size="sm" isIconOnly isDisabled={u.id === meId}><Trash2 size={14} /></Button>
-                          <AlertDialog.Backdrop>
-                            <AlertDialog.Container>
-                              <AlertDialog.Dialog className="sm:max-w-[400px]">
-                                <AlertDialog.CloseTrigger />
-                                <AlertDialog.Header>
-                                  <AlertDialog.Icon status="danger" />
-                                  <AlertDialog.Heading>Nutzer löschen?</AlertDialog.Heading>
-                                </AlertDialog.Header>
-                                <AlertDialog.Body>
-                                  <p>„{u.kuerzel || u.username || u.upn}" wird dauerhaft gelöscht (inkl. aller Tipps). Das lässt sich nicht rückgängig machen.</p>
-                                </AlertDialog.Body>
-                                <AlertDialog.Footer>
-                                  <Button slot="close" variant="tertiary">Abbrechen</Button>
-                                  <Button slot="close" variant="danger" onPress={() => doDelete(u)}>Löschen</Button>
-                                </AlertDialog.Footer>
-                              </AlertDialog.Dialog>
-                            </AlertDialog.Container>
-                          </AlertDialog.Backdrop>
-                        </AlertDialog>
-                      </div>
-                    </Table.Cell>
-                  </Table.Row>
-                ))}
-              </Table.Body>
-            </Table.Content>
-          </Table.ScrollContainer>
-        </Table>
+        <DataTable columns={columns} rows={humans} rowKey={(u) => String(u.id)}
+          search={(u) => `${u.kuerzel || ""} ${u.name || ""} ${u.username || ""} ${u.upn || ""}`}
+          searchPlaceholder="Nutzer suchen …" ariaLabel="Benutzer" empty="Keine Nutzer." />
       )}
 
       <BasicModal open={basicOpen} onOpenChange={setBasicOpen} onCreated={reload} />
