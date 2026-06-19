@@ -42,6 +42,7 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
   const [active, setActive] = useState(null);       // hovered matchday index, or null
   const [pickOpen, setPickOpen] = useState(false);  // player-picker popover
   const [query, setQuery] = useState("");           // player-picker search
+  const pmeta = usePlayers();                        // hook: must run before any early return
   useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -79,7 +80,6 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
   let shown = anyPoints ? players.filter((pl) => cum[pl.p] > 0 || pl.p === me) : players;
   shown = [...shown].sort((a, b) => cum[b.p] - cum[a.p]); // legend high→low
   const idxOf = Object.fromEntries(shown.map((pl, i) => [pl.p, i]));
-  const pmeta = usePlayers();
   const colorOf = (pl) => (pl.p === me ? "var(--app-accent)" : PALETTE[idxOf[pl.p] % PALETTE.length]);
   // Readable text colour for a coloured Kürzel pill (luminance → black/white;
   // the accent uses its paired foreground token).
