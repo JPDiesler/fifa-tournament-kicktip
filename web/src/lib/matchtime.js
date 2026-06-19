@@ -64,13 +64,12 @@ export function eventMinute(e) {
 }
 // Suffix marking a goal's type: penalty "(E)", own goal "(ET)", else "".
 export const goalMark = (type) => (type === "penalty" ? "(E)" : type === "own" ? "(ET)" : "");
-// A card counts as red when its label mentions "red" (football-data: RED / YELLOW_RED;
-// api-football: "Red Card"). A second yellow stays yellow (it's still a yellow card).
+// A card counts as red when its label mentions "red" (api-football: "Red Card").
+// A second yellow ("Second Yellow card") stays yellow (it's still a yellow card).
 export const isRedCard = (card) => /red/i.test(card || "");
 
 // Card type for the icon: "yellow" | "red" | "yellowred" (second yellow / Gelb-Rot).
-// football-data: YELLOW / RED / YELLOW_RED; api-football: "Yellow Card" / "Red Card" /
-// "Second Yellow card".
+// api-football labels: "Yellow Card" / "Red Card" / "Second Yellow card".
 export function cardKind(card) {
   const c = card || "";
   if (/yellow.?red|second\s*yellow/i.test(c)) return "yellowred";

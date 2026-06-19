@@ -33,10 +33,11 @@ a single Docker container `wm-tippspiel`; UI is German.
   frontend, never logged. `.env`/`.env.*` are gitignored — only `.env.example` is tracked.
 
 ## Data sources & display
-- Two providers via `services/coordinator.js`, routed per feature: **football-data** (free,
-  default, near-live, no scorers/lineups) and **api-football** (paid, full: live minute,
-  scorers, cards, lineups, stats, predictions, odds, player stats). `budgetedCall()` gates
-  every ancillary call against per-minute + daily limits.
+- **Single provider: api-football** (api-sports.io) via `services/coordinator.js` — supplies
+  every feature (results, live minute, scorers, cards, lineups, stats, predictions, odds,
+  player stats; Season 2026 needs a paid plan). The coordinator keeps a per-feature merge +
+  budget structure (one source today); `budgetedCall()` gates every ancillary call against
+  per-minute + daily limits. (football-data was removed — api-football is the sole source.)
 - **Team kit colours** come from the api-football lineup (`team.colors`), NOT flags
   (`lib/teamColors.js`). **Federation crests** (DFB eagle, Three Lions, …) are seeded from
   **Wikipedia article infoboxes** at build (`web/scripts/download-team-logos.mjs`) — NOT

@@ -12,13 +12,13 @@ Daten liegen in **SQLite** im Volume `/data` — kein externer DB-Server nötig.
 - **Backend:** Express, better-sqlite3 (SQLite), node-cron; ESM. Session-Login
   (Cookie) für Basic- **und** Microsoft/Entra-Anmeldung.
 - **Frontend:** React 19 + Vite 5, Tailwind v4, HeroUI v3 (beta).
-- **Ergebnisquelle:** football-data.org (v4, kostenloser Tier) — Default;
-  alternativ API-Football (`DATA_SOURCE=apifootball`).
+- **Ergebnisquelle:** API-Football (api-sports.io) — einzige Quelle; Season 2026
+  erfordert einen kostenpflichtigen Plan.
 
 ## Schnellstart (Docker)
 
 ```bash
-cp .env.example .env     # SESSION_SECRET, ADMIN_PASSWORD und FOOTBALL_DATA_TOKEN setzen
+cp .env.example .env     # SESSION_SECRET, ADMIN_PASSWORD und API_FOOTBALL_KEY setzen
 docker compose up -d --build
 ```
 
@@ -39,28 +39,21 @@ gewählt) und Kürzel vergeben.
   der Basic-Login. Kein Client-Secret nötig (Login & Nutzerliste laufen delegiert).
 
 ## Ergebnis-Abruf (automatisch)
-- Token bei football-data.org anlegen, in `.env` als `FOOTBALL_DATA_TOKEN` setzen
-  (`FOOTBALL_DATA_COMPETITION=WC`). Free-Tier-Limit: **10 Calls/min**, kein Tageslimit.
-- Der Sync holt **alle** Fixtures in **einem** Request. Gepollt wird **jede Minute**,
-  aber nur solange ein Spiel läuft (Anpfiff → erwartetes Ende inkl. Halbzeit,
-  Nachspielzeit, Verlängerung, Elfmeterschießen) → ~1 Call/min, weit unter dem Limit.
+- API-Sports-Key bei <https://dashboard.api-football.com> anlegen, in `.env` als
+  `API_FOOTBALL_KEY` setzen (`API_LEAGUE=1`, `API_SEASON=2026`) — auch im Web-Admin
+  setzbar. Rate-/Tageslimit (`API_RATE_LIMIT`/`API_DAILY_LIMIT`) an den Plan anpassen.
+- Der Sync holt **alle** Fixtures in **einem** Request. Gepollt wird, solange ein Spiel
+  läuft (Anpfiff → erwartetes Ende inkl. Halbzeit, Nachspielzeit, Verlängerung,
+  Elfmeterschießen). Der Live-Takt skaliert dynamisch mit dem Tagesbudget (`coordinator.js`).
 - **Endergebnisse, K.o.-Paarungen und der Weltmeister** werden automatisch gesetzt
   (kein Admin nötig). Zuordnung API-Spiel ↔ internes Spiel: Gruppenspiele über die
   (ungeordnete) Team-Paarung, K.o.-Spiele über die Anstoßzeit.
-- **Near-Live:** Während des Spiels zeigt die App den (im Free-Tier **verzögerten**,
-  ~3 Min) Zwischenstand + Phase — reine Anzeige, getrennt von der Punktewertung.
-
-### Mehrere Datenquellen (Multi-Provider)
-Pro **Provider** ein Adapter (`server/services/sources/*.adapter.js`), darüber ein
-**Koordinations-Layer** (`coordinator.js`), der **pro Feature** (Ergebnisse, Live-Score,
-Live-Spielminute, Spielphase, Torschützen, Karten) steuert, welche Quelle es liefert —
-mit Priorität + Fallback. So lässt sich eine Quelle nutzen **oder** mehrere kombinieren
-(z. B. Ergebnisse/Phase von football-data, Echtzeit-Minute/Torschützen/Karten von
-API-Football). Konfiguration im **Web-Admin → „API & Ergebnisse"**: pro Provider Token +
-Test, plus eine Feature-Routing-Matrix. Ohne Konfiguration = Einzel-Provider aus
-`DATA_SOURCE` (Verhalten wie zuvor). Jeder Provider hat ein eigenes Rate-Budget;
-Torschützen/Karten werden nur von einer **fähigen** Quelle und nur für laufende/gerade
-beendete Spiele geholt (Cap via `DETAIL_MAX_PER_SYNC`).
+- **Live-Anzeige:** Während des Spiels zeigt die App Zwischenstand, Spielminute,
+  Torschützen, Karten, Aufstellung, Statistik und (optional) In-Play-Quoten — reine
+  Anzeige, getrennt von der Punktewertung. Detail-Calls (Torschützen/Karten/…) laufen nur
+  für laufende/gerade beendete Spiele (Cap via `DETAIL_MAX_PER_SYNC`). Verwaltung im
+  **Web-Admin → „API & Ergebnisse"**: Key + Test (zeigt das Live-Kontingent), Budget,
+  Live-Takt, „Details neu laden".
 
 ## KI-Spieler (LLM-Tipper)
 KI-Spieler nehmen wie menschliche Spieler am Tippspiel teil — sie werden regulär
@@ -75,8 +68,8 @@ gewertet und erscheinen überall mit **Kürzel + „KI"-Badge + Provider-Logo**.
   (KI-Spieler, Spiel) gibt es **höchstens einen LLM-Call** (DB-Unique-Constraint +
   „attempted"-Status). Bei Fehlschlag: kein Tipp (deterministischer Fallback optional via
   `AI_FALLBACK`). Zusätzlich ein einmaliger **Weltmeister-Tipp** vor K.o.-Start.
-- **Modell:** je Spiel ein quell-abhängiges Daten-Bundle (api-football: Predictions/
-  Poisson/Form/Lineups/Injuries · football-data: Tabellen/Form/H2H) → System-Prompt →
+- **Modell:** je Spiel ein Daten-Bundle aus api-football (Predictions/Poisson/Form/
+  Comparison/Lineups/Injuries/Quoten) → System-Prompt →
   kanonisches JSON (Dixon-Coles/EV-Maximierung). Prompts liegen extern in
   `server/prompts/*.md` und sind **ohne Rebuild** editierbar (mtime-Reload; per
   Bind-Mount, siehe `docker-compose.yml`).

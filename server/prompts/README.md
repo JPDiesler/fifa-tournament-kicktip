@@ -16,16 +16,14 @@ Der Ablageort lässt sich per Env `AI_PROMPT_DIR` überschreiben (Default: diese
 
 ```jsonc
 {
-  "source": "api-football" | "football-data",
+  "source": "api-football",
   "scoring": { "exact": 3, "goal_diff": 2, "tendency": 1 },   // ECHTE Kicktipp-Werte der App
   "context": "optionaler Freitext (dead rubber, Wetter, Höhe, Reise)",
   "calibration": {                 // optional, NUR aggregiert (keine Tipp-Liste)
     "tips_evaluated": 24, "avg_points_per_tip": 2.42,
     "goal_bias_home": 0.2, "goal_bias_away": -0.1, "note": "..."
   }
-  // + quell-spezifische Felder:
-  //   api-football: fixture, predictions, comparison, teams.last_5, h2h, lineups, injuries
-  //   football-data: fixture, standings, recent_home, recent_away, h2h
+  // + api-football-Felder: fixture, predictions, comparison, teams.last_5, h2h, lineups, injuries
 }
 ```
 
@@ -37,7 +35,7 @@ Champion-Codes) und `scoring.champion_bonus`.
 ```json
 {
   "match_id": "string|number",
-  "source": "api-football|football-data",
+  "source": "api-football",
   "tip": { "home": 2, "away": 1 },
   "model": "Dixon-Coles",
   "lambda": { "home": 1.9, "away": 0.8 },
@@ -59,7 +57,7 @@ Wahrscheinlichkeiten in [0,1]; `tip.home/away` ganze Zahlen ≥ 0.
 ```json
 {
   "type": "champion",
-  "source": "api-football|football-data",
+  "source": "api-football",
   "champion_code": "GER",
   "champion_name": "Deutschland",
   "win_probability": 0.18,
