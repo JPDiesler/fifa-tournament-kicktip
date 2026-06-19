@@ -154,6 +154,26 @@ async function fetchOdds(extId) {
   return { update: resp.update || null, bookmakers };
 }
 
+// League standings (group tables) for the champion bundle. Returns an array of groups
+// [{ group, table:[{ name, id, position, points, played, goalsFor, goalsAgainst, form }] }]
+// oriented as the provider returns them (the bundle builder maps names → codes). null if none.
+async function fetchStandings() {
+  const league = process.env.API_LEAGUE || "1";
+  const season = process.env.API_SEASON || "2026";
+  const r = await fetch(`${BASE}/standings?league=${league}&season=${season}`, H());
+  const j = await r.json();
+  const groups = j.response?.[0]?.league?.standings;
+  if (!Array.isArray(groups) || !groups.length) return null;
+  return groups.map((rows) => ({
+    group: rows?.[0]?.group || null,
+    table: (rows || []).map((row) => ({
+      name: row.team?.name || null, id: row.team?.id ?? null, position: row.rank ?? null,
+      points: row.points ?? null, played: row.all?.played ?? null,
+      goalsFor: row.all?.goals?.for ?? null, goalsAgainst: row.all?.goals?.against ?? null, form: row.form || null,
+    })),
+  }));
+}
+
 // In-play odds from /odds/live (paid live feed; NO history — only while the match runs).
 // Same curated shape + a `suspended` flag. Live is an aggregated feed (usually one
 // "bookmaker"); we keep the array shape and surface Next Goal when present. null if none.
@@ -221,19 +241,30 @@ async function fetchPlayerProfile(pid, season = process.env.API_SEASON || "2026"
 // Paid real-time provider: assume the full feature set (confirmed by probe).
 const declaredCaps = () => ({ results: true, liveScore: true, phase: true, liveMinute: true, scorers: true, cards: true, realtime: true });
 
-// Probe the key via the lightweight /status endpoint. Never throws.
+// Probe the key via the lightweight /status endpoint. Never throws. Reads the live
+// quota off the x-ratelimit-* headers (per-minute + daily) and the body's request
+// counter, so the admin sees the real budget without a separate call.
 async function probe() {
   if (!key()) return { ok: false, error: "Kein API-Key gesetzt" };
   try {
     const r = await fetch(`${BASE}/status`, H());
-    const availableMinute = Number(r.headers.get("x-ratelimit-remaining"));
+    const num = (h) => { const n = Number(r.headers.get(h)); return Number.isFinite(n) ? n : null; };
     const j = await r.json().catch(() => ({}));
     const errs = j.errors;
     if (!r.ok || (errs && (Array.isArray(errs) ? errs.length : Object.keys(errs).length)))
       return { ok: false, status: r.status, error: (errs && JSON.stringify(errs)) || `HTTP ${r.status}` };
     const acct = j.response?.account;
     const client = acct ? ([acct.firstname, acct.lastname].filter(Boolean).join(" ") || acct.email || null) : null;
-    return { ok: true, status: r.status, client, availableMinute: Number.isFinite(availableMinute) ? availableMinute : undefined, caps: declaredCaps() };
+    const req = j.response?.requests || {};
+    const quota = {
+      minuteLimit: num("x-ratelimit-limit"),
+      minuteRemaining: num("x-ratelimit-remaining"),
+      dayLimit: num("x-ratelimit-requests-limit") ?? (Number.isFinite(req.limit_day) ? req.limit_day : null),
+      dayRemaining: num("x-ratelimit-requests-remaining"),
+      dayUsed: Number.isFinite(req.current) ? req.current : null,
+    };
+    const plan = j.response?.subscription?.plan || null;
+    return { ok: true, status: r.status, client, plan, quota, availableMinute: quota.minuteRemaining ?? undefined, caps: declaredCaps() };
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
@@ -244,5 +275,5 @@ export const apifootball = {
   rateLimit: () => { const o = getProviderLimits("apifootball").rateLimit; return Number.isFinite(o) ? o : Number(process.env.API_RATE_LIMIT || 10); },
   dailyLimit: () => { const o = getProviderLimits("apifootball").dailyLimit; return o === null ? null : Number.isFinite(o) ? o : Number(process.env.API_DAILY_LIMIT || 100); },
   configured: () => !!key(),
-  declaredCaps, fetchFixtures, fetchDetail, fetchLineups, fetchStatistics, fetchPlayerStats, fetchPlayerProfile, fetchPredictions, fetchInjuries, fetchOdds, fetchLiveOdds, probe,
+  declaredCaps, fetchFixtures, fetchDetail, fetchLineups, fetchStatistics, fetchPlayerStats, fetchPlayerProfile, fetchPredictions, fetchInjuries, fetchOdds, fetchLiveOdds, fetchStandings, probe,
 };

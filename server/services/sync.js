@@ -285,6 +285,10 @@ export async function prefetchPreviews(now = Date.now(), max = 8) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let backfillRunning = false;
+// Progress of the running drain — surfaced to the admin "Details neu laden" toast,
+// which polls it until running flips false. total/done are match counts.
+let backfillProgress = { running: false, reason: null, total: 0, done: 0, fetched: 0, startedAt: null, finishedAt: null };
+export const getBackfillProgress = () => ({ ...backfillProgress });
 
 // Drain ALL matches still missing scorers/cards/final-clock: one budget-gated pass
 // per minute until nothing is left (or there's no capable detail provider / no
@@ -294,11 +298,15 @@ export async function runBackfill(reason = "start", { force = false } = {}) {
   if (backfillRunning) return;
   backfillRunning = true;
   const done = force ? new Set() : null; // force: remember handled matches so the loop converges
-  let pass = 0;
+  backfillProgress = { running: true, reason, total: 0, done: 0, fetched: 0, startedAt: Date.now(), finishedAt: null };
+  let pass = 0, first = true;
   try {
     for (;;) {
       const { remaining, fetched, capable, queried } = await backfillDetails({ force, skip: done });
       if (done) queried.forEach((n) => done.add(n));
+      if (first) { backfillProgress.total = force ? remaining + queried.length : remaining + fetched; first = false; }
+      backfillProgress.fetched += fetched;
+      backfillProgress.done = force ? done.size : Math.min(backfillProgress.total, backfillProgress.done + fetched);
       console.log(`Backfill (${reason}${force ? "/force" : ""}): ${fetched} Spiele geholt, ${remaining} offen`);
       if (!capable || remaining === 0) break;
       if (!force && fetched === 0) break;      // normal: stop once no more progress
@@ -306,5 +314,5 @@ export async function runBackfill(reason = "start", { force = false } = {}) {
       await sleep(60_000); // spread further passes across the per-minute rate budget
     }
   } catch (e) { console.error("backfill", e); }
-  finally { backfillRunning = false; }
+  finally { backfillRunning = false; backfillProgress.running = false; backfillProgress.finishedAt = Date.now(); }
 }

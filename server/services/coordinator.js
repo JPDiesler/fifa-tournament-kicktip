@@ -1,11 +1,8 @@
-// Coordination layer: fans out across the configured result-source adapters and
-// merges their data PER FEATURE per the routing config (priority + fallback).
-// Each provider is fetched at most once per cycle, within its own per-minute and
-// per-day budget. Output = canonical per-match records with goals already
-// ORIENTED to the static home/away (swap applied), so sync.js stays a thin writer.
-//
-// No config → every feature routes to the DATA_SOURCE provider → behaviour is
-// identical to the previous single-provider sync.
+// Coordination layer between sync.js and the result-source adapter (api-football,
+// the sole provider). Fetches the fixture feed once per cycle within the provider's
+// per-minute and per-day budget, then emits canonical per-match records with goals
+// already ORIENTED to the static home/away (swap applied) so sync.js stays a thin
+// writer. The per-feature merge structure is kept so the data path is unchanged.
 import { matchForFixture } from "./fixtures.js";
 import { remainingLoadToday } from "./poller.js";
 import { getAdapter, DEFAULT_SOURCE } from "./sources/index.js";
@@ -37,7 +34,7 @@ function noteCall(id, n = 1) {
   setMeta(meta);
 }
 function dailyOk(id, limit) {
-  if (limit == null) return true; // no daily cap (e.g. football-data free)
+  if (limit == null) return true; // dailyLimit set to null = explicitly uncapped
   const pc = getMeta().providerCalls?.[id];
   const today = new Date().toISOString().slice(0, 10);
   return !pc || pc.date !== today || pc.count < limit;
@@ -63,13 +60,18 @@ export async function budgetedCall(id, fn) {
   try { return await fn(); } catch { return null; }
 }
 
-// ---- routing (with default = DATA_SOURCE for every feature) ----
+// ---- routing (defaults to DEFAULT_SOURCE = api-football for every feature) ----
+// A stored routing may still name the removed football-data provider; such entries are
+// filtered out and the feature falls back to DEFAULT_SOURCE so the feed never goes dark.
 export function effectiveConfig() {
   const cfg = getSourceConfig() || {};
   const providers = cfg.providers || {};
   const usable = (id) => { const a = getAdapter(id); return !!(a && a.configured() && providers[id]?.enabled !== false); };
   const routing = {};
-  for (const f of FEATURES) routing[f] = (cfg.routing?.[f] || [DEFAULT_SOURCE]).filter(usable);
+  for (const f of FEATURES) {
+    const list = (cfg.routing?.[f] || [DEFAULT_SOURCE]).filter(usable);
+    routing[f] = list.length ? list : [DEFAULT_SOURCE].filter(usable);
+  }
   return { providers, routing };
 }
 
@@ -153,8 +155,7 @@ export function mergeFixtures(byProvider, fetched, routing) {
 
 // Fetch scorers/cards for the given matches from the routed, CAPABLE provider
 // (one detail call per provider+match, budget-gated + hard-capped). Only providers
-// whose caps declare scorers/cards true are used → no extra calls on the free
-// default (football-data, caps null). Returns { details:{n:{scorers,cards}}, capped }.
+// whose caps declare scorers/cards true are used. Returns { details:{n:{scorers,cards}}, capped }.
 const DETAIL_MAX = Number(process.env.DETAIL_MAX_PER_SYNC || 8);
 export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max = DETAIL_MAX, lineupNs = null, statsNs = null, oddsNs = null, playerStatsNs = null } = {}) {
   const capsOf = (id) => getProviderCaps(id) || getAdapter(id)?.declaredCaps() || {};
@@ -265,8 +266,8 @@ const MIN_POLL_MS = Math.max(250, Number(process.env.MIN_POLL_MS || 1_000)), MAX
 //   calls(interval) ≈ coverageSec/interval  (+ sumActiveSec/interval if it feeds
 //   scorers/cards) ⇒ interval ≥ demand / usableBudget.
 // A daily-capped provider WITH a manual rate → that optimal acts only as a
-// protective floor (base interval otherwise governs). Uncapped providers (e.g.
-// football-data free) impose nothing → base interval. Always within [10s, 5min].
+// protective floor (base interval otherwise governs). An uncapped provider
+// (dailyLimit null) imposes nothing → base interval. Always within [10s, 5min].
 export function liveDelayMs(now = Date.now()) {
   const base = getLivePollSeconds() * 1000;
   const { routing } = effectiveConfig();
