@@ -1,15 +1,14 @@
 import { useMemo, useState } from "react";
-import { Table } from "@heroui/react";
-import { Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Table, SearchField, Select, ListBox, Pagination } from "@heroui/react";
 
-// Shared admin table on HeroUI Table: search, declarative per-column filters, native
-// sorting, and pagination with a page-size picker (default 10). Columns:
+// Shared admin table on HeroUI Table: search (SearchField), declarative per-column filters
+// + page size (Select), native sorting, and pagination (Pagination). Columns:
 //   { key, header, sortable?, isRowHeader?, render?(row), sort?(row),
 //     filter?: { label, options:[{value,label}], match(row,value) } }
 // `search(row)` (optional) returns the text the search box matches against.
+const ALL = "__all";
 const cmp = (a, b) =>
   typeof a === "number" && typeof b === "number" ? a - b : String(a ?? "").localeCompare(String(b ?? ""), "de", { numeric: true });
-const CTRL = "rounded-md border border-border bg-field px-2 py-1 text-xs text-foreground outline-none focus:border-accent";
 
 export default function DataTable({
   columns, rows, rowKey, search, searchPlaceholder = "Suchen …",
@@ -44,23 +43,31 @@ export default function DataTable({
   const pageRows = sorted.slice(start, start + pageSize);
 
   const onSearch = (v) => { setQuery(v); setPage(1); };
-  const onFilter = (k, v) => { setFilters((f) => ({ ...f, [k]: v })); setPage(1); };
+  const onFilter = (k, v) => { setFilters((f) => ({ ...f, [k]: v === ALL ? "" : v })); setPage(1); };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {(search || filterCols.length > 0) && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           {search && (
-            <div className="relative min-w-[8rem] flex-1">
-              <Search size={14} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted" />
-              <input value={query} onChange={(e) => onSearch(e.target.value)} placeholder={searchPlaceholder} className={`${CTRL} w-full pl-7`} />
-            </div>
+            <SearchField aria-label="Suche" value={query} onChange={onSearch} className="min-w-[10rem] flex-1">
+              <SearchField.Group>
+                <SearchField.SearchIcon />
+                <SearchField.Input placeholder={searchPlaceholder} />
+                <SearchField.ClearButton />
+              </SearchField.Group>
+            </SearchField>
           )}
           {filterCols.map((c) => (
-            <select key={c.key} value={filters[c.key] || ""} onChange={(e) => onFilter(c.key, e.target.value)} className={CTRL} aria-label={c.filter.label || c.header}>
-              <option value="">{c.filter.label || c.header}: alle</option>
-              {c.filter.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+            <Select key={c.key} aria-label={c.filter.label || c.header} className="w-44" value={filters[c.key] || ALL} onChange={(v) => onFilter(c.key, String(v))}>
+              <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
+              <Select.Popover>
+                <ListBox>
+                  <ListBox.Item id={ALL} textValue={`${c.filter.label || c.header}: alle`}>{c.filter.label || c.header}: alle<ListBox.ItemIndicator /></ListBox.Item>
+                  {c.filter.options.map((o) => <ListBox.Item key={o.value} id={o.value} textValue={o.label}>{o.label}<ListBox.ItemIndicator /></ListBox.Item>)}
+                </ListBox>
+              </Select.Popover>
+            </Select>
           ))}
         </div>
       )}
@@ -90,20 +97,37 @@ export default function DataTable({
 
       {total === 0 && <p className="py-6 text-center text-xs text-muted">{empty}</p>}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-        <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs text-muted">
           <span>Zeilen</span>
-          <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} className={CTRL} aria-label="Zeilen pro Seite">
-            {pageSizes.map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-          {total > 0 && <span className="tabular-nums">{start + 1}–{Math.min(start + pageSize, total)} von {total}</span>}
+          <Select aria-label="Zeilen pro Seite" className="w-20" value={String(pageSize)} onChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+            <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {pageSizes.map((n) => <ListBox.Item key={n} id={String(n)} textValue={String(n)}>{n}<ListBox.ItemIndicator /></ListBox.Item>)}
+              </ListBox>
+            </Select.Popover>
+          </Select>
         </div>
-        {pages > 1 && (
-          <div className="flex items-center gap-1">
-            <button type="button" aria-label="Zurück" disabled={cur <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="flex size-7 items-center justify-center rounded-md text-muted transition hover:bg-overlay hover:text-foreground disabled:opacity-30"><ChevronLeft size={15} /></button>
-            <span className="tabular-nums">{cur}/{pages}</span>
-            <button type="button" aria-label="Weiter" disabled={cur >= pages} onClick={() => setPage((p) => Math.min(pages, p + 1))} className="flex size-7 items-center justify-center rounded-md text-muted transition hover:bg-overlay hover:text-foreground disabled:opacity-30"><ChevronRight size={15} /></button>
-          </div>
+        {total > 0 && (
+          <Pagination size="sm">
+            <Pagination.Summary>{start + 1}–{Math.min(start + pageSize, total)} von {total}</Pagination.Summary>
+            {pages > 1 && (
+              <Pagination.Content>
+                <Pagination.Item>
+                  <Pagination.Previous isDisabled={cur <= 1} onPress={() => setPage((p) => Math.max(1, p - 1))}><Pagination.PreviousIcon /></Pagination.Previous>
+                </Pagination.Item>
+                {Array.from({ length: pages }, (_, i) => i + 1).map((p) => (
+                  <Pagination.Item key={p}>
+                    <Pagination.Link isActive={p === cur} onPress={() => setPage(p)}>{p}</Pagination.Link>
+                  </Pagination.Item>
+                ))}
+                <Pagination.Item>
+                  <Pagination.Next isDisabled={cur >= pages} onPress={() => setPage((p) => Math.min(pages, p + 1))}><Pagination.NextIcon /></Pagination.Next>
+                </Pagination.Item>
+              </Pagination.Content>
+            )}
+          </Pagination>
         )}
       </div>
     </div>
