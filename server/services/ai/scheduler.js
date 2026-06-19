@@ -5,7 +5,7 @@
 import { MATCHES, TEAMS } from "../../data.js";
 import { kickoff, isTipLocked, isChampLocked, champLockTs } from "../locks.js";
 import {
-  listActiveAiPlayers, getAiPlayerKey, setUserTips, setChamp,
+  listActiveAiPlayers, getAiProviderKey, setUserTips, setChamp,
   hasAiPrediction, claimAiPrediction, finishAiPrediction,
   hasAiChamp, claimAiChamp, finishAiChamp,
   getAiPlayerById, getAiPrediction, deleteAiPrediction, calibrationFor,
@@ -36,7 +36,7 @@ export function aiTipWindow(now = Date.now(), lead = LEAD_MIN) {
 async function tipOne(p, matchN, bundle) {
   if (!claimAiPrediction(p.id, matchN, p.ai_provider, p.ai_model)) return; // already attempted
   const adapter = getAiAdapter(p.ai_provider);
-  const apiKey = getAiPlayerKey(p.id);
+  const apiKey = getAiProviderKey(p.ai_provider);
   if (!adapter || !apiKey) {
     finishAiPrediction(p.id, matchN, { status: "failed", error: adapter ? "Kein API-Key" : "Unbekannter Provider" });
     return;
@@ -104,7 +104,7 @@ export async function runAiChamp(now = Date.now()) {
   const tasks = players.map(async (p) => {
     if (!claimAiChamp(p.id, p.ai_provider, p.ai_model)) return;
     const adapter = getAiAdapter(p.ai_provider);
-    const apiKey = getAiPlayerKey(p.id);
+    const apiKey = getAiProviderKey(p.ai_provider);
     if (!adapter || !apiKey) {
       finishAiChamp(p.id, { status: "failed", error: adapter ? "Kein API-Key" : "Unbekannter Provider" });
       return;

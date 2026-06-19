@@ -7,29 +7,23 @@ process.env.SESSION_SECRET ||= "test-session";
 
 test("claimAiPrediction is single-shot per (player, match)", async () => {
   const db = await import("../db.js");
-  const p = db.createAiPlayer({ kuerzel: "IDM1", name: "x", provider: "anthropic", model: "m", apiKey: "secret" });
+  const p = db.createAiPlayer({ kuerzel: "IDM1", name: "x", provider: "anthropic", model: "m" });
   assert.equal(db.claimAiPrediction(p.id, 5, "anthropic", "m"), true, "first claim wins");
   assert.equal(db.claimAiPrediction(p.id, 5, "anthropic", "m"), false, "second claim is a no-op");
   assert.equal(db.hasAiPrediction(p.id, 5), true);
 });
-
-test("API key is encrypted at rest and roundtrips", async () => {
-  const db = await import("../db.js");
-  const p = db.createAiPlayer({ kuerzel: "IDM2", name: "y", provider: "openai", model: "m", apiKey: "sk-plaintext-xyz" });
-  assert.equal(db.getAiPlayerKey(p.id), "sk-plaintext-xyz", "decrypts to original");
-  assert.ok(!String(db.getAiPlayerById(p.id).ai_key_enc).includes("sk-plaintext-xyz"), "not stored in plaintext");
-});
+// (Per-provider key encryption is covered in aiproviderkeys.test.js.)
 
 test("champion claim is single-shot per player", async () => {
   const db = await import("../db.js");
-  const p = db.createAiPlayer({ kuerzel: "IDM3", name: "z", provider: "anthropic", apiKey: "k" });
+  const p = db.createAiPlayer({ kuerzel: "IDM3", name: "z", provider: "anthropic" });
   assert.equal(db.claimAiChamp(p.id, "anthropic", null), true);
   assert.equal(db.claimAiChamp(p.id, "anthropic", null), false);
 });
 
 test("aiRanking computes Brier score + hit rate from predictions vs results", async () => {
   const db = await import("../db.js");
-  const p = db.createAiPlayer({ kuerzel: "RNK", name: "r", provider: "openai", apiKey: "k" });
+  const p = db.createAiPlayer({ kuerzel: "RNK", name: "r", provider: "openai" });
   db.claimAiPrediction(p.id, 50, "openai", "m");
   db.finishAiPrediction(p.id, 50, { status: "done", tip: { h: "2", a: "0" }, prediction: { outcome_probabilities: { home_win: 0.7, draw: 0.2, away_win: 0.1 } } });
   db.setResult(50, "2", "0"); // actual home win → argmax(home) hits; Brier = .3²+.2²+.1² = .14
@@ -41,7 +35,7 @@ test("aiRanking computes Brier score + hit rate from predictions vs results", as
 
 test("aiPlayerStats counts done/total; setAiTestResult records the connection status", async () => {
   const db = await import("../db.js");
-  const p = db.createAiPlayer({ kuerzel: "IDM4", name: "s", provider: "openai", apiKey: "k" });
+  const p = db.createAiPlayer({ kuerzel: "IDM4", name: "s", provider: "openai" });
   db.claimAiPrediction(p.id, 7, "openai", "m"); db.finishAiPrediction(p.id, 7, { status: "done", tip: { h: "1", a: "0" } });
   db.claimAiPrediction(p.id, 8, "openai", "m"); db.finishAiPrediction(p.id, 8, { status: "failed", error: "x" });
   const s = db.aiPlayerStats(p.id);

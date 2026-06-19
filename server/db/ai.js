@@ -5,34 +5,72 @@ import { encryptSecret, decryptSecret } from "../services/secrets.js";
 
 // ---------- AI players (real users marked is_ai=1) ----------
 // Create an AI player: a regular user (so its tips flow through the normal
-// scoring/leaderboard/state machinery) plus provider/model + an ENCRYPTED key.
-export function createAiPlayer({ kuerzel, name, provider, model, apiKey, logo = null }) {
+// scoring/leaderboard/state machinery) plus provider/model. The API key is NOT stored
+// per player — it's looked up by provider (see the provider-key functions below).
+export function createAiPlayer({ kuerzel, name, provider, model, logo = null }) {
   const u = createUser({ kuerzel, name, kind: "ai", is_active: 1 });
-  return updateUser(u.id, {
-    is_ai: 1, ai_provider: provider, ai_model: model || null,
-    ai_key_enc: encryptSecret(apiKey), ai_logo: logo || null,
-  });
+  return updateUser(u.id, { is_ai: 1, ai_provider: provider, ai_model: model || null, ai_logo: logo || null });
 }
 export const getAiPlayerById = (id) => db.prepare("SELECT * FROM users WHERE id=? AND is_ai=1").get(id);
 export const listAiPlayers = () =>
   db.prepare("SELECT * FROM users WHERE is_ai=1 ORDER BY kuerzel").all();
 export const listActiveAiPlayers = () =>
   db.prepare("SELECT * FROM users WHERE is_ai=1 AND is_active=1 AND kuerzel IS NOT NULL").all();
-// Decrypt the stored provider key — SERVER-SIDE ONLY; never serialise to a client.
-export function getAiPlayerKey(id) {
-  const u = getAiPlayerById(id);
-  return u ? decryptSecret(u.ai_key_enc) : null;
-}
-// Update an AI player; a new apiKey (if given) is re-encrypted, otherwise left as is.
-export function updateAiPlayer(id, { name, provider, model, apiKey, logo, is_active }) {
+// Update an AI player (provider/model/logo/name/active). No key here — keys are per-provider.
+export function updateAiPlayer(id, { name, provider, model, logo, is_active }) {
   const fields = {};
   if (name !== undefined) fields.name = (name || "").trim() || null;
   if (provider !== undefined) fields.ai_provider = provider;
   if (model !== undefined) fields.ai_model = model || null;
   if (logo !== undefined) fields.ai_logo = logo || null;
   if (is_active !== undefined) fields.is_active = !!is_active;
-  if (apiKey) fields.ai_key_enc = encryptSecret(apiKey);
   return updateUser(id, fields);
+}
+
+// ---------- AI provider keys (one encrypted key per provider) ----------
+// Set/clear a provider's key (also clears its last test result). "" → cleared.
+export function setAiProviderKey(provider, apiKey) {
+  const key = (apiKey || "").trim();
+  db.prepare(`INSERT INTO ai_provider_keys(provider,key_enc,test_ok,test_at,updated_at) VALUES(?,?,NULL,NULL,datetime('now'))
+    ON CONFLICT(provider) DO UPDATE SET key_enc=excluded.key_enc, test_ok=NULL, test_at=NULL, updated_at=datetime('now')`)
+    .run(provider, key ? encryptSecret(key) : null);
+}
+// Decrypt a provider's key — SERVER-SIDE ONLY; never serialise to a client.
+export function getAiProviderKey(provider) {
+  const r = db.prepare("SELECT key_enc FROM ai_provider_keys WHERE provider=?").get(provider);
+  return r?.key_enc ? decryptSecret(r.key_enc) : null;
+}
+export function setAiProviderTest(provider, ok) {
+  db.prepare(`INSERT INTO ai_provider_keys(provider,test_ok,test_at,updated_at) VALUES(?,?,datetime('now'),datetime('now'))
+    ON CONFLICT(provider) DO UPDATE SET test_ok=excluded.test_ok, test_at=excluded.test_at`).run(provider, ok ? 1 : 0);
+}
+// Key presence (masked to the last 4) + last test result per provider — never the raw key.
+export function aiProviderKeyMeta(provider) {
+  const r = db.prepare("SELECT key_enc,test_ok,test_at FROM ai_provider_keys WHERE provider=?").get(provider);
+  let masked = null;
+  if (r?.key_enc) { try { const k = decryptSecret(r.key_enc); masked = k ? `••••${k.slice(-4)}` : "••••"; } catch { masked = "••••"; } }
+  return { hasKey: !!r?.key_enc, masked, testOk: r?.test_ok == null ? null : !!r.test_ok, testAt: r?.test_at || null };
+}
+// Per-provider request/token/error aggregates from the prediction log → { [provider]: {…} }.
+export function aiProviderStats() {
+  const out = {};
+  for (const r of db.prepare(`SELECT provider, COUNT(*) AS requests, COALESCE(SUM(NULLIF(tokens,0)),0) AS tokens,
+    COALESCE(SUM(status='failed'),0) AS errors FROM ai_predictions WHERE provider IS NOT NULL GROUP BY provider`).all())
+    out[r.provider] = { requests: r.requests, tokens: r.tokens, errors: r.errors };
+  return out;
+}
+// Recent failed attempts for a provider's error log.
+export function aiProviderErrors(provider, limit = 20) {
+  return db.prepare(`SELECT p.match_n, p.error, p.model, p.attempted_at, u.kuerzel
+    FROM ai_predictions p LEFT JOIN users u ON u.id=p.user_id
+    WHERE p.provider=? AND p.status='failed' AND p.error IS NOT NULL ORDER BY p.attempted_at DESC LIMIT ?`).all(provider, limit);
+}
+// How many AI players use each provider → { [provider]: count }.
+export function aiPlayerCountByProvider() {
+  const out = {};
+  for (const r of db.prepare("SELECT ai_provider AS p, COUNT(*) AS c FROM users WHERE is_ai=1 AND ai_provider IS NOT NULL GROUP BY ai_provider").all())
+    out[r.p] = r.c;
+  return out;
 }
 
 // Record the outcome of a connection test (shown as a status dot in the admin UI).

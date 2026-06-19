@@ -147,7 +147,25 @@ CREATE TABLE IF NOT EXISTS match_ext (
   ext_id   TEXT NOT NULL,
   PRIMARY KEY (match_n, provider)
 );
+-- One LLM API key per provider (encrypted). AI players reference a provider; the key is
+-- looked up by provider, not stored per player. test_ok/test_at = last connection test.
+CREATE TABLE IF NOT EXISTS ai_provider_keys (
+  provider   TEXT PRIMARY KEY,
+  key_enc    TEXT,
+  test_ok    INTEGER,
+  test_at    TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `);
+
+// Migration: consolidate legacy per-player AI keys → per-provider (first key per provider
+// wins). Runs once, while no provider key is set yet; the encryption secret is unchanged
+// so the ciphertext is copied verbatim.
+if (db.prepare("PRAGMA table_info(users)").all().some((c) => c.name === "ai_key_enc")
+  && !db.prepare("SELECT 1 FROM ai_provider_keys WHERE key_enc IS NOT NULL LIMIT 1").get()) {
+  for (const r of db.prepare("SELECT ai_provider, ai_key_enc FROM users WHERE is_ai=1 AND ai_key_enc IS NOT NULL AND ai_provider IS NOT NULL").all())
+    db.prepare("INSERT OR IGNORE INTO ai_provider_keys(provider, key_enc) VALUES(?, ?)").run(r.ai_provider, r.ai_key_enc);
+}
 
 // Migration for DBs created before is_superadmin existed.
 if (!db.prepare("PRAGMA table_info(users)").all().some((c) => c.name === "is_superadmin")) {

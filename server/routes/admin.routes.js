@@ -9,7 +9,8 @@ import {
   getDataToken, setDataToken, dataTokenFromDb, getCapabilities, setCapabilities,
   getProviderToken, setProviderToken, providerTokenFromDb, getProviderCaps, setProviderCaps,
   getSourceConfig, setSourceConfig, getLivePollSeconds, setLivePollSeconds, getProviderDelay,
-  listAiPlayers, createAiPlayer, updateAiPlayer, getAiPlayerById, getAiPlayerKey,
+  listAiPlayers, createAiPlayer, updateAiPlayer, getAiPlayerById,
+  setAiProviderKey, getAiProviderKey, setAiProviderTest, aiProviderKeyMeta, aiProviderStats, aiProviderErrors, aiPlayerCountByProvider,
   setAiTestResult, aiPlayerStats, aiLastError, recentAiPredictions, deleteAiPrediction,
   aiRanking, getSetting, setSetting, setTeamMeta, teamOverrides,
 } from "../db.js";
@@ -253,7 +254,7 @@ router.get("/admin/ai-players", requireAdmin, (req, res) => {
       const le = aiLastError(u.id);
       return {
         id: u.id, kuerzel: u.kuerzel, name: u.name, provider: u.ai_provider,
-        model: u.ai_model, isActive: !!u.is_active, hasKey: !!u.ai_key_enc,
+        model: u.ai_model, isActive: !!u.is_active, hasKey: aiProviderKeyMeta(u.ai_provider).hasKey,
         testOk: u.ai_test_ok == null ? null : !!u.ai_test_ok, testAt: u.ai_test_at || null,
         done: s.done, total: s.total, avgTokens: s.avgTokens, avgLatency: s.avgLatency, // success ratio + cost signals
         lastError: le?.error || null, lastErrorMatch: le?.match_n || null,
@@ -263,6 +264,34 @@ router.get("/admin/ai-players", requireAdmin, (req, res) => {
 });
 // Calibration ranking of the AI players (Brier / hit rate / ∅ points).
 router.get("/admin/ai-ranking", requireAdmin, (req, res) => res.json({ ranking: aiRanking() }));
+
+// ---------- AI provider keys (one key per provider; players reference a provider) ----------
+router.get("/admin/ai-providers", requireAdmin, (req, res) => {
+  const stats = aiProviderStats(), counts = aiPlayerCountByProvider();
+  res.json({
+    providers: AI_PROVIDERS.map((p) => {
+      const s = stats[p.id] || { requests: 0, tokens: 0, errors: 0 };
+      return { id: p.id, name: p.name, defaultModel: p.defaultModel, ...aiProviderKeyMeta(p.id), ...s, players: counts[p.id] || 0 };
+    }),
+  });
+});
+router.post("/admin/ai-providers/:provider/key", requireAdmin, (req, res) => {
+  const provider = (req.params.provider || "").trim();
+  if (!isKnownProvider(provider)) return res.status(400).json({ error: "Unbekannter Provider" });
+  setAiProviderKey(provider, req.body?.apiKey ?? ""); // "" clears it
+  res.json({ ok: true, ...aiProviderKeyMeta(provider) });
+});
+router.post("/admin/ai-providers/:provider/test", requireAdmin, async (req, res) => {
+  const provider = (req.params.provider || "").trim();
+  const adapter = getAiAdapter(provider);
+  if (!adapter) return res.status(400).json({ error: "Unbekannter Provider" });
+  const apiKey = getAiProviderKey(provider);
+  if (!apiKey) return res.status(400).json({ error: "Kein API-Key" });
+  try { await adapter.testConnection({ apiKey }); setAiProviderTest(provider, true); res.json({ ok: true }); }
+  catch (e) { setAiProviderTest(provider, false); res.json({ ok: false, error: String(e?.message || e).split(apiKey).join("***").slice(0, 300) }); }
+});
+router.get("/admin/ai-providers/:provider/errors", requireAdmin, (req, res) =>
+  res.json({ errors: aiProviderErrors((req.params.provider || "").trim(), 30) }));
 
 // AI-wide config (e.g. when the reasoning becomes visible).
 router.post("/admin/ai-config", requireAdmin, (req, res) => {
@@ -275,12 +304,11 @@ router.post("/admin/ai-players", requireAdmin, (req, res) => {
   const b = req.body || {};
   const kuerzel = cleanKuerzel(b.kuerzel);
   const provider = (b.provider || "").trim();
-  const apiKey = (b.apiKey || "").trim();
   if (!kuerzel) return res.status(400).json({ error: "Kürzel fehlt" });
   if (getUserByKuerzel(kuerzel)) return res.status(409).json({ error: "Kürzel bereits vergeben" });
   if (!isKnownProvider(provider)) return res.status(400).json({ error: "Unbekannter Provider" });
-  if (!apiKey) return res.status(400).json({ error: "API-Key fehlt" });
-  const u = createAiPlayer({ kuerzel, name: (b.name || "").trim() || null, provider, model: (b.model || "").trim() || null, apiKey, logo: (b.logo || "").trim() || null });
+  // The API key is per provider (set in the Provider tab), not per player.
+  const u = createAiPlayer({ kuerzel, name: (b.name || "").trim() || null, provider, model: (b.model || "").trim() || null, logo: (b.logo || "").trim() || null });
   res.json({ player: adminUserDto(u) });
 });
 router.patch("/admin/ai-players/:id", requireAdmin, (req, res) => {
@@ -292,7 +320,7 @@ router.patch("/admin/ai-players/:id", requireAdmin, (req, res) => {
     const k = cleanKuerzel(b.kuerzel);
     if (k && k !== u.kuerzel) { const other = getUserByKuerzel(k); if (other) return res.status(409).json({ error: "Kürzel bereits vergeben" }); updateUser(u.id, { kuerzel: k }); }
   }
-  const updated = updateAiPlayer(u.id, { name: b.name, provider: b.provider, model: b.model, logo: b.logo, apiKey: b.apiKey, is_active: b.isActive });
+  const updated = updateAiPlayer(u.id, { name: b.name, provider: b.provider, model: b.model, logo: b.logo, is_active: b.isActive });
   res.json({ player: adminUserDto(updated) });
 });
 // Minimal connection test (no match prompt). Works for a saved player OR an unsaved
@@ -301,12 +329,12 @@ router.post("/admin/ai-players/:id/test", requireAdmin, async (req, res) => {
   const u = +req.params.id ? getAiPlayerById(+req.params.id) : null;
   const provider = (req.body?.provider || u?.ai_provider || "").trim();
   const model = (req.body?.model || u?.ai_model || "").trim() || undefined;
-  const apiKey = (req.body?.apiKey || "").trim() || (u ? getAiPlayerKey(u.id) : null);
+  const apiKey = getAiProviderKey(provider);
   const adapter = getAiAdapter(provider);
   if (!adapter) return res.status(400).json({ error: "Unbekannter Provider" });
-  if (!apiKey) return res.status(400).json({ error: "Kein API-Key" });
-  try { await adapter.testConnection({ apiKey, model }); if (u) setAiTestResult(u.id, true); res.json({ ok: true }); }
-  catch (e) { if (u) setAiTestResult(u.id, false); res.json({ ok: false, error: String(e?.message || e).split(apiKey).join("***").slice(0, 300) }); }
+  if (!apiKey) return res.status(400).json({ error: "Kein API-Key für diesen Provider" });
+  try { await adapter.testConnection({ apiKey, model }); setAiProviderTest(provider, true); res.json({ ok: true }); }
+  catch (e) { setAiProviderTest(provider, false); res.json({ ok: false, error: String(e?.message || e).split(apiKey).join("***").slice(0, 300) }); }
 });
 
 // Real end-to-end test: run a full prediction for the NEXT upcoming match (with data)
@@ -315,10 +343,10 @@ router.post("/admin/ai-players/:id/test-tip", requireAdmin, async (req, res) => 
   const u = +req.params.id ? getAiPlayerById(+req.params.id) : null;
   const provider = (req.body?.provider || u?.ai_provider || "").trim();
   const model = (req.body?.model || u?.ai_model || "").trim() || undefined;
-  const apiKey = (req.body?.apiKey || "").trim() || (u ? getAiPlayerKey(u.id) : null);
+  const apiKey = getAiProviderKey(provider);
   const adapter = getAiAdapter(provider);
   if (!adapter) return res.status(400).json({ error: "Unbekannter Provider" });
-  if (!apiKey) return res.status(400).json({ error: "Kein API-Key" });
+  if (!apiKey) return res.status(400).json({ error: "Kein API-Key für diesen Provider" });
   const now = Date.now();
   const upcoming = MATCHES.filter((m) => kickoff(m.n) > now).sort((a, b) => kickoff(a.n) - kickoff(b.n));
   let bundle = null, match = null;
@@ -340,11 +368,11 @@ router.post("/admin/ai-players/:id/test-tip", requireAdmin, async (req, res) => 
 router.post("/admin/ai-players/:id/models", requireAdmin, async (req, res) => {
   const u = +req.params.id ? getAiPlayerById(+req.params.id) : null;
   const provider = (req.body?.provider || u?.ai_provider || "").trim();
-  const apiKey = (req.body?.apiKey || "").trim() || (u ? getAiPlayerKey(u.id) : null);
+  const apiKey = getAiProviderKey(provider);
   const adapter = getAiAdapter(provider);
   if (!adapter) return res.status(400).json({ error: "Unbekannter Provider" });
   if (!adapter.listModels) return res.json({ models: [] });
-  if (!apiKey) return res.status(400).json({ error: "Kein API-Key" });
+  if (!apiKey) return res.status(400).json({ error: "Kein API-Key für diesen Provider" });
   try { res.json({ models: await adapter.listModels({ apiKey }) }); }
   catch (e) { res.status(400).json({ error: String(e?.message || e).split(apiKey).join("***").slice(0, 300) }); }
 });
