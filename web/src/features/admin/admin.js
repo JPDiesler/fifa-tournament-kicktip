@@ -54,6 +54,20 @@ export async function setTeamOverride(code, body) {
   return j(await post(`/api/admin/teams/${code}`, body), "Speichern fehlgeschlagen"); // { ok, overrides }
 }
 
+// ---- AI providers (one key per provider) ----
+export async function getAiProviders() {
+  return j(await fetch("/api/admin/ai-providers"), "Provider nicht ladbar"); // { providers: [{id,name,defaultModel,hasKey,masked,testOk,testAt,requests,tokens,errors,players}] }
+}
+export async function setAiProviderKey(provider, apiKey) {
+  return j(await post(`/api/admin/ai-providers/${provider}/key`, { apiKey }), "Speichern fehlgeschlagen"); // "" clears
+}
+export async function testAiProvider(provider) {
+  return j(await post(`/api/admin/ai-providers/${provider}/test`), "Test fehlgeschlagen"); // { ok, error? }
+}
+export async function getAiProviderErrors(provider) {
+  return j(await fetch(`/api/admin/ai-providers/${provider}/errors`), "Fehlerlog nicht ladbar"); // { errors: [...] }
+}
+
 // ---- AI players ----
 export async function listAiPlayers() {
   return j(await fetch("/api/admin/ai-players"), "KI-Spieler nicht ladbar"); // { providers, players }

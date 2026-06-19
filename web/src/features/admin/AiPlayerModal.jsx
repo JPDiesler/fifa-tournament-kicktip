@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal, Button, TextField, Input, Label, Select, ListBox, ComboBox, toast } from "@heroui/react";
 import { Play, RotateCcw, Trash2 } from "lucide-react";
 import Notice from "@/components/Notice.jsx";
-import { createAiPlayer, patchAiPlayer, testAiPlayer, testAiTip, listAiPredictions, tipNow, resetAiPrediction, fetchAiModels } from "./admin.js";
+import { createAiPlayer, patchAiPlayer, testAiTip, listAiPredictions, tipNow, resetAiPrediction, fetchAiModels } from "./admin.js";
 
 // ≈ USD per 1M tokens (blended in+out), rough — only a cost signal, edit as prices change.
 const PRICES = { anthropic: 9, openai: 6, gemini: 5, mistral: 4 };
@@ -24,10 +24,8 @@ export default function AiPlayerModal({ open, onOpenChange, providers, player, o
   const [name, setName] = useState("");
   const [provider, setProvider] = useState("");
   const [model, setModel] = useState("");
-  const [apiKey, setApiKey] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const [conn, setConn] = useState(null); // null | "testing" | { ok, error }
   const [tip, setTip] = useState(null);   // null | "testing" | { ok, error, match, tip, prediction }
   const [preds, setPreds] = useState(null);
   const [diagBusy, setDiagBusy] = useState(false);
@@ -38,7 +36,7 @@ export default function AiPlayerModal({ open, onOpenChange, providers, player, o
   const refreshPreds = () => { if (player) listAiPredictions(player.id).then((d) => setPreds(d.predictions || [])).catch(() => setPreds([])); };
   useEffect(() => {
     if (!open) return;
-    setErr(""); setConn(null); setTip(null); setApiKey(""); setPreds(null); setModels([]); setModelsErr("");
+    setErr(""); setTip(null); setPreds(null); setModels([]); setModelsErr("");
     if (player) {
       setKuerzel(player.kuerzel || ""); setName(player.name || "");
       setProvider(player.provider || providers?.[0]?.id || ""); setModel(player.model || "");
@@ -50,16 +48,15 @@ export default function AiPlayerModal({ open, onOpenChange, providers, player, o
   }, [open, player, providers]);
 
   const id = player?.id || 0;
-  const body = { provider, model, apiKey }; // apiKey "" in edit → server uses the stored key
-  const canTest = !!provider && (editing || !!apiKey);
-  const onProvider = (pid) => { setProvider(pid); setModel(providers?.find((x) => x.id === pid)?.defaultModel || ""); setConn(null); setTip(null); setModels([]); setModelsErr(""); };
+  const body = { provider, model }; // the API key is per provider (set in the Provider tab)
+  const canTest = !!provider;
+  const onProvider = (pid) => { setProvider(pid); setModel(providers?.find((x) => x.id === pid)?.defaultModel || ""); setTip(null); setModels([]); setModelsErr(""); };
   const loadModels = async () => {
     setModelsBusy(true); setModelsErr("");
     try { const d = await fetchAiModels(id, body); setModels(d.models || []); }
     catch (e) { setModelsErr(e.message); }
     finally { setModelsBusy(false); }
   };
-  const doConn = async () => { setConn("testing"); setErr(""); try { setConn(await testAiPlayer(id, body)); } catch (e) { setConn({ ok: false, error: e.message }); } };
   const doTip = async () => { setTip("testing"); setErr(""); try { setTip(await testAiTip(id, body)); } catch (e) { setTip({ ok: false, error: e.message }); } };
   const doTipNow = async (matchN) => {
     setDiagBusy(true); setErr("");
@@ -80,8 +77,8 @@ export default function AiPlayerModal({ open, onOpenChange, providers, player, o
   const submit = async () => {
     setErr(""); setBusy(true);
     try {
-      if (editing) await patchAiPlayer(id, { kuerzel, name, provider, model, ...(apiKey ? { apiKey } : {}) });
-      else await createAiPlayer({ kuerzel, name, provider, model, apiKey });
+      if (editing) await patchAiPlayer(id, { kuerzel, name, provider, model });
+      else await createAiPlayer({ kuerzel, name, provider, model });
       toast(editing ? "KI-Spieler aktualisiert" : "KI-Spieler angelegt", { variant: "success" });
       onSaved?.(); onOpenChange(false);
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
@@ -141,20 +138,11 @@ export default function AiPlayerModal({ open, onOpenChange, providers, player, o
                 {modelsErr ? <span className="text-[11px] text-danger">{modelsErr}</span>
                   : models.length > 0 ? <span className="text-[11px] text-muted">{models.length} Modelle · Pfeil-Button öffnet die Liste</span> : null}
               </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted">API-Key {editing ? "(leer lassen = unverändert)" : "* (verschlüsselt, nie wieder sichtbar)"}</span>
-                <TextField value={apiKey} onChange={setApiKey}><Input type="password" placeholder={editing ? "••••••••" : "sk-…"} /></TextField>
-              </div>
+              <p className="text-[11px] text-muted">Der API-Key wird pro Provider im Tab „Provider" gesetzt — hier wählst du nur Provider + Modell.</p>
               <div className="flex flex-wrap items-center gap-2">
-                <Button variant="secondary" size="sm" onPress={doConn} isDisabled={!canTest || conn === "testing"}>
-                  {conn === "testing" ? "Teste …" : "Verbindung testen"}
-                </Button>
                 <Button variant="secondary" size="sm" onPress={doTip} isDisabled={!canTest || tip === "testing"}>
                   {tip === "testing" ? "Tippt …" : "Echter Test (nächstes Spiel)"}
                 </Button>
-                {conn && conn !== "testing" && (conn.ok
-                  ? <span className="text-xs text-success">✓ Verbindung ok</span>
-                  : <span className="min-w-0 truncate text-xs text-danger">✗ {conn.error || "Fehler"}</span>)}
               </div>
               {tip && tip !== "testing" && (tip.ok ? (
                 <div className="rounded-lg border border-border bg-overlay p-2 text-xs">
@@ -200,7 +188,7 @@ export default function AiPlayerModal({ open, onOpenChange, providers, player, o
           </Modal.Body>
           <Modal.Footer>
             <Button slot="close" variant="secondary">Abbrechen</Button>
-            <Button variant="primary" onPress={submit} isPending={busy} isDisabled={!kuerzel || !provider || (!editing && !apiKey)}>{editing ? "Speichern" : "Anlegen"}</Button>
+            <Button variant="primary" onPress={submit} isPending={busy} isDisabled={!kuerzel || !provider}>{editing ? "Speichern" : "Anlegen"}</Button>
           </Modal.Footer>
         </Modal.Dialog>
       </Modal.Container>
