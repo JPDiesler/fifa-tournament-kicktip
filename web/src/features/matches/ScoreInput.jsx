@@ -12,8 +12,9 @@ export default function ScoreInput({ value, onChange, isDisabled, label }) {
       disabled={isDisabled}
       // keep only digits, max two (→ 0–99)
       onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 2))}
-      // select on focus so a tap overwrites; keep the field above the mobile keyboard
-      onFocus={(e) => { const el = e.target; el.select?.(); setTimeout(() => el.scrollIntoView?.({ block: "center", behavior: "smooth" }), 350); }}
+      // select on focus so a tap overwrites (HeroUI's overlay reveals the field above the keyboard;
+      // a manual scrollIntoView here scrolls the iOS layout viewport and pushes the fixed sheet off-screen)
+      onFocus={(e) => e.target.select?.()}
       className="h-11 w-14 rounded-md border border-border bg-field text-center text-lg font-bold tabular-nums text-foreground outline-none transition-colors focus:border-accent disabled:opacity-40"
     />
   );

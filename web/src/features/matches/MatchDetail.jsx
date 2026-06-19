@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Drawer, Chip } from "@heroui/react";
 import { Lock, Info } from "lucide-react";
 import { MATCHES } from "@/data";
@@ -38,33 +38,11 @@ function buildKitColors(st, teamCode) {
   return out;
 }
 
-// On-screen keyboard inset via the VisualViewport API. A bottom drawer is position:fixed
-// against the LAYOUT viewport, which iOS does NOT shrink when the keyboard opens — so the
-// sheet (and a focused input) end up hidden behind it. We measure the keyboard height and
-// the visible height so the drawer can lift above the keyboard and cap its height.
-function useKeyboardInset() {
-  const [{ kb, vh }, set] = useState({ kb: 0, vh: 0 });
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const update = () => {
-      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      set({ kb: inset > 80 ? Math.round(inset) : 0, vh: Math.round(vv.height) }); // ignore URL-bar jitter
-    };
-    update();
-    vv.addEventListener("resize", update);
-    vv.addEventListener("scroll", update);
-    return () => { vv.removeEventListener("resize", update); vv.removeEventListener("scroll", update); };
-  }, []);
-  return { kb, vh };
-}
-
 // Bottom-sheet detail for one match. A fixed teams+score header on top; below it a
 // swipeable carousel whose sections appear only when their data exists (Tipps always,
 // then Spielverlauf, Aufstellung — Statistik/Pre-Match plug in here too).
 export default function MatchDetail({ match, isOpen, onClose, st, board, me, teamLabel, teamCode, score, onTip }) {
   const [reasonFor, setReasonFor] = useState(null); // kürzel of the AI tip whose reasoning is open
-  const { kb, vh } = useKeyboardInset();
   const broadcasts = match ? (st.broadcasts?.[match.n] || []) : [];
   const kitByCode = useMemo(() => buildKitColors(st, teamCode), [st.details, teamCode]);
   if (!match) {
@@ -100,26 +78,32 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
     ? [...tipped].sort((a, b) => (b.pts ?? -1) - (a.pts ?? -1)) // live/final → leader first (incl. me)
     : tipped.filter((o) => !o.isMe);                           // pre-score → just the others' tips
 
-  // --- carousel sections (only those with data) ---
-  const tippsSection = (
-    <div className="space-y-5 pb-4">
-      <div className="rounded-xl border border-border bg-overlay p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm font-bold">Dein Tipp</span>
-          {locked
-            ? <Chip size="sm" className="border-0 bg-zinc-700 text-xs text-zinc-200"><Lock size={11} /> gesperrt</Chip>
-            : <PointsBadge points={myPoints} />}
-        </div>
-        <div className="flex items-center justify-center gap-2">
-          <ScoreInput value={myTip.h} isDisabled={locked || !me || !ready} onChange={(v) => onTip(n, "h", v)} label="Tipp Heim" />
-          <span className="text-muted">:</span>
-          <ScoreInput value={myTip.a} isDisabled={locked || !me || !ready} onChange={(v) => onTip(n, "a", v)} label="Tipp Gast" />
-          {locked && myPoints !== null && <span className="ml-2"><PointsBadge points={myPoints} /></span>}
-        </div>
-        {!me && <p className="mt-2 text-center text-xs text-muted">Kein Kürzel zugewiesen.</p>}
-        {me && !ready && <p className="mt-2 text-center text-xs text-muted">Paarung steht noch nicht fest – Tippen ab dann möglich.</p>}
+  // "Dein Tipp" lives directly in the (single-scroll) Drawer.Body below — NOT inside the swipe
+  // carousel. The carousel pins a fixed pixel height and each slide scrolls on its own, so a focused
+  // native input there scrolled the slide while the over-tall dialog overflowed the top on iOS. In
+  // the plain body, react-aria simply scrolls the focused field into view above the keyboard.
+  const tipCard = (
+    <div className="rounded-xl border border-border bg-overlay p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-bold">Dein Tipp</span>
+        {locked
+          ? <Chip size="sm" className="border-0 bg-zinc-700 text-xs text-zinc-200"><Lock size={11} /> gesperrt</Chip>
+          : <PointsBadge points={myPoints} />}
       </div>
+      <div className="flex items-center justify-center gap-2">
+        <ScoreInput value={myTip.h} isDisabled={locked || !me || !ready} onChange={(v) => onTip(n, "h", v)} label="Tipp Heim" />
+        <span className="text-muted">:</span>
+        <ScoreInput value={myTip.a} isDisabled={locked || !me || !ready} onChange={(v) => onTip(n, "a", v)} label="Tipp Gast" />
+        {locked && myPoints !== null && <span className="ml-2"><PointsBadge points={myPoints} /></span>}
+      </div>
+      {!me && <p className="mt-2 text-center text-xs text-muted">Kein Kürzel zugewiesen.</p>}
+      {me && !ready && <p className="mt-2 text-center text-xs text-muted">Paarung steht noch nicht fest – Tippen ab dann möglich.</p>}
+    </div>
+  );
 
+  // --- carousel sections (only those with data); the "Tipps" tab = the OTHERS' comparison ---
+  const tippsSection = (
+    <div className="pb-4">
       <div>
         <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
           <span className="text-xs font-bold uppercase tracking-wider text-muted">
@@ -190,10 +174,13 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
     <>
     <Drawer.Backdrop isOpen={isOpen} onOpenChange={(o) => !o && onClose()}>
       <Drawer.Content placement="bottom">
-        <Drawer.Dialog className="mx-auto flex w-full max-w-2xl flex-col"
-          // lift the sheet above the on-screen keyboard + cap it to the visible area
-          // (iOS PWA: the fixed bottom sheet otherwise sits behind the keyboard)
-          style={{ maxHeight: kb ? `${vh - 8}px` : "88vh", marginBottom: kb || undefined, transition: "margin-bottom .15s ease-out" }}>
+        {/* HeroUI bottom-aligns the sheet inside a fixed wrapper sized to --visual-viewport-height
+            (it shrinks with the on-screen keyboard). Cap the sheet to min(88vh, that height): 88vh is
+            the partial-sheet look when the keyboard is closed, but `vh` tracks the LAYOUT viewport
+            (doesn't shrink on iOS), so without the var clamp a focused score input lets the
+            bottom-aligned dialog overflow the top of the visible area ("flies up"). A class (not an
+            inline style) keeps HeroUI's touchAction:'none', so drag-to-close still works. */}
+        <Drawer.Dialog className="mx-auto flex w-full max-w-2xl flex-col max-h-[min(88vh,var(--visual-viewport-height))]">
           <Drawer.Handle />
           <Drawer.CloseTrigger />
           <Drawer.Header>
@@ -231,7 +218,11 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
             {/* where to watch: compact, centred logo chips under the score (hidden once played) */}
             {broadcasts.length > 0 && !past && <BroadcastChips keys={broadcasts} />}
 
-            {/* swipeable sections (Verlauf / Aufstellung / Statistik / Prognose / Quoten) */}
+            {/* your tip — in the body's single scroll (NOT the carousel) so the native keyboard
+                reveals the focused field in place instead of overflowing the top on iOS */}
+            <div className="mt-4">{tipCard}</div>
+
+            {/* swipeable sections (Tippvergleich / Verlauf / Aufstellung / Statistik / Prognose / Quoten) */}
             <Carousel sections={sections} className="mt-4" />
           </Drawer.Body>
         </Drawer.Dialog>
