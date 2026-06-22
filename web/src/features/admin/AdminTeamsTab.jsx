@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Modal, Button, TextField, Input, Label } from "@heroui/react";
-import { Upload, RotateCcw, Pencil } from "lucide-react";
+import { Modal, Button, TextField, Input, Label, Meter, toast } from "@heroui/react";
+import { Upload, RotateCcw, Pencil, Download } from "lucide-react";
 import { TEAMS } from "@/data";
 import Flag from "@/components/Flag.jsx";
 import TeamLogo from "@/components/TeamLogo.jsx";
 import DataTable from "@/components/DataTable.jsx";
 import { NICKNAMES } from "@/lib/teamNicknames.js";
-import { getTeamOverrides, setTeamOverride } from "./admin.js";
+import { getTeamOverrides, setTeamOverride, refreshTeamLogos, getTeamLogoStatus } from "./admin.js";
 
 const MAX = 500 * 1024; // 500 KB
 const OK = /^image\/(svg\+xml|png|jpeg|webp)$/;
@@ -81,6 +81,37 @@ function TeamEditModal({ team, onSaved, onFlash, onClose }) {
   );
 }
 
+// Live progress for the bulk logo refresh — rendered INSIDE the toast so it updates in place
+// (it polls the backend) without recreating the toast. HeroUI Meter is the progress bar.
+function LogoProgress({ onDone }) {
+  const [s, setS] = useState({ done: 0, total: 48, updated: 0, missing: [], running: true });
+  const onDoneRef = useRef(onDone); onDoneRef.current = onDone;
+  const firedRef = useRef(false);
+  useEffect(() => {
+    let stop = false;
+    const tick = async () => {
+      let st;
+      try { st = await getTeamLogoStatus(); } catch { if (!stop) setTimeout(tick, 1000); return; }
+      if (stop) return;
+      setS(st);
+      if (st.running) setTimeout(tick, 600);
+      else if (!firedRef.current) { firedRef.current = true; onDoneRef.current?.(st); }
+    };
+    tick();
+    return () => { stop = true; };
+  }, []);
+  const total = s.total || 48;
+  const pct = total ? Math.round((s.done / total) * 100) : 0;
+  return (
+    <div className="mt-1 w-56 max-w-full">
+      <Meter aria-label="Logo-Fortschritt" className="w-full gap-1" value={s.done} maxValue={total} color={pct >= 100 ? "success" : "accent"} valueLabel={`${pct}%`}>
+        <Meter.Track><Meter.Fill /></Meter.Track>
+      </Meter>
+      <div className="mt-1 text-[11px] text-muted">{s.done}/{total} · {s.updated} aktualisiert{s.missing?.length ? ` · ${s.missing.length} ohne Treffer` : ""}</div>
+    </div>
+  );
+}
+
 // Admin "Mannschaften" tab: a table of all teams; edit nickname + federation-logo
 // override (resettable to the build-seeded default) via a per-row edit dialog.
 export default function AdminTeamsTab({ onFlash }) {
@@ -89,6 +120,29 @@ export default function AdminTeamsTab({ onFlash }) {
   const [editing, setEditing] = useState(null); // team row being edited, or null
   useEffect(() => { getTeamOverrides().then((o) => { setOverrides(o); setBust(1); }).catch((e) => onFlash?.(e.message)); }, [onFlash]);
   const onSaved = (o) => { setOverrides(o || {}); setBust((b) => b + 1); };
+
+  const [busy, setBusy] = useState(false);
+  // Bulk-refresh every federation logo from football-logos.cc → dismissable toast with a spinner
+  // and a live Meter bar; on finish, reload overrides so the table shows the new logos.
+  const refreshAllLogos = async () => {
+    if (busy) return;
+    setBusy(true);
+    try { await refreshTeamLogos(); }
+    catch (e) { toast.danger(e?.message || "Logo-Update fehlgeschlagen"); setBusy(false); return; }
+    let id;
+    const finish = (st) => {
+      if (id) toast.close(id);
+      toast.success(`Logos aktualisiert: ${st.updated}/${st.total}${st.missing?.length ? ` · ${st.missing.length} ohne Treffer` : ""}`);
+      getTeamOverrides().then(onSaved).catch(() => {});
+      setBusy(false);
+    };
+    id = toast("Mannschaftslogos werden geladen …", {
+      description: <LogoProgress onDone={finish} />,
+      isLoading: true,
+      timeout: 0,
+      actionProps: { children: "Ausblenden", variant: "tertiary", onPress: () => { if (id) toast.close(id); setBusy(false); } },
+    });
+  };
 
   const rows = Object.entries(TEAMS).map(([code, t]) => ({ code, name: t.name, override: overrides[code], nickname: overrides[code]?.nickname || NICKNAMES[code] || "" }));
 
@@ -109,9 +163,12 @@ export default function AdminTeamsTab({ onFlash }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-baseline gap-x-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <h2 className="text-sm font-bold uppercase tracking-wider text-muted">Mannschaften</h2>
         <span className="text-xs text-muted">Spitzname + Verbandslogo je Team überschreiben das Default.</span>
+        <Button className="ml-auto" variant="secondary" size="sm" isPending={busy} isDisabled={busy} onPress={refreshAllLogos} title="Alle Verbandslogos von football-logos.cc laden">
+          <Download size={14} /> {busy ? "lädt …" : "Logos aktualisieren"}
+        </Button>
       </div>
       <DataTable columns={columns} rows={rows} rowKey={(r) => r.code} search={(r) => `${r.name} ${r.code} ${r.nickname}`}
         searchPlaceholder="Mannschaft suchen …" ariaLabel="Mannschaften" empty="Keine Mannschaften." />

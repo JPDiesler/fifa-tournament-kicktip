@@ -25,6 +25,7 @@ import { placeTipNow } from "../services/ai/scheduler.js";
 const REASONING_DEFAULT = () => getSetting("aiReasoningVisibleAfter", process.env.AI_REASONING_VISIBLE_AFTER || "kickoff");
 import { requireAdmin, adminUserDto, hashPassword } from "../middleware/auth.js";
 import { sync, runBackfill, prefetchPreviews, getBackfillProgress } from "../services/sync.js";
+import { refreshTeamLogos, getTeamLogoProgress } from "../services/teamLogos.js";
 import { activeSource, getAdapter } from "../services/sources/index.js";
 import { effectiveCapabilities, liveDelayMs, inplayOddsEnabled } from "../services/coordinator.js";
 import { genPassword, cacheCredential, getCredential, streamCredentialsPdf } from "../services/credentials.js";
@@ -36,6 +37,10 @@ const cleanKuerzel = (k) => ((k || "").trim().toUpperCase() || null);
 // frontend; these rows override them. Logo is a data URI (PNG/SVG, ~500 KB cap).
 const TEAM_CODES = new Set(Object.keys(TEAMS));
 router.get("/admin/teams", requireAdmin, (req, res) => res.json(teamOverrides()));
+// Bulk-refresh all federation crests from football-logos.cc (background). Registered BEFORE the
+// :code route so "refresh-logos" isn't captured as a team code; the toast polls the status route.
+router.post("/admin/teams/refresh-logos", requireAdmin, (req, res) => { refreshTeamLogos(); res.json({ ok: true }); });
+router.get("/admin/teams/refresh-logos/status", requireAdmin, (req, res) => res.json(getTeamLogoProgress()));
 router.post("/admin/teams/:code", requireAdmin, (req, res) => {
   const code = (req.params.code || "").toUpperCase();
   if (!TEAM_CODES.has(code)) return res.status(400).json({ error: "unbekanntes Team" });

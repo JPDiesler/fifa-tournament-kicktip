@@ -56,6 +56,13 @@ export async function getTeamOverrides() {
 export async function setTeamOverride(code, body) {
   return j(await post(`/api/admin/teams/${code}`, body), "Speichern fehlgeschlagen"); // { ok, overrides }
 }
+// Bulk-refresh all federation logos from football-logos.cc (background); poll the status endpoint.
+export async function refreshTeamLogos() {
+  return j(await post("/api/admin/teams/refresh-logos"), "Logo-Update fehlgeschlagen");
+}
+export async function getTeamLogoStatus() {
+  return j(await fetch("/api/admin/teams/refresh-logos/status"), "Status nicht ladbar"); // { running, total, done, updated, failed, missing }
+}
 
 // ---- AI providers (one key per provider) ----
 export async function getAiProviders() {
