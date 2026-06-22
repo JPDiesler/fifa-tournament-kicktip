@@ -46,27 +46,27 @@ export function broadcastsByMatch() {
 export function replaceLive(map) {
   const asOf = Date.now(); // capture time → the client anchors its local match clock to this
   const del = db.prepare("DELETE FROM live");
-  const ins = db.prepare("INSERT INTO live(match_n,h,a,phase,minute,injury,as_of,odds) VALUES(?,?,?,?,?,?,?,?)");
+  const ins = db.prepare("INSERT INTO live(match_n,h,a,phase,minute,injury,as_of,odds,pen) VALUES(?,?,?,?,?,?,?,?,?)");
   const tx = db.transaction(() => {
     del.run();
     for (const [n, v] of Object.entries(map || {}))
-      ins.run(Number(n), String(v.h ?? ""), String(v.a ?? ""), v.phase ?? null, v.minute ?? null, v.injury ?? null, asOf, v.odds ? JSON.stringify(v.odds) : null);
+      ins.run(Number(n), String(v.h ?? ""), String(v.a ?? ""), v.phase ?? null, v.minute ?? null, v.injury ?? null, asOf, v.odds ? JSON.stringify(v.odds) : null, v.pen ? JSON.stringify(v.pen) : null);
   });
   tx();
 }
 // { match_n: { h, a, phase, minute, injury, asOf, odds } } for matches currently in play.
 export function liveByMatch() {
   const out = {};
-  for (const r of db.prepare("SELECT match_n,h,a,phase,minute,injury,as_of,odds FROM live").all())
-    out[r.match_n] = { h: r.h, a: r.a, phase: r.phase, minute: r.minute, injury: r.injury, asOf: r.as_of, odds: r.odds ? JSON.parse(r.odds) : null };
+  for (const r of db.prepare("SELECT match_n,h,a,phase,minute,injury,as_of,odds,pen FROM live").all())
+    out[r.match_n] = { h: r.h, a: r.a, phase: r.phase, minute: r.minute, injury: r.injury, asOf: r.as_of, odds: r.odds ? JSON.parse(r.odds) : null, pen: r.pen ? JSON.parse(r.pen) : null };
   return out;
 }
 
 // ---------- per-match scorers/cards/subs + lineups + final clock (display only) ----------
-export function setMatchDetail(n, scorers, cards, subs) {
-  db.prepare(`INSERT INTO match_detail(match_n,scorers,cards,subs) VALUES(?,?,?,?)
-    ON CONFLICT(match_n) DO UPDATE SET scorers=excluded.scorers, cards=excluded.cards, subs=excluded.subs, updated_at=datetime('now')`)
-    .run(Number(n), JSON.stringify(scorers || []), JSON.stringify(cards || []), JSON.stringify(subs || []));
+export function setMatchDetail(n, scorers, cards, subs, shootout = null) {
+  db.prepare(`INSERT INTO match_detail(match_n,scorers,cards,subs,shootout) VALUES(?,?,?,?,?)
+    ON CONFLICT(match_n) DO UPDATE SET scorers=excluded.scorers, cards=excluded.cards, subs=excluded.subs, shootout=excluded.shootout, updated_at=datetime('now')`)
+    .run(Number(n), JSON.stringify(scorers || []), JSON.stringify(cards || []), JSON.stringify(subs || []), shootout ? JSON.stringify(shootout) : null);
 }
 // Starting lineups (+bench/formation/coach). Upserts only the lineups column.
 export function setMatchLineups(n, lineups) {
@@ -100,9 +100,15 @@ export function setMatchFinalTime(n, f) {
     ON CONFLICT(match_n) DO UPDATE SET final_minute=excluded.final_minute, final_injury=excluded.final_injury, final_phase=excluded.final_phase, updated_at=datetime('now')`)
     .run(Number(n), f?.minute ?? null, f?.injury ?? null, f?.phase ?? null);
 }
+// Penalty-shootout result of a finished K.o. match ({ home, away }). Upserts only the pen column.
+export function setMatchPenalty(n, pen) {
+  db.prepare(`INSERT INTO match_detail(match_n,pen) VALUES(?,?)
+    ON CONFLICT(match_n) DO UPDATE SET pen=excluded.pen, updated_at=datetime('now')`)
+    .run(Number(n), pen ? JSON.stringify(pen) : null);
+}
 export function detailByMatch() {
   const out = {};
-  for (const r of db.prepare("SELECT match_n,scorers,cards,subs,lineups,stats,preview,player_stats,final_minute,final_injury,final_phase FROM match_detail").all()) {
+  for (const r of db.prepare("SELECT match_n,scorers,cards,subs,lineups,stats,preview,player_stats,final_minute,final_injury,final_phase,pen,shootout FROM match_detail").all()) {
     try {
       out[r.match_n] = {
         scorers: JSON.parse(r.scorers || "[]"),
@@ -113,6 +119,8 @@ export function detailByMatch() {
         preview: r.preview ? JSON.parse(r.preview) : null,
         playerStats: r.player_stats ? JSON.parse(r.player_stats) : null,
         final: r.final_minute != null ? { minute: r.final_minute, injury: r.final_injury, phase: r.final_phase } : null,
+        pen: r.pen ? JSON.parse(r.pen) : null,
+        shootout: r.shootout ? JSON.parse(r.shootout) : null,
       };
     } catch { /* skip */ }
   }

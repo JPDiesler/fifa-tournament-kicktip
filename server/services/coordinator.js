@@ -79,6 +79,8 @@ export function effectiveConfig() {
 const oriented = (fx) => ({
   homeGoals: fx.swap ? fx.awayGoals : fx.homeGoals,
   awayGoals: fx.swap ? fx.homeGoals : fx.awayGoals,
+  penHome: fx.swap ? fx.penAway : fx.penHome,
+  penAway: fx.swap ? fx.penHome : fx.penAway,
   homeName: fx.swap ? fx.awayName : fx.homeName,
   awayName: fx.swap ? fx.homeName : fx.awayName,
   winner: fx.winner === "home" ? (fx.swap ? "away" : "home") : fx.winner === "away" ? (fx.swap ? "home" : "away") : fx.winner,
@@ -130,11 +132,11 @@ export function mergeFixtures(byProvider, fetched, routing) {
     const idFx = resFx || lsFx || phFx || mnFx || anyFx(n);
     if (!idFx) continue;
     const idO = oriented(idFx);
-    const rec = { n, ko: idFx.ko, finished: false, live: false, homeGoals: null, awayGoals: null, phase: null, minute: null, injuryTime: null, duration: null, winner: null, homeName: idO.homeName, awayName: idO.awayName, extIds: {} };
+    const rec = { n, ko: idFx.ko, finished: false, live: false, homeGoals: null, awayGoals: null, penHome: null, penAway: null, phase: null, minute: null, injuryTime: null, duration: null, winner: null, homeName: idO.homeName, awayName: idO.awayName, extIds: {} };
     for (const id of fetched) if (byProvider[id]?.[n]) rec.extIds[id] = byProvider[id][n].extId;
     if (resFx) {
       const o = oriented(resFx);
-      rec.finished = true; rec.homeGoals = o.homeGoals; rec.awayGoals = o.awayGoals; rec.winner = o.winner; rec.homeName = o.homeName; rec.awayName = o.awayName;
+      rec.finished = true; rec.homeGoals = o.homeGoals; rec.awayGoals = o.awayGoals; rec.penHome = o.penHome; rec.penAway = o.penAway; rec.winner = o.winner; rec.homeName = o.homeName; rec.awayName = o.awayName;
       rec.duration = resFx.duration || "REGULAR"; // play length (REGULAR | EXTRA_TIME | PENALTY) for the final clock
       rec.minute = resFx.minute ?? null; rec.injuryTime = resFx.injuryTime ?? null; // FT elapsed + added time (api-football status.extra) → real final clock
     } else if (lsFx) {
@@ -142,6 +144,7 @@ export function mergeFixtures(byProvider, fetched, routing) {
       rec.live = true;
       const ok = lsFx.homeGoals != null && lsFx.awayGoals != null;
       rec.homeGoals = ok ? o.homeGoals : 0; rec.awayGoals = ok ? o.awayGoals : 0;
+      rec.penHome = o.penHome; rec.penAway = o.penAway; // shootout tally during status "P"
     }
     if (!rec.finished) {
       if (phFx) rec.phase = phFx.phase;
@@ -240,8 +243,8 @@ export async function fetchDetails(fixtures, byProvider, routing, matchNs, { max
     const sd = await get(sProv, f.n);
     const cd = sProv === cProv ? sd : await get(cProv, f.n);
     const eventsOk = sd !== null || cd !== null; // got a real response
-    const scorers = sd?.scorers || [], cards = cd?.cards || [], subs = sd?.subs || [];
-    if (scorers.length || cards.length || subs.length) details[f.n] = { scorers, cards, subs };
+    const scorers = sd?.scorers || [], cards = cd?.cards || [], subs = sd?.subs || [], shootout = sd?.shootout || null;
+    if (scorers.length || cards.length || subs.length || shootout) details[f.n] = { scorers, cards, subs, shootout };
     let lineupOk = true;
     if (lineupNs?.has(f.n) && lProv) { const lu = await getLineups(f.n); if (lu) lineups[f.n] = lu; else lineupOk = false; }
     if (statsNs?.has(f.n) && stProv) { const s = await getStats(f.n); if (s) stats[f.n] = s; }

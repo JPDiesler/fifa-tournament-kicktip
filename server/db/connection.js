@@ -187,6 +187,10 @@ if (!db.prepare("PRAGMA table_info(live)").all().some((c) => c.name === "as_of")
 if (!db.prepare("PRAGMA table_info(live)").all().some((c) => c.name === "odds")) {
   db.exec("ALTER TABLE live ADD COLUMN odds TEXT"); // JSON { home, draw, away, suspended } in-play 1X2
 }
+// Migration for DBs created before the penalty-shootout tally was stored on the live row.
+if (!db.prepare("PRAGMA table_info(live)").all().some((c) => c.name === "pen")) {
+  db.exec("ALTER TABLE live ADD COLUMN pen TEXT"); // JSON { home, away } shootout tally (K.o., status "P")
+}
 // Migration for DBs created before match_detail held the final match clock.
 {
   const cols = db.prepare("PRAGMA table_info(match_detail)").all().map((c) => c.name);
@@ -198,6 +202,8 @@ if (!db.prepare("PRAGMA table_info(live)").all().some((c) => c.name === "odds"))
   if (!cols.includes("stats")) db.exec("ALTER TABLE match_detail ADD COLUMN stats TEXT");      // per-team match statistics (possession/shots/xG/…)
   if (!cols.includes("preview")) db.exec("ALTER TABLE match_detail ADD COLUMN preview TEXT");   // pre-match: predictions/form/h2h/injuries
   if (!cols.includes("player_stats")) db.exec("ALTER TABLE match_detail ADD COLUMN player_stats TEXT"); // per-player match stats keyed by player id
+  if (!cols.includes("pen")) db.exec("ALTER TABLE match_detail ADD COLUMN pen TEXT");                   // JSON { home, away } shootout result of a finished K.o. match
+  if (!cols.includes("shootout")) db.exec("ALTER TABLE match_detail ADD COLUMN shootout TEXT");          // JSON { home:[{scored}], away:[{scored}] } per-kick shootout sequence
 }
 // Migration for DBs created before AI players existed.
 {

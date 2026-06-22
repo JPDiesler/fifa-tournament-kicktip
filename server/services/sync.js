@@ -11,7 +11,7 @@ import { buildPreview } from "./ai/bundle.js";
 import {
   setResult, setResolved, clearResolved, replaceLive, liveByMatch,
   getMeta, setMeta, getChampionActual, setChampionActual, setCapabilities,
-  setMatchDetail, setMatchFinalTime, setMatchLineups, setMatchStats, setMatchPlayerStats, setMatchPreview, detailByMatch, setMatchExtIds,
+  setMatchDetail, setMatchFinalTime, setMatchPenalty, setMatchLineups, setMatchStats, setMatchPlayerStats, setMatchPreview, detailByMatch, setMatchExtIds,
 } from "../db.js";
 import { notifyKickoff, notifyGoal, notifyFinal } from "./push.js";
 import { publishLive } from "./liveStream.js";
@@ -57,7 +57,8 @@ function writeDetail(n, d, have) {
   setMatchDetail(n,
     d.scorers?.length ? d.scorers : have[n]?.scorers || [],
     d.cards?.length ? d.cards : have[n]?.cards || [],
-    d.subs?.length ? d.subs : have[n]?.subs || []);
+    d.subs?.length ? d.subs : have[n]?.subs || [],
+    d.shootout || have[n]?.shootout || null);
 }
 
 export async function sync(reason = "cron") {
@@ -92,6 +93,7 @@ export async function sync(reason = "cron") {
 
       if (rec.finished && rec.homeGoals != null && rec.awayGoals != null) {
         setResult(n, String(rec.homeGoals), String(rec.awayGoals));
+        if (rec.penHome != null && rec.penAway != null) setMatchPenalty(n, { home: String(rec.penHome), away: String(rec.penAway) }); // decided on penalties
         updated++;
         events.push(() => notifyFinal(n, rec.homeGoals, rec.awayGoals));
       } else if (rec.live) {
@@ -103,7 +105,9 @@ export async function sync(reason = "cron") {
         const minute = rec.minute != null ? rec.minute : (prev?.minute ?? null);
         const injury = rec.minute != null ? rec.injuryTime : (prev?.injury ?? null);
         const phase = rec.phase || prev?.phase || null;
-        liveMap[n] = { h: String(h), a: String(a), phase, minute, injury };
+        // Shootout tally (status "P"); keep the last-known one if a poll fell back to a source without it.
+        const pen = rec.penHome != null && rec.penAway != null ? { home: String(rec.penHome), away: String(rec.penAway) } : (prev?.pen ?? null);
+        liveMap[n] = { h: String(h), a: String(a), phase, minute, injury, pen };
         if (!prev) {
           events.push(() => notifyKickoff(n));
         } else {

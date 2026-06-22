@@ -28,6 +28,10 @@ export function mapApiFootballFixture(f) {
     awayName: f.teams?.away?.name || null,
     homeGoals: f.goals?.home,
     awayGoals: f.goals?.away,
+    // Penalty-shootout tally (K.o.): live during status "P", final at "PEN". Separate from
+    // goals (which stays the level fulltime/ET score). null when there's no shootout.
+    penHome: f.score?.penalty?.home ?? null,
+    penAway: f.score?.penalty?.away ?? null,
     winner: f.teams?.home?.winner ? "home" : f.teams?.away?.winner ? "away" : null,
   };
 }
@@ -61,7 +65,7 @@ async function fetchDetail(extId, ctx) {
   const ev = Array.isArray(j.response) ? j.response : [];
   const goalType = (d) => (d === "Penalty" ? "penalty" : d === "Own Goal" ? "own" : null);
   const scorers = ev
-    .filter((e) => e.type === "Goal" && e.detail !== "Missed Penalty")
+    .filter((e) => e.type === "Goal" && e.detail !== "Missed Penalty" && e.comments !== "Penalty Shootout")
     .map((e) => ({ team: e.team?.name || null, player: e.player?.name || null, minute: e.time?.elapsed ?? null, injury: e.time?.extra ?? null, type: goalType(e.detail), side: sideOf(e.team?.name, ctx) }));
   const cards = ev
     .filter((e) => e.type === "Card")
@@ -71,7 +75,15 @@ async function fetchDetail(extId, ctx) {
   const subs = ev
     .filter((e) => e.type === "subst")
     .map((e) => ({ minute: e.time?.elapsed ?? null, injury: e.time?.extra ?? null, in: e.assist?.name || null, out: e.player?.name || null, side: sideOf(e.team?.name, ctx) }));
-  return { scorers, cards, subs };
+  // Penalty shootout (K.o.): api-football tags each kick with comments "Penalty Shootout";
+  // detail "Missed Penalty" = missed, else scored. Ordered per side (oriented via ctx). null if none.
+  const shootEv = ev.filter((e) => e.comments === "Penalty Shootout");
+  const kick = (e) => ({ scored: e.detail !== "Missed Penalty", player: e.player?.name || null });
+  const shootout = shootEv.length ? {
+    home: shootEv.filter((e) => sideOf(e.team?.name, ctx) === "h").map(kick),
+    away: shootEv.filter((e) => sideOf(e.team?.name, ctx) === "a").map(kick),
+  } : null;
+  return { scorers, cards, subs, shootout };
 }
 
 // Starting lineups + bench/formation/coach, oriented to the static home/away (via ctx).
