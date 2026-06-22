@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { CalendarDays, CalendarClock, GitBranch, ListOrdered } from "lucide-react";
 import { Tabs, Spinner, Toast, toast } from "@heroui/react";
 import { TEAMS, MATCHES, CHAMP_BONUS } from "@/data";
@@ -23,6 +23,34 @@ import { PlayersContext } from "@/components/PlayerName.jsx";
 const EMPTY_STATE = { tips: {}, champs: {}, results: {}, resolved: {}, live: {}, broadcasts: {}, details: {}, players: {}, championActual: "", capabilities: null, meta: {}, locks: {} };
 const GROUP_PHASES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
 
+// --- Debug-only: preview the penalty-shootout display without a real K.o. match. Open the
+// app with ?debugpen=1 (persisted in localStorage; ?debugpen=0 turns it off). It fakes a LIVE
+// shootout on the next unplayed match + a finished shootout on the last played one, purely for
+// rendering — never touches the server, so the sync can't overwrite it. Off by default (no-op).
+const DEBUG_PEN = (() => {
+  try {
+    const v = new URLSearchParams(window.location.search).get("debugpen");
+    if (v != null) localStorage.setItem("debugpen", v === "0" ? "0" : "1");
+    return localStorage.getItem("debugpen") === "1";
+  } catch { return false; }
+})();
+const O = (s) => ({ scored: s }); // debug-kick helper: O(true)=scored, O(false)=missed
+function withDebugPen(st) {
+  if (!DEBUG_PEN) return st;
+  const played = (n) => { const r = st.results?.[n]; return !!(r && r.h !== "" && r.a !== ""); };
+  const next = MATCHES.find((m) => !played(m.n));     // → fake an IN-PROGRESS shootout
+  const done = [...MATCHES].reverse().find((m) => played(m.n)); // → fake a FINISHED shootout
+  const live = { ...st.live }, details = { ...st.details };
+  if (next) {
+    details[next.n] = { ...(details[next.n] || {}), shootout: { home: [O(true), O(true), O(false), O(true)], away: [O(true), O(false), O(true)] } };
+    live[next.n] = { h: "1", a: "1", phase: "PEN", minute: 120, injury: null, asOf: Date.now(), pen: { home: "3", away: "2" } };
+  }
+  if (done) {
+    details[done.n] = { ...(details[done.n] || {}), shootout: { home: [O(true), O(true), O(true), O(false), O(true)], away: [O(true), O(false), O(true), O(true), O(false)] }, pen: { home: "4", away: "3" } };
+  }
+  return { ...st, live, details };
+}
+
 export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [user, setUser] = useState(null);
@@ -30,6 +58,7 @@ export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [tab, setTab] = useState("anstehend");
   const [st, setSt] = useState(EMPTY_STATE);
+  const stView = useMemo(() => withDebugPen(st), [st]); // debug-pen overlay (no-op unless ?debugpen=1)
   const [board, setBoard] = useState([]);
   const [matchdays, setMatchdays] = useState([]);
   const [entra, setEntra] = useState(null);
@@ -211,7 +240,7 @@ export default function App() {
 
         {me && (
           <div className="mt-3">
-            <OpenTipsBanner me={me} st={st} matches={MATCHES} teamCode={teamCode} onGoToUpcoming={() => setTab("anstehend")} />
+            <OpenTipsBanner me={me} st={stView} matches={MATCHES} teamCode={teamCode} onGoToUpcoming={() => setTab("anstehend")} />
           </div>
         )}
 
@@ -246,7 +275,7 @@ export default function App() {
             <UpcomingTab
               matches={MATCHES}
               me={me}
-              st={st}
+              st={stView}
               teamLabel={teamLabel}
               teamCode={teamCode}
               score={score}
@@ -261,7 +290,7 @@ export default function App() {
               matches={MATCHES}
               teams={TEAMS}
               me={me}
-              st={st}
+              st={stView}
               teamLabel={teamLabel}
               teamCode={teamCode}
               score={score}
@@ -274,7 +303,7 @@ export default function App() {
             <Bracket
               matches={MATCHES}
               me={me}
-              st={st}
+              st={stView}
               teamLabel={teamLabel}
               teamCode={teamCode}
               score={score}
@@ -283,7 +312,7 @@ export default function App() {
           </Tabs.Panel>
 
           <Tabs.Panel id="rang" className="pt-3">
-            <LeaderboardTab totals={board} matchdays={matchdays} me={me} st={st} teams={TEAMS} championActual={st.championActual} teamLabel={teamLabel} />
+            <LeaderboardTab totals={board} matchdays={matchdays} me={me} st={stView} teams={TEAMS} championActual={st.championActual} teamLabel={teamLabel} />
           </Tabs.Panel>
         </Tabs>
       </main>
@@ -292,7 +321,7 @@ export default function App() {
         match={openMatchN != null ? MATCHES.find((m) => m.n === openMatchN) : null}
         isOpen={openMatchN != null}
         onClose={() => setOpenMatchN(null)}
-        st={st}
+        st={stView}
         board={board}
         me={me}
         teamLabel={teamLabel}
