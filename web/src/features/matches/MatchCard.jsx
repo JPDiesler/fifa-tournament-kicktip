@@ -5,6 +5,7 @@ import PointsBadge from "@/components/PointsBadge.jsx";
 import { GoalIcon, CardIcon } from "@/components/MatchIcons.jsx";
 import BroadcastPill from "@/features/broadcasts/BroadcastPill.jsx";
 import LiveBadge, { LiveTag, LivePhase } from "./LiveBadge.jsx";
+import PenaltyShootout from "./PenaltyShootout.jsx";
 import { countdown, kickoffMs, eventMinute, goalMark, cardKind } from "@/lib/matchtime.js";
 
 // Goals + cards for one side ("h"/"a"), oldest first, for the live overview card.
@@ -73,10 +74,11 @@ export default function MatchCard({ match, home, away, result, points, hasTip, l
             </div>
             <div className="shrink-0 text-right tabular-nums">
               {hasResult ? (
-                <div className="flex flex-col items-end font-extrabold"><span>{result.h}</span><span>{result.a}</span></div>
+                <div className="flex flex-col items-end font-extrabold"><span>{result.h}</span><span>{result.a}</span><PenaltyShootout shootout={detail?.shootout} pen={detail?.pen} size="sm" className="mt-0.5" /></div>
               ) : isLiveMatch ? (
                 <div className="flex flex-col items-end font-extrabold leading-tight">
                   <span>{lh}</span><span>{la}</span>
+                  <PenaltyShootout shootout={detail?.shootout} pen={live?.pen} size="sm" className="mt-0.5" />
                   <LiveBadge live={live} serverNow={serverNow} liveMinuteOn={liveMinuteOn} className="text-[10px]" />
                 </div>
               ) : cd ? (
@@ -95,10 +97,11 @@ export default function MatchCard({ match, home, away, result, points, hasTip, l
             </div>
             <div className="min-w-10 text-center">
               {hasResult ? (
-                <span className="text-sm font-extrabold tabular-nums">{result.h} : {result.a}</span>
+                <span className="inline-flex flex-col items-center leading-tight"><span className="text-sm font-extrabold tabular-nums">{result.h} : {result.a}</span><PenaltyShootout shootout={detail?.shootout} pen={detail?.pen} size="sm" className="mt-0.5" /></span>
               ) : isLiveMatch ? (
                 <div className="flex flex-col items-center leading-tight">
                   <span className="text-sm font-extrabold tabular-nums">{lh} : {la}</span>
+                  <PenaltyShootout shootout={detail?.shootout} pen={live?.pen} size="sm" className="mt-0.5" />
                   <LiveBadge live={live} serverNow={serverNow} liveMinuteOn={liveMinuteOn} className="text-[10px]" />
                 </div>
               ) : cd ? (
@@ -118,20 +121,26 @@ export default function MatchCard({ match, home, away, result, points, hasTip, l
               <span className="flex min-w-0 flex-1 items-center gap-1.5"><Flag code={home.code} /><span className="truncate">{home.label}</span></span>
               <span className="flex min-w-0 flex-1 items-center justify-end gap-1.5"><span className="truncate">{away.label}</span><Flag code={away.code} /></span>
             </div>
-            <div className="text-center">
-              {hasResult ? (
-                <span className="text-4xl font-extrabold tabular-nums">{result.h} : {result.a}</span>
-              ) : isLiveMatch ? (
-                <div className="flex flex-col items-center gap-1 leading-none">
-                  <LiveTag paused={live.phase === "HT"} className="text-[11px]" />
-                  <span className="text-4xl font-extrabold tabular-nums">{lh} : {la}</span>
-                  <LivePhase live={live} serverNow={serverNow} liveMinuteOn={liveMinuteOn} className="text-[11px]" />
-                </div>
-              ) : cd ? (
-                <span className="text-sm text-muted">{cd}</span>
-              ) : (
-                <span className="text-sm font-bold text-app-accent">läuft</span>
-              )}
+            {/* score row — penalty-shootout circles flank the score (home left, away right), using
+                the full width; empty flex spacers keep the score centred when there's no shootout. */}
+            <div className="flex w-full items-center justify-between gap-2">
+              <span className="flex flex-1 justify-start"><PenaltyShootout shootout={detail?.shootout} pen={hasResult ? detail?.pen : live?.pen} side="h" size="lg" /></span>
+              <div className="shrink-0 text-center">
+                {hasResult ? (
+                  <span className="text-4xl font-extrabold tabular-nums">{result.h} : {result.a}</span>
+                ) : isLiveMatch ? (
+                  <div className="flex flex-col items-center gap-1 leading-none">
+                    <LiveTag paused={live.phase === "HT"} className="text-[11px]" />
+                    <span className="text-4xl font-extrabold tabular-nums">{lh} : {la}</span>
+                    <LivePhase live={live} serverNow={serverNow} liveMinuteOn={liveMinuteOn} className="text-[11px]" />
+                  </div>
+                ) : cd ? (
+                  <span className="text-sm text-muted">{cd}</span>
+                ) : (
+                  <span className="text-sm font-bold text-app-accent">läuft</span>
+                )}
+              </div>
+              <span className="flex flex-1 justify-end"><PenaltyShootout shootout={detail?.shootout} pen={hasResult ? detail?.pen : live?.pen} side="a" size="lg" /></span>
             </div>
             {/* live scorers & cards, home on the left, away on the right */}
             {isLiveMatch && detail && (sideEvents(detail, "h").length > 0 || sideEvents(detail, "a").length > 0) && (

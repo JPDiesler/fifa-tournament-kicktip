@@ -16,6 +16,7 @@ import MatchStats from "./MatchStats.jsx";
 import PreMatch from "./PreMatch.jsx";
 import OddsView from "./OddsView.jsx";
 import { PHASES } from "@/lib/scoring.js";
+import PenaltyShootout from "./PenaltyShootout.jsx";
 import { countdown, kickoffMs, delayLabel, finalClockLabel } from "@/lib/matchtime.js";
 import { kitColor, FALLBACK_HOME, FALLBACK_AWAY } from "@/lib/teamColors.js";
 
@@ -191,6 +192,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 flex-1 flex-col items-center gap-1 text-center">
                 <Flag code={home.code} /><span className="truncate text-sm font-semibold">{home.label}</span>
+                <PenaltyShootout shootout={detail?.shootout} pen={hasResult ? detail?.pen : live?.pen} side="h" size="lg" className="mt-1.5" />
               </div>
               <div className="shrink-0 text-center">
                 {hasResult ? (
@@ -212,6 +214,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
               </div>
               <div className="flex min-w-0 flex-1 flex-col items-center gap-1 text-center">
                 <Flag code={away.code} /><span className="truncate text-sm font-semibold">{away.label}</span>
+                <PenaltyShootout shootout={detail?.shootout} pen={hasResult ? detail?.pen : live?.pen} side="a" size="lg" className="mt-1.5" />
               </div>
             </div>
 
