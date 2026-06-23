@@ -1,0 +1,32 @@
+# NOTICE — third-party assets & data
+
+The source code of WM-Tippspiel is licensed under the MIT License (see `LICENSE`).
+This NOTICE covers third-party material that is **downloaded at build time** and
+committed under `web/src/assets/`. That material is **not** covered by the MIT
+License and remains the property of its respective owners; it is included for
+identification / illustration only. Consult each source for its exact terms before
+redistributing.
+
+## Flags — `web/src/assets/flags/`
+Downloaded from **Wikimedia Commons** (`commons.wikimedia.org`) by
+`web/scripts/download-flags.mjs`, one SVG per team. Most national flags are in the
+public domain, but licensing varies per file — check each file's page on Wikimedia
+Commons.
+
+## Broadcaster logos — `web/src/assets/broadcasters/`
+Downloaded from **Wikimedia Commons** by `web/scripts/download-broadcasters.mjs`
+(ARD, ZDF, RTL, Sky, DAZN, Eurosport, MagentaTV, Prime Video, Netflix, …). These are
+**trademarks and logos of their respective broadcasters**, used nominatively to show
+where a match airs. All trademark rights remain with the owners.
+
+## Federation crests — `web/src/assets/team-logos/`
+Extracted from the infoboxes of the relevant **English / German Wikipedia** articles
+by `web/scripts/download-team-logos.mjs`, or uploaded by an admin (e.g. from
+football-logos.cc) via the Mannschaften tab. National-association crests (the DFB
+eagle, the Three Lions, …) are **copyrighted trademarks of their federations**,
+typically hosted on Wikipedia under fair-use terms. They are not relicensed here.
+
+## Match data — api-football
+Live and historical match data comes from **api-football** (api-sports.io) under its
+own terms of service and requires your own API key. No api-football data is
+redistributed in this repository.
