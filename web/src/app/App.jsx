@@ -4,7 +4,6 @@ import { Tabs, Spinner, Toast, toast } from "@heroui/react";
 import { TEAMS, MATCHES, CHAMP_BONUS } from "@/data";
 import { api } from "@/lib/api.js";
 import { score, known } from "@/lib/scoring.js";
-import { groupClinch } from "@/features/matches/groups.js";
 import { getMe, getConfig, loginEntra, logout as apiLogout } from "@/features/auth/auth.js";
 import { initMsal, handleRedirect, RESUME_PICKER_KEY } from "@/features/auth/msal.js";
 import LoginScreen from "@/features/auth/LoginScreen.jsx";
@@ -162,35 +161,15 @@ export default function App() {
   const handleLoggedIn = async (u) => { setUser(u); await load(false); };
   const handleLogout = async () => { await apiLogout(); setUser(null); setAdminOpen(false); setSt(EMPTY_STATE); setBoard([]); setMatchdays([]); };
 
-  // Provisional K.o. fill: a team whose group 1st/2nd is already mathematically clinched
-  // (points-only, never on an unresolvable tiebreaker) is shown in its R32 slot before
-  // api-football resolves the pairing. Keyed by match n → { h?, a? } team codes.
-  const provisionalR32 = useMemo(() => {
-    const tables = {}, out = {};
-    const clinch = (g) => (tables[g] ||= groupClinch(g, MATCHES, st.results));
-    for (const m of MATCHES) {
-      for (const side of ["h", "a"]) {
-        const slot = side === "h" ? m.h : m.a;
-        let g = /^Sieger Gruppe ([A-L])$/.exec(slot);
-        if (g) { const c = clinch(g[1]).winner; if (c) (out[m.n] ||= {})[side] = c; continue; }
-        g = /^2\. Gruppe ([A-L])$/.exec(slot);            // "3. (…)" best-third slots fall through (out of scope)
-        if (g) { const c = clinch(g[1]).runnerUp; if (c) (out[m.n] ||= {})[side] = c; }
-      }
-    }
-    return out;
-  }, [st.results]);
-
-  // Confirmed (official) team code for a side: api-football resolution, else a known
-  // static code (group games). null when a K.o. pairing isn't official yet.
-  const confirmedCode = (m, side) => {
+  // Effective team code / label per match side. K.o. sides are filled by api-football
+  // (st.resolved); until then the slot shows its placeholder ("Sieger Gruppe A").
+  const teamCode = (m, side) => {
     const r = st.resolved[m.n];
     const rc = r && (side === "h" ? r.homeCode : r.awayCode);
     if (rc) return rc;
     const own = side === "h" ? m.h : m.a;
     return known(own) ? own : null;
   };
-  // Code for DISPLAY: confirmed, else the provisional clinch (resolution above always wins).
-  const teamCode = (m, side) => confirmedCode(m, side) || provisionalR32[m.n]?.[side] || null;
   const teamLabel = (m, side) => {
     const code = teamCode(m, side);
     if (code) return TEAMS[code].name;
@@ -198,10 +177,8 @@ export default function App() {
     const rn = r && (side === "h" ? r.homeName : r.awayName);
     return rn || (side === "h" ? m.h : m.a);
   };
-  // A pairing is official (tippable) only when BOTH sides are CONFIRMED — never on a
-  // provisional clinch. A side is "provisional" when shown but not yet confirmed.
-  const isConfirmed = (m) => !!(confirmedCode(m, "h") && confirmedCode(m, "a"));
-  const isProvisional = (m, side) => !confirmedCode(m, side) && !!teamCode(m, side);
+  // A pairing is fixed (tippable) only when BOTH sides are known.
+  const isConfirmed = (m) => !!(teamCode(m, "h") && teamCode(m, "a"));
 
   const setTip = (n, side, val) => {
     setSt((prev) => {
@@ -334,7 +311,6 @@ export default function App() {
               teamLabel={teamLabel}
               teamCode={teamCode}
               isConfirmed={isConfirmed}
-              isProvisional={isProvisional}
               score={score}
               onOpenMatch={setOpenMatchN}
             />

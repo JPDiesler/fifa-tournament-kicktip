@@ -1,5 +1,4 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { CircleDashed } from "lucide-react";
 import Flag from "@/components/Flag.jsx";
 import PointsBadge from "@/components/PointsBadge.jsx";
 import { isLive } from "@/lib/matchtime.js";
@@ -32,19 +31,16 @@ function subtreeByRound(rootN, byN) {
   return rounds;
 }
 
-function TeamRow({ code, label, goal, win, lose, prov }) {
+function TeamRow({ code, label, goal, win, lose }) {
   return (
     <div className={`flex items-center justify-between gap-1 ${win ? "font-bold text-app-accent" : lose ? "text-muted opacity-50" : "text-foreground"}`}>
-      <span className="flex min-w-0 items-center gap-1">
-        <Flag code={code} sm /><span className="truncate">{label}</span>
-        {prov && <CircleDashed size={11} className="shrink-0 text-muted opacity-70"><title>vorläufig – Gruppenplatz steht fest, Paarung noch nicht offiziell</title></CircleDashed>}
-      </span>
+      <span className="flex min-w-0 items-center gap-1"><Flag code={code} sm /><span className="truncate">{label}</span></span>
       <span className="tabular-nums">{goal}</span>
     </div>
   );
 }
 
-function Tile({ m, me, st, teamLabel, teamCode, score, onOpen, setRef, isConfirmed, isProvisional }) {
+function Tile({ m, me, st, teamLabel, teamCode, score, onOpen, setRef, isConfirmed }) {
   const r = st.results[m.n];
   const has = r && r.h !== "" && r.a !== "";
   // K.o. winner side from the source — set even for a penalty shootout, where the
@@ -65,8 +61,8 @@ function Tile({ m, me, st, teamLabel, teamCode, score, onOpen, setRef, isConfirm
         <span>Sp. {m.n}</span>
         {live ? <LiveBadge live={lv || { phase: "LIVE" }} /> : pts != null && <PointsBadge points={pts} />}
       </div>
-      <TeamRow code={teamCode(m, "h")} label={teamLabel(m, "h")} goal={has ? r.h : isLiveMatch ? lh : ""} win={homeWin} lose={has && !homeWin} prov={isProvisional(m, "h")} />
-      <TeamRow code={teamCode(m, "a")} label={teamLabel(m, "a")} goal={has ? r.a : isLiveMatch ? la : ""} win={awayWin} lose={has && !awayWin} prov={isProvisional(m, "a")} />
+      <TeamRow code={teamCode(m, "h")} label={teamLabel(m, "h")} goal={has ? r.h : isLiveMatch ? lh : ""} win={homeWin} lose={has && !homeWin} />
+      <TeamRow code={teamCode(m, "a")} label={teamLabel(m, "a")} goal={has ? r.a : isLiveMatch ? la : ""} win={awayWin} lose={has && !awayWin} />
     </div>
   );
   return (
@@ -91,7 +87,7 @@ function Column({ label, matches, tileProps, setRef }) {
 
 // "K.O." tab: two-sided bracket, final in the centre, FWC26 logo above it.
 // Connector lines are drawn as an SVG overlay measured from the tile positions.
-export default function Bracket({ matches, me, st, teamLabel, teamCode, isConfirmed, isProvisional, score, onOpenMatch }) {
+export default function Bracket({ matches, me, st, teamLabel, teamCode, isConfirmed, score, onOpenMatch }) {
   const byN = Object.fromEntries(matches.map((m) => [m.n, m]));
   const final = byN[104];
   const p3 = byN[103];
@@ -145,7 +141,7 @@ export default function Bracket({ matches, me, st, teamLabel, teamCode, isConfir
     return () => { ro.disconnect(); window.removeEventListener("resize", compute); clearTimeout(t); };
   }, [matches, st]);
 
-  const tileProps = { me, st, teamLabel, teamCode, isConfirmed, isProvisional, score, onOpen: onOpenMatch };
+  const tileProps = { me, st, teamLabel, teamCode, isConfirmed, score, onOpen: onOpenMatch };
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-border bg-surface p-3">
@@ -187,7 +183,7 @@ export default function Bracket({ matches, me, st, teamLabel, teamCode, isConfir
           <Column label="1/16" matches={right.R32} tileProps={tileProps} setRef={setRef} />
         </div>
       </div>
-      <p className="mt-3 text-center text-xs text-muted">Klick auf ein Spiel zum Tippen · Sieger in der Akzentfarbe, Ausgeschiedene abgedunkelt · <CircleDashed size={11} className="inline align-text-bottom" /> = Gruppenplatz steht fest, Paarung noch nicht offiziell</p>
+      <p className="mt-3 text-center text-xs text-muted">Klick auf ein Spiel zum Tippen · Sieger in der Akzentfarbe, Ausgeschiedene abgedunkelt</p>
     </div>
   );
 }
