@@ -1,16 +1,27 @@
 import { useEffect, useState } from "react";
-import { Button, Popover, Switch, Label, Spinner } from "@heroui/react";
-import { Bell, BellOff, BellRing } from "lucide-react";
+import { Button, Popover, Switch, Spinner } from "@heroui/react";
+import { Bell, BellOff, BellRing, Play, Goal, Timer, Flag, TrendingDown, Medal, Bot, AlarmClock, Trophy, BarChart3 } from "lucide-react";
 import { pushSupported, permission, currentSubscription, enablePush, disablePush, getPrefs, setPrefs, sendTest } from "@/lib/push.js";
 
-// The six opt-in categories (keys match the server's EVENTS). Order = display order.
-const EVENT_META = [
-  ["kickoff", "Anpfiff", "Wenn ein Spiel startet (mit Sender)."],
-  ["goal", "Tore", "Bei jedem Tor (ca. 3 Min verzögert)."],
-  ["fulltime", "Endstand & Punkte", "Endergebnis + deine erzielten Punkte."],
-  ["tipReminder", "Tipp-Erinnerung", "Wenn ein Spiel bald startet und du noch nicht getippt hast."],
-  ["champReminder", "Weltmeister-Tipp", "Erinnerung kurz vor der Sperre."],
-  ["dailySummary", "Tages-Auswertung", "Abends: deine Tagespunkte + Platzierung."],
+// Opt-in categories (keys match the server's EVENTS), grouped + iconised for a compact,
+// scannable list. One row = icon + label + toggle (whole row tappable).
+const GROUPS = [
+  { title: "Live-Spiel", items: [
+    { key: "kickoff", label: "Anpfiff", Icon: Play },
+    { key: "goal", label: "Tore", Icon: Goal },
+    { key: "phaseChanged", label: "Spielphase", Icon: Timer },
+    { key: "fulltime", label: "Endstand & Punkte", Icon: Flag },
+  ] },
+  { title: "Wertung", items: [
+    { key: "overtaken", label: "Überholt", Icon: TrendingDown },
+    { key: "achievement", label: "Erfolge", Icon: Medal },
+    { key: "recap", label: "KI-Rückblick", Icon: Bot },
+  ] },
+  { title: "Erinnerungen", items: [
+    { key: "tipReminder", label: "Tipp-Erinnerung", Icon: AlarmClock },
+    { key: "champReminder", label: "Weltmeister-Tipp", Icon: Trophy },
+    { key: "dailySummary", label: "Tages-Auswertung", Icon: BarChart3 },
+  ] },
 ];
 
 // Navbar bell → a popover to enable push on THIS device and toggle each category.
@@ -55,44 +66,55 @@ export default function NotificationsButton({ onFlash }) {
       <Button aria-label="Benachrichtigungen" variant="tertiary" size="sm" isIconOnly className="shrink-0">
         {on ? <BellRing size={16} className="text-app-accent" /> : <Bell size={16} />}
       </Button>
-      <Popover.Content className="w-80" placement="bottom">
-        <Popover.Dialog>
+      <Popover.Content className="w-72" placement="bottom">
+        <Popover.Dialog className="p-0" aria-label="Benachrichtigungen">
           <Popover.Arrow />
-          <Popover.Heading>Benachrichtigungen</Popover.Heading>
 
           {!supported ? (
-            <p className="mt-2 text-sm text-muted">
+            <p className="p-4 text-sm text-muted">
               Dieses Gerät/dieser Browser unterstützt keine Push-Nachrichten. Auf dem iPhone: über „Teilen → Zum Home-Bildschirm" installieren, dann hier aktivieren.
             </p>
           ) : denied ? (
-            <p className="mt-2 text-sm text-muted">
+            <p className="p-4 text-sm text-muted">
               Benachrichtigungen sind im Browser blockiert. Bitte in den Seiteneinstellungen erlauben und erneut versuchen.
             </p>
           ) : !loaded ? (
-            <div className="mt-3 flex items-center gap-2 text-sm text-muted"><Spinner size="sm" /> Lade …</div>
+            <div className="flex items-center gap-2 p-4 text-sm text-muted"><Spinner size="sm" /> Lade …</div>
           ) : !on ? (
-            <div className="mt-3 flex flex-col gap-2">
-              <p className="text-sm text-muted">Aktiviere Push auf diesem Gerät, um Anpfiff, Tore, Endstände und Erinnerungen zu erhalten.</p>
+            <div className="flex flex-col gap-3 p-4">
+              <div className="flex items-center gap-2 text-sm font-semibold"><Bell size={15} /> Benachrichtigungen</div>
+              <p className="text-sm text-muted">Aktiviere Push auf diesem Gerät für Anpfiff, Tore, Endstände und Erinnerungen.</p>
               <Button variant="primary" size="sm" isDisabled={busy} onPress={enable}><Bell size={14} /> Auf diesem Gerät aktivieren</Button>
             </div>
           ) : (
-            <div className="mt-3 flex flex-col gap-3">
-              <div className="flex flex-col gap-2.5">
-                {EVENT_META.map(([key, label, desc]) => (
-                  <Switch key={key} size="sm" isSelected={prefs[key] !== false} onChange={(v) => toggle(key, v)}>
-                    <Switch.Control><Switch.Thumb /></Switch.Control>
-                    <Switch.Content>
-                      <Label className="text-sm">{label}</Label>
-                      <span className="text-xs text-muted">{desc}</span>
-                    </Switch.Content>
-                  </Switch>
+            <>
+              <div className="flex items-center gap-2 px-3 pb-1 pt-3 text-sm font-semibold">
+                <BellRing size={15} className="text-app-accent" /> Benachrichtigungen
+              </div>
+              <div className="flex flex-col gap-2.5 px-3 py-2">
+                {GROUPS.map(({ title, items }) => (
+                  <div key={title}>
+                    <div className="mb-0.5 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted/60">{title}</div>
+                    <div className="flex flex-col">
+                      {items.map(({ key, label, Icon }) => (
+                        <Switch key={key} aria-label={label} size="sm" className="w-full py-1"
+                          isSelected={prefs[key] !== false} onChange={(v) => toggle(key, v)}>
+                          <Switch.Content className="flex w-full items-center gap-2.5">
+                            <Icon size={15} className="shrink-0 text-muted" />
+                            <span className="text-sm">{label}</span>
+                            <Switch.Control className="ml-auto shrink-0"><Switch.Thumb /></Switch.Control>
+                          </Switch.Content>
+                        </Switch>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
-              <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
+              <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2">
                 <Button variant="tertiary" size="sm" isDisabled={busy} onPress={test}>Test senden</Button>
                 <Button variant="tertiary" size="sm" isDisabled={busy} onPress={disable}><BellOff size={14} /> Deaktivieren</Button>
               </div>
-            </div>
+            </>
           )}
         </Popover.Dialog>
       </Popover.Content>
