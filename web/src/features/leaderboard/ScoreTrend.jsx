@@ -200,7 +200,7 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
         </div>
       )}
 
-      <div ref={wrapRef} className="relative w-full" onPointerMove={onMove} onPointerDown={onMove} onPointerLeave={() => setActive(null)}>
+      <div ref={wrapRef} className="relative w-full touch-pan-y" onPointerMove={onMove} onPointerDown={onMove} onPointerLeave={(e) => { if (e.pointerType === "mouse") setActive(null); }}>
         {w > 0 && (
           <svg width={w} height={H} role="img" aria-label={title}>
             {/* y grid + labels */}

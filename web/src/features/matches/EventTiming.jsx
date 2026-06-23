@@ -95,7 +95,7 @@ export default function EventTiming({ timing, knockout = false, homeColor = "#22
         </div>
       </div>
 
-      <div ref={wrapRef} className="relative w-full" onPointerMove={onMove} onPointerDown={onMove} onPointerLeave={() => setActive(null)}>
+      <div ref={wrapRef} className="relative w-full touch-pan-y" onPointerMove={onMove} onPointerDown={onMove} onPointerLeave={(e) => { if (e.pointerType === "mouse") setActive(null); }}>
         {w > 0 && has && (
           <svg width={w} height={H} role="img" aria-label="Ereignis-Timing über die Spielzeit">
             <defs><clipPath id="et-clip"><rect x={pad.l - 3} y={pad.t - 4} width={innerW + 6} height={innerH + 7} /></clipPath></defs>
