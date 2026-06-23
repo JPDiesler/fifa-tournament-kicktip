@@ -239,7 +239,7 @@ export default function App() {
   if (!user) return <LoginScreen onLoggedIn={handleLoggedIn} initialError={loginError} />;
 
   const TABS = [
-    ["anstehend", "Anstehend", CalendarClock],
+    ["anstehend", "Chronologisch", CalendarClock],
     ["gruppen", "Gruppenphase", CalendarDays],
     ["ko", "K.O.", GitBranch],
     ["rang", "Punktstand", ListOrdered],
