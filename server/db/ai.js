@@ -234,6 +234,18 @@ export function getAiPrediction(userId, matchN) {
 export const hasAiPrediction = (userId, matchN) =>
   db.prepare("SELECT 1 FROM ai_predictions WHERE user_id=? AND match_n=? LIMIT 1").get(userId, Number(matchN)) != null;
 
+// kuerzel → chosen v2 strategy ("ev_neutral" | "variance_seeking" | "variance_averse")
+// for one match's done AI predictions (drives the per-tip strategy badge). Empty for v1
+// predictions that have no `strategy` field.
+export function aiStrategiesForMatch(matchN) {
+  const out = {};
+  for (const r of db.prepare(`SELECT u.kuerzel AS k, p.prediction FROM ai_predictions p JOIN users u ON u.id=p.user_id
+    WHERE p.match_n=? AND p.status='done' AND p.prediction IS NOT NULL AND u.kuerzel IS NOT NULL`).all(Number(matchN))) {
+    try { const pr = JSON.parse(r.prediction); if (pr?.strategy) out[r.k] = pr.strategy; } catch { /* skip */ }
+  }
+  return out;
+}
+
 export const claimAiChamp = (userId, provider, model) =>
   db.prepare("INSERT OR IGNORE INTO ai_champ_predictions(user_id,status,provider,model) VALUES(?, 'pending', ?, ?)")
     .run(userId, provider || null, model || null).changes > 0;

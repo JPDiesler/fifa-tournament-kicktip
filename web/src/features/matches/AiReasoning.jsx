@@ -1,17 +1,11 @@
 import { useEffect, useState } from "react";
 import { Modal, Spinner } from "@heroui/react";
 import ProviderLogo from "@/components/ProviderLogo.jsx";
+import StrategyBadge from "./aiStrategy.jsx";
 
 const pct = (x) => (x == null ? "—" : `${Math.round(x * 100)}%`);
 const num = (x) => (typeof x === "number" ? x.toFixed(2) : x ?? "—");
 const signedPct = (x) => (typeof x === "number" ? `${x >= 0 ? "+" : ""}${Math.round(x * 100)}%` : "—");
-
-// v2 strategy mode → label + tint (ev_neutral = the default, kept subtle).
-const STRAT = {
-  ev_neutral: { label: "EV-neutral", cls: "bg-overlay text-muted" },
-  variance_seeking: { label: "Risiko · aufholen", cls: "bg-amber-500/15 text-amber-400" },
-  variance_averse: { label: "defensiv · Führung sichern", cls: "bg-sky-500/15 text-sky-400" },
-};
 
 function Stat({ label, v }) {
   return (
@@ -83,7 +77,7 @@ export default function AiReasoning({ matchN, player, providerMeta, onClose }) {
                 <div className="flex items-center justify-between gap-2">
                   <span className="min-w-0 truncate text-xs text-muted">{data.provider}{data.model ? ` · ${data.model}` : ""}</span>
                   <span className="flex shrink-0 items-center gap-2">
-                    {p?.strategy && STRAT[p.strategy] && <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${STRAT[p.strategy].cls}`}>{STRAT[p.strategy].label}</span>}
+                    {p?.strategy && <StrategyBadge strategy={p.strategy} withLabel />}
                     <span className="text-lg font-extrabold tabular-nums">{data.tip?.h}:{data.tip?.a}</span>
                   </span>
                 </div>

@@ -1,6 +1,6 @@
 // Player-facing data: state, leaderboard, matchdays, tips, champion. Mounted at /api.
 import { Router } from "express";
-import { stateForUser, leaderboard, matchdayBreakdown, setUserTips, setChamp, getUserByKuerzel, getAiPrediction, getSetting, liveByMatch, getTeamMetaRow } from "../db.js";
+import { stateForUser, leaderboard, matchdayBreakdown, setUserTips, setChamp, getUserByKuerzel, getAiPrediction, aiStrategiesForMatch, getSetting, liveByMatch, getTeamMetaRow } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { isChampLocked, kickoff, isTipLocked } from "../services/locks.js";
 import { addClient } from "../services/liveStream.js";
@@ -76,6 +76,17 @@ router.get("/ai-prediction", requireAuth, (req, res) => {
   const pred = getAiPrediction(u.id, matchN);
   if (!pred || pred.status !== "done" || !pred.prediction) return res.status(404).json({ error: "Keine Begründung vorhanden" });
   res.json({ player: kuerzel, provider: pred.provider, model: pred.model, tip: { h: pred.tip_h, a: pred.tip_a }, prediction: pred.prediction });
+});
+
+// All AI players' chosen strategy for one match → { kuerzel: strategy } (for the per-tip
+// badge). Same visibility gate as the reasoning above; {} before it's due.
+router.get("/ai-strategies", requireAuth, (req, res) => {
+  const matchN = Number(req.query.match);
+  if (!matchN) return res.status(400).json({ error: "bad" });
+  const mode = getSetting("aiReasoningVisibleAfter", process.env.AI_REASONING_VISIBLE_AFTER || "kickoff");
+  const ko = kickoff(matchN);
+  const visible = mode === "lock" ? isTipLocked(matchN) : (ko != null && Date.now() >= ko);
+  res.json({ strategies: visible ? aiStrategiesForMatch(matchN) : {} });
 });
 
 router.post("/tips", requireAuth, (req, res) => {

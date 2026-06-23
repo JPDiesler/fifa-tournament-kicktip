@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Drawer, Chip } from "@heroui/react";
 import { Lock, Info } from "lucide-react";
 import { MATCHES } from "@/data";
@@ -6,6 +6,7 @@ import Flag from "@/components/Flag.jsx";
 import PlayerName from "@/components/PlayerName.jsx";
 import Carousel from "@/components/Carousel.jsx";
 import AiReasoning from "./AiReasoning.jsx";
+import StrategyBadge from "./aiStrategy.jsx";
 import ScoreInput from "./ScoreInput.jsx";
 import PointsBadge from "@/components/PointsBadge.jsx";
 import BroadcastChips from "@/features/broadcasts/BroadcastChips.jsx";
@@ -44,8 +45,19 @@ function buildKitColors(st, teamCode) {
 // then Spielverlauf, Aufstellung — Statistik/Pre-Match plug in here too).
 export default function MatchDetail({ match, isOpen, onClose, st, board, me, teamLabel, teamCode, isConfirmed, score, onTip }) {
   const [reasonFor, setReasonFor] = useState(null); // kürzel of the AI tip whose reasoning is open
+  const [aiStrategies, setAiStrategies] = useState({}); // kuerzel → strategy, for the per-tip badge
   const broadcasts = match ? (st.broadcasts?.[match.n] || []) : [];
   const kitByCode = useMemo(() => buildKitColors(st, teamCode), [st.details, teamCode]);
+  // Fetch the AI players' chosen strategies once the tips are visible (locked) — same gate
+  // as the comparison list below. {} otherwise / for v1 predictions without a strategy.
+  const stratLocked = !!(isOpen && match && (st.locks?.lockedMatches || []).includes(match.n));
+  useEffect(() => {
+    setAiStrategies({});
+    if (!stratLocked) return;
+    let alive = true;
+    fetch(`/api/ai-strategies?match=${match.n}`).then((r) => (r.ok ? r.json() : { strategies: {} })).then((d) => { if (alive) setAiStrategies(d.strategies || {}); }).catch(() => {});
+    return () => { alive = false; };
+  }, [stratLocked, match]);
   if (!match) {
     return <Drawer.Backdrop isOpen={false} onOpenChange={() => onClose()}><Drawer.Content placement="bottom"><Drawer.Dialog /></Drawer.Content></Drawer.Backdrop>;
   }
@@ -132,6 +144,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
                     {isAi && <Info size={13} className="shrink-0 text-muted" />}
                   </span>
                   <span className="flex shrink-0 items-center gap-2">
+                    {isAi && <StrategyBadge strategy={aiStrategies[o.k]} />}
                     <span className="tabular-nums">{o.tip.h}:{o.tip.a}</span>
                     <PointsBadge points={o.pts} />
                   </span>
