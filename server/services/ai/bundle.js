@@ -7,8 +7,14 @@ import { POINTS } from "../scoring.js";
 import { codeForName, known } from "../fixtures.js";
 import { getAdapter } from "../sources/index.js";
 import { orientOdds } from "../sources/oddsParse.js";
+import { precompute } from "./math.js";
 import { budgetedCall } from "../coordinator.js";
 import { extIdsByMatch, getResolved, getMatchPreview } from "../../db.js";
+
+// Deterministic server-side math path: when on (default), de-vig the cached odds and
+// pre-derive λ / score matrix / EV grid in JS, handed to the LLM as ground truth. Set
+// AI_PRECOMPUTE=off to fall back to the LLM doing the arithmetic from the raw odds.
+const PRECOMPUTE = (process.env.AI_PRECOMPUTE || "on").toLowerCase() !== "off";
 
 const matchByN = new Map(MATCHES.map((m) => [m.n, m]));
 const teamName = (code) => TEAMS[code]?.name || code;
@@ -56,6 +62,7 @@ export async function buildBundle(matchN) {
     },
     ...(odds ? { odds } : {}),
   };
+  if (PRECOMPUTE && odds) { const pc = precompute(odds, SCORING); if (pc) base.precomputed = pc; }
 
   const apiAd = getAdapter("apifootball");
   if (apiAd?.configured?.() && ext.apifootball) {
