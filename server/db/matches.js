@@ -46,19 +46,19 @@ export function broadcastsByMatch() {
 export function replaceLive(map) {
   const asOf = Date.now(); // capture time → the client anchors its local match clock to this
   const del = db.prepare("DELETE FROM live");
-  const ins = db.prepare("INSERT INTO live(match_n,h,a,phase,minute,injury,as_of,odds,pen) VALUES(?,?,?,?,?,?,?,?,?)");
+  const ins = db.prepare("INSERT INTO live(match_n,h,a,phase,minute,injury,as_of,odds,pen,status) VALUES(?,?,?,?,?,?,?,?,?,?)");
   const tx = db.transaction(() => {
     del.run();
     for (const [n, v] of Object.entries(map || {}))
-      ins.run(Number(n), String(v.h ?? ""), String(v.a ?? ""), v.phase ?? null, v.minute ?? null, v.injury ?? null, asOf, v.odds ? JSON.stringify(v.odds) : null, v.pen ? JSON.stringify(v.pen) : null);
+      ins.run(Number(n), String(v.h ?? ""), String(v.a ?? ""), v.phase ?? null, v.minute ?? null, v.injury ?? null, asOf, v.odds ? JSON.stringify(v.odds) : null, v.pen ? JSON.stringify(v.pen) : null, v.status ?? null);
   });
   tx();
 }
 // { match_n: { h, a, phase, minute, injury, asOf, odds } } for matches currently in play.
 export function liveByMatch() {
   const out = {};
-  for (const r of db.prepare("SELECT match_n,h,a,phase,minute,injury,as_of,odds,pen FROM live").all())
-    out[r.match_n] = { h: r.h, a: r.a, phase: r.phase, minute: r.minute, injury: r.injury, asOf: r.as_of, odds: r.odds ? JSON.parse(r.odds) : null, pen: r.pen ? JSON.parse(r.pen) : null };
+  for (const r of db.prepare("SELECT match_n,h,a,phase,minute,injury,as_of,odds,pen,status FROM live").all())
+    out[r.match_n] = { h: r.h, a: r.a, phase: r.phase, minute: r.minute, injury: r.injury, asOf: r.as_of, odds: r.odds ? JSON.parse(r.odds) : null, pen: r.pen ? JSON.parse(r.pen) : null, status: r.status };
   return out;
 }
 

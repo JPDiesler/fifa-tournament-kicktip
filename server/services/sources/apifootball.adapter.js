@@ -20,7 +20,7 @@ export function mapApiFootballFixture(f) {
     providerId: "apifootball", extId: f.fixture?.id,
     dateMs: Date.parse(f.fixture?.date),
     finished: ["FT", "AET", "PEN"].includes(short),
-    live, phase,
+    live, phase, statusShort: short, // raw status → phase-change pushes (BT/SUSP distinct from the coarse `phase`)
     duration: short === "PEN" ? "PENALTY" : short === "AET" ? "EXTRA_TIME" : short === "FT" ? "REGULAR" : null,
     minute: f.fixture?.status?.elapsed ?? null,
     injuryTime: f.fixture?.status?.extra ?? null, // added/stoppage time of the current period (also set at FT)

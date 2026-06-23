@@ -11,9 +11,9 @@ import { buildPreview } from "./ai/bundle.js";
 import {
   setResult, setResolved, clearResolved, replaceLive, liveByMatch,
   getMeta, setMeta, getChampionActual, setChampionActual, setCapabilities,
-  setMatchDetail, setMatchFinalTime, setMatchPenalty, setMatchLineups, setMatchStats, setMatchPlayerStats, setMatchPreview, detailByMatch, setMatchExtIds,
+  setMatchDetail, setMatchFinalTime, setMatchPenalty, setMatchLineups, setMatchStats, setMatchPlayerStats, setMatchPreview, detailByMatch, setMatchExtIds, leaderboard,
 } from "../db.js";
-import { notifyKickoff, notifyGoal, notifyFinal } from "./push.js";
+import { notifyKickoff, notifyGoal, notifyFinal, notifyPhaseChange, notifyOvertakes } from "./push.js";
 import { publishLive } from "./liveStream.js";
 
 // Nominal final clock from the play length: regular → 90', extra time / penalties → 120'.
@@ -72,6 +72,7 @@ export async function sync(reason = "cron") {
     const events = [];
     const liveMap = {};
     const have = detailByMatch(); // existing scorers/cards/final clock per match
+    const board0 = leaderboard(); // standings BEFORE this pass's result writes → overtake diff
     let updated = 0, resolvedCount = 0, championCode = null;
 
     for (const rec of fixtures) {
@@ -105,14 +106,22 @@ export async function sync(reason = "cron") {
         const minute = rec.minute != null ? rec.minute : (prev?.minute ?? null);
         const injury = rec.minute != null ? rec.injuryTime : (prev?.injury ?? null);
         const phase = rec.phase || prev?.phase || null;
+        const status = rec.statusShort || prev?.status || null; // raw status → distinguishes Pause/Unterbrochen from the coarse phase
         // Shootout tally (status "P"); keep the last-known one if a poll fell back to a source without it.
         const pen = rec.penHome != null && rec.penAway != null ? { home: String(rec.penHome), away: String(rec.penAway) } : (prev?.pen ?? null);
-        liveMap[n] = { h: String(h), a: String(a), phase, minute, injury, pen };
+        liveMap[n] = { h: String(h), a: String(a), phase, minute, injury, pen, status };
         if (!prev) {
           events.push(() => notifyKickoff(n));
         } else {
           const ph = Number(prev.h) || 0, pa = Number(prev.a) || 0;
-          if (h > ph || a > pa) events.push(() => notifyGoal(n, h, a, (h - ph) >= (a - pa) ? "h" : "a"));
+          // Goal push — but NOT during the penalty shootout (status "P"): the displayed
+          // score holds at the ET level (the shootout tally lives in `pen`), so per-kick
+          // "Tor"-Pushes would be wrong/spammy. The shootout itself is announced once via
+          // the phase-change push ("Elfmeterschießen").
+          if (status !== "P" && (h > ph || a > pa)) events.push(() => notifyGoal(n, h, a, (h - ph) >= (a - pa) ? "h" : "a"));
+          // Phase transition (Halbzeit/Pause/Verlängerung/Elfmeterschießen/Unterbrechung).
+          // notifyPhaseChange filters to the notifiable statuses + dedupes.
+          if (prev.status && prev.status !== status) events.push(() => notifyPhaseChange(n, status, h, a));
         }
       }
 
@@ -122,6 +131,11 @@ export async function sync(reason = "cron") {
         championCode = codeForName(rec.winner === "home" ? rec.homeName : rec.awayName);
       }
     }
+
+    // Standings changed this pass → push "X hat dich überholt" to anyone who dropped.
+    // leaderboard() is deterministic from results, so a pass with no new results yields
+    // board0 === board1 → no diff → no spurious pushes.
+    if (updated > 0) { const board1 = leaderboard(); events.push(() => notifyOvertakes(board0, board1)); }
 
     // Fire queued push notifications (each idempotent + self-contained, fire-and-forget).
     for (const ev of events) { try { ev()?.catch?.((e) => console.error("push", e)); } catch (e) { console.error("push", e); } }

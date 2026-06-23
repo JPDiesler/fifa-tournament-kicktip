@@ -191,6 +191,10 @@ if (!db.prepare("PRAGMA table_info(live)").all().some((c) => c.name === "odds"))
 if (!db.prepare("PRAGMA table_info(live)").all().some((c) => c.name === "pen")) {
   db.exec("ALTER TABLE live ADD COLUMN pen TEXT"); // JSON { home, away } shootout tally (K.o., status "P")
 }
+// Migration for DBs created before the raw api-football status was stored on the live row.
+if (!db.prepare("PRAGMA table_info(live)").all().some((c) => c.name === "status")) {
+  db.exec("ALTER TABLE live ADD COLUMN status TEXT"); // raw status short (1H/HT/BT/ET/P/SUSP/INT/…) → phase-change pushes
+}
 // Migration for DBs created before match_detail held the final match clock.
 {
   const cols = db.prepare("PRAGMA table_info(match_detail)").all().map((c) => c.name);

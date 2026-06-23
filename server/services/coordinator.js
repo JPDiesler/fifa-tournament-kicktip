@@ -132,7 +132,7 @@ export function mergeFixtures(byProvider, fetched, routing) {
     const idFx = resFx || lsFx || phFx || mnFx || anyFx(n);
     if (!idFx) continue;
     const idO = oriented(idFx);
-    const rec = { n, ko: idFx.ko, finished: false, live: false, homeGoals: null, awayGoals: null, penHome: null, penAway: null, phase: null, minute: null, injuryTime: null, duration: null, winner: null, homeName: idO.homeName, awayName: idO.awayName, extIds: {} };
+    const rec = { n, ko: idFx.ko, finished: false, live: false, homeGoals: null, awayGoals: null, penHome: null, penAway: null, phase: null, statusShort: idFx.statusShort ?? null, minute: null, injuryTime: null, duration: null, winner: null, homeName: idO.homeName, awayName: idO.awayName, extIds: {} };
     for (const id of fetched) if (byProvider[id]?.[n]) rec.extIds[id] = byProvider[id][n].extId;
     if (resFx) {
       const o = oriented(resFx);

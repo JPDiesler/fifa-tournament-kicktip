@@ -13,8 +13,8 @@ import {
   removePushSubscription, broadcastsByMatch, legacyState, leaderboard,
 } from "../db.js";
 
-// The six opt-in event types — keys must match the frontend toggles.
-export const EVENTS = ["kickoff", "goal", "fulltime", "tipReminder", "champReminder", "dailySummary"];
+// The opt-in event types — keys must match the frontend toggles.
+export const EVENTS = ["kickoff", "goal", "phaseChanged", "fulltime", "overtaken", "achievement", "recap", "tipReminder", "champReminder", "dailySummary"];
 
 const REMINDER_LEAD_MIN = Number(process.env.TIP_REMINDER_LEAD_MIN || 60);   // nudge this long before kickoff
 const CHAMP_LEAD_MS = Number(process.env.CHAMP_REMINDER_LEAD_H || 24) * 3600_000;
@@ -128,6 +128,24 @@ export async function notifyGoal(n, h, a, side) {
     tag: `match-${n}`, renotify: true, url: "/", vibrate: [120, 60, 120, 60, 200], actions: OPEN,
   }));
 }
+// Match-phase change — Halbzeit / Pause (vor Verl.) / Verlängerung / Elfmeterschießen /
+// Unterbrechung. Driven by the RAW api-football status (not the coarse `phase` enum), so
+// BT (Pause) and SUSP/INT (Unterbrochen) are distinct. The score is passed in because the
+// live table isn't rewritten until after these events fire. Once per match+status.
+const PHASE_LABEL = { HT: "Halbzeit", BT: "Pause", ET: "Verlängerung", P: "Elfmeterschießen", SUSP: "Spiel unterbrochen", INT: "Spiel unterbrochen" };
+const PHASE_EMOJI = { HT: "⏸️", BT: "⏸️", ET: "⏱️", P: "🥅", SUSP: "⚠️", INT: "⚠️" };
+export async function notifyPhaseChange(n, status, h, a) {
+  const label = PHASE_LABEL[status]; if (!label) return; // 1H/2H/… are not notifiable phases
+  if (!markSentOnce(`phase:${n}:${status}`)) return;
+  const m = byId[n]; if (!m) return;
+  const st = legacyState();
+  const home = sideName("h", m, st.resolved), away = sideName("a", m, st.resolved);
+  await dispatch("phaseChanged", () => ({
+    title: `${PHASE_EMOJI[status] || "⏸️"} ${label}: ${home} – ${away}`,
+    body: `${home} ${h}:${a} ${away}`,
+    tag: `match-${n}`, renotify: true, url: "/", vibrate: [80, 40, 80], actions: OPEN,
+  }));
+}
 // Final whistle — personalised: each player gets the result plus their own points.
 export async function notifyFinal(n, h, a) {
   if (!markSentOnce(`fulltime:${n}`)) return;
@@ -141,6 +159,43 @@ export async function notifyFinal(n, h, a) {
     const pt = score((st.tips[r.kuerzel] || {})[n], res);
     return { title: `🏁 ${home} ${h}:${a} ${away}`, body: `Dein Tipp: ${ptLabel(pt)}`, ...base };
   });
+}
+
+// Pure rank-diff: who dropped a place and which rival(s) passed them. `before`/`after`
+// are leaderboard() arrays (already sorted); rank = index+1. An overtaker was BELOW the
+// player before and is ABOVE now. Exported for unit testing.
+export function computeOvertakes(before, after) {
+  const oldRank = {}, newRank = {}, nameOf = {};
+  before.forEach((r, i) => { oldRank[r.p] = i + 1; });
+  after.forEach((r, i) => { newRank[r.p] = i + 1; nameOf[r.p] = r.name || r.p; });
+  const out = [];
+  for (const r of after) {
+    const u = r.p, oU = oldRank[u], nU = newRank[u];
+    if (oU == null || nU == null || nU <= oU) continue; // didn't drop a place
+    const overtakers = after.filter((x) => x.p !== u && oldRank[x.p] > oU && newRank[x.p] < nU).map((x) => nameOf[x.p]);
+    if (overtakers.length) out.push({ kuerzel: u, oldRank: oU, newRank: nU, overtakers });
+  }
+  return out;
+}
+// Overtake push — tell each player who dropped which rival(s) passed them. Targeted
+// (sendToUser), gated by the per-user opt-in. Idempotent on the (player, new-rank,
+// overtakers) tuple so the same overtake isn't re-sent on later polls.
+export async function notifyOvertakes(before, after) {
+  const drops = computeOvertakes(before, after);
+  if (!drops.length) return;
+  ensureVapid();
+  const byKuerzel = {}; for (const r of pushRecipients()) if (r.kuerzel) byKuerzel[r.kuerzel] = r;
+  for (const d of drops) {
+    const rcpt = byKuerzel[d.kuerzel];
+    if (!rcpt || rcpt.prefs.overtaken === false) continue;
+    if (!markSentOnce(`overtake:${d.kuerzel}:${d.newRank}:${d.overtakers.join(",")}`)) continue;
+    const one = d.overtakers.length === 1, who = one ? d.overtakers[0] : `${d.overtakers.length} Mitspieler`;
+    await sendToUser(rcpt.userId, {
+      title: "📉 Überholt!",
+      body: `${who} ${one ? "hat" : "haben"} dich überholt — jetzt Platz ${d.newRank}.`,
+      tag: `rank-${d.kuerzel}`, renotify: true, url: "/", vibrate: [80, 40, 80], actions: OPEN,
+    });
+  }
 }
 
 // ===== time-based reminders (called from a cron) =====
