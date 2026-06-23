@@ -4,7 +4,7 @@ import { kickoffMs, isLive, delayLabel } from "@/lib/matchtime.js";
 
 // "Anstehend" tab: live matches first (accent-bordered), a divider, then the
 // upcoming matches (soonest first). Tapping opens the drawer.
-export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, score, onOpenMatch, onOpenBroadcasts }) {
+export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, isConfirmed, score, onOpenMatch, onOpenBroadcasts }) {
   const now = Date.now();
   const hasResult = (m) => { const r = st.results[m.n]; return !!(r && r.h !== "" && r.a !== ""); };
   const live = matches.filter((m) => isLive(m.dt, hasResult(m), now)).sort((a, b) => kickoffMs(a.dt) - kickoffMs(b.dt));
@@ -23,7 +23,7 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, scor
         points={score(myTip, result)}
         hasTip={!!(myTip && (myTip.h !== "" || myTip.a !== ""))}
         locked={(st.locks?.lockedMatches || []).includes(m.n)}
-        inactive={!(teamCode(m, "h") && teamCode(m, "a"))}
+        inactive={!isConfirmed(m)}
         live={st.live?.[m.n]}
         detail={st.details?.[m.n]}
         serverNow={st.locks?.serverNow}

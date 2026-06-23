@@ -3,7 +3,7 @@ import { kickoffMs, countdown } from "@/lib/matchtime.js";
 
 // Nudge: how many still-tippable matches the user hasn't tipped, plus the time
 // to the literal next kickoff (the next match overall — not the next untipped one).
-export default function OpenTipsBanner({ me, st, matches, teamCode, onGoToUpcoming }) {
+export default function OpenTipsBanner({ me, st, matches, isConfirmed, onGoToUpcoming }) {
   if (!me) return null;
   const now = Date.now();
   const locked = new Set(st.locks?.lockedMatches || []);
@@ -12,7 +12,7 @@ export default function OpenTipsBanner({ me, st, matches, teamCode, onGoToUpcomi
     const ms = kickoffMs(m.dt);
     if (ms > now && ms < nextMs) { nextMs = ms; nextDt = m.dt; } // soonest upcoming kickoff
     if (locked.has(m.n) || ms <= now) continue;
-    if (!(teamCode(m, "h") && teamCode(m, "a"))) continue; // pairing not fixed yet
+    if (!isConfirmed(m)) continue; // pairing not officially fixed yet (provisional clinch is not tippable)
     const t = (st.tips[me] || {})[m.n];
     if (!(t && (t.h !== "" || t.a !== ""))) count++;
   }

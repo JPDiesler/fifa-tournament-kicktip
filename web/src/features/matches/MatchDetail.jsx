@@ -42,7 +42,7 @@ function buildKitColors(st, teamCode) {
 // Bottom-sheet detail for one match. A fixed teams+score header on top; below it a
 // swipeable carousel whose sections appear only when their data exists (Tipps always,
 // then Spielverlauf, Aufstellung — Statistik/Pre-Match plug in here too).
-export default function MatchDetail({ match, isOpen, onClose, st, board, me, teamLabel, teamCode, score, onTip }) {
+export default function MatchDetail({ match, isOpen, onClose, st, board, me, teamLabel, teamCode, isConfirmed, score, onTip }) {
   const [reasonFor, setReasonFor] = useState(null); // kürzel of the AI tip whose reasoning is open
   const broadcasts = match ? (st.broadcasts?.[match.n] || []) : [];
   const kitByCode = useMemo(() => buildKitColors(st, teamCode), [st.details, teamCode]);
@@ -58,7 +58,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   const teamMetaFor = (code) => { const m = st.teamMeta?.[code]; return { nickname: m?.nickname, logo: m?.logoVer ? `/api/team-logo/${code}?v=${m.logoVer}` : undefined }; };
   const home = { label: teamLabel(match, "h"), code: teamCode(match, "h"), ...teamMetaFor(teamCode(match, "h")) };
   const away = { label: teamLabel(match, "a"), code: teamCode(match, "a"), ...teamMetaFor(teamCode(match, "a")) };
-  const ready = !!(home.code && away.code); // pairing fixed (both teams known)?
+  const ready = isConfirmed(match); // official pairing (api-football) → tippable; a provisional clinch is not
   const phaseLabel = PHASES.find((p) => p.code === match.ph)?.label || "";
   const knockout = ["R32", "R16", "QF", "SF", "P3", "FIN"].includes(match.ph); // group games (A–L) have no extra time
   const cd = !hasResult ? countdown(match.dt) : null;
