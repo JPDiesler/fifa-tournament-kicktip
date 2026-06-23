@@ -13,7 +13,7 @@ import { anyMatchActive } from "./services/poller.js";
 import { sync, runBackfill, prefetchPreviews } from "./services/sync.js";
 import { liveDelayMs } from "./services/coordinator.js";
 import { applyRights, syncBroadcasts } from "./services/broadcasts.js";
-import { runTipReminders, runChampReminder, runDailySummary } from "./services/push.js";
+import { runTipReminders, runChampReminder, runDailySummary, runAchievementNotifications } from "./services/push.js";
 import { runAiScheduler } from "./services/ai/scheduler.js";
 import { pingClients } from "./services/liveStream.js";
 
@@ -53,6 +53,7 @@ cron.schedule(process.env.REMINDER_CRON || "*/10 * * * *", () => {
   runTipReminders().catch((e) => console.error("tipReminders", e));
   runChampReminder().catch((e) => console.error("champReminder", e));
   runDailySummary().catch((e) => console.error("dailySummary", e));
+  runAchievementNotifications().catch((e) => console.error("achievements", e));
 });
 // AI players: place each due match tip (≥5 min before kickoff, triggered at −10) and
 // the one-off champion tip. Idempotent (one LLM call per player+match), so a per-minute

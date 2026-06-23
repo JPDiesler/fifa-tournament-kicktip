@@ -12,6 +12,7 @@ import {
   getSetting, setSetting, markSentOnce, pushRecipients, subscriptionsForUser,
   removePushSubscription, broadcastsByMatch, legacyState, leaderboard,
 } from "../db.js";
+import { computeAchievements } from "./achievements.js";
 
 // The opt-in event types — keys must match the frontend toggles.
 export const EVENTS = ["kickoff", "goal", "phaseChanged", "fulltime", "overtaken", "achievement", "recap", "tipReminder", "champReminder", "dailySummary"];
@@ -251,6 +252,23 @@ export async function runDailySummary(now = Date.now()) {
       for (const m of ms) { const p = score((st.tips[r.kuerzel] || {})[m.n], st.results[m.n]); if (p != null) pts += p; }
       const rank = rankOf[r.kuerzel];
       await sendToUser(r.userId, { title: "📊 Spieltag ausgewertet", body: `Heute ${pts === 1 ? "1 Punkt" : `${pts} Punkte`}${rank ? ` · Platz ${rank}` : ""}.`, tag: `day-${day}`, url: "/", actions: OPEN });
+    }
+  }
+}
+// Newly unlocked achievements → one push per (player, achievement), ever. Unlock is
+// monotonic, so the markSentOnce ledger is the natural guard. Run from the reminder cron.
+export async function runAchievementNotifications() {
+  ensureVapid();
+  const st = legacyState();
+  for (const r of pushRecipients()) {
+    if (r.prefs.achievement === false || !r.kuerzel) continue;
+    for (const a of computeAchievements(r.kuerzel, st)) {
+      if (!a.unlocked || !markSentOnce(`achv:${r.userId}:${a.id}`)) continue;
+      await sendToUser(r.userId, {
+        title: `🏅 Erfolg freigeschaltet: ${a.label}`,
+        body: `${a.description} +${a.points === 1 ? "1 Punkt" : `${a.points} Punkte`}.`,
+        tag: `achv-${a.id}`, url: "/", vibrate: [80, 40, 80], actions: OPEN,
+      });
     }
   }
 }

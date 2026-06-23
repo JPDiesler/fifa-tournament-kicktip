@@ -3,6 +3,7 @@ import { TEAMS, CHAMP_BONUS } from "@/data";
 import { PT, known } from "@/lib/scoring.js";
 import Flag from "@/components/Flag.jsx";
 import { playerStats, bestWorstDay } from "./stats.js";
+import AchievementsList from "@/features/achievements/AchievementsList.jsx";
 
 const Tile = ({ label, value, sub, valueClass = "" }) => (
   <div className="rounded-xl border border-border bg-surface p-3">
@@ -36,6 +37,7 @@ export default function MyStatsTab({ me, st, board = [], matchdays = [], teams =
         <div>
           <div className="text-[11px] uppercase tracking-wider text-muted">Gesamtpunkte</div>
           <div className="text-4xl font-extrabold text-success">{total}</div>
+          {row?.achPoints > 0 && <div className="text-[11px] text-muted">inkl. +{row.achPoints} aus Erfolgen</div>}
         </div>
         <div className="text-right">
           <div className="text-[11px] uppercase tracking-wider text-muted">Platz</div>
@@ -90,6 +92,9 @@ export default function MyStatsTab({ me, st, board = [], matchdays = [], teams =
           <Tile label="Schwächster Spieltag" value={worst ? `${worst.pts} P` : "—"} sub={worst?.label} />
         </div>
       )}
+
+      {/* achievements & streaks (points-relevant; tap a badge for details) */}
+      <AchievementsList achievements={st.achievements} />
 
       {/* champion pick */}
       <div className="rounded-xl border border-border bg-surface p-4">

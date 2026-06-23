@@ -4,6 +4,7 @@ import { liveByMatch, broadcastsByMatch, detailByMatch, teamMetaState } from "./
 import { playersMeta } from "./ai.js";
 import { MATCHES, CHAMP_BONUS } from "../data.js";
 import { score } from "../services/scoring.js";
+import { computeAchievements, achievementPoints } from "../services/achievements.js";
 import { isTipLocked, isChampLocked, champLockTs, TIP_LOCK_OFFSET_MIN } from "../services/locks.js";
 
 // ---------- legacy state shape (keeps the current /api/state contract) ----------
@@ -55,6 +56,9 @@ export function stateForUser(meKuerzel) {
     teamMeta: teamMetaState(),
     players: playersMeta(),
     championActual: getSetting("championActual", ""),
+    // Achievements for the current player — computed from the FULL state (others' tips are
+    // needed for lone-wolf/contrarian, but only ever on scored = long-locked matches).
+    achievements: meKuerzel ? computeAchievements(meKuerzel, legacyState()) : [],
     capabilities: getSetting("capabilities", null),
     meta: getSetting("meta", {}),
     locks: { offsetMin: TIP_LOCK_OFFSET_MIN, serverNow: now, champLocked, champLockTs, lockedMatches },
@@ -75,7 +79,9 @@ export function leaderboard() {
       }
       const champHit = !!(championActual && st.champs[kuerzel] === championActual);
       if (champHit) sum += CHAMP_BONUS;
-      return { p: kuerzel, name: name || kuerzel, sum, exact, champ: st.champs[kuerzel] || "", champHit };
+      const achPoints = achievementPoints(kuerzel, st); // bonus from unlocked achievements (points-relevant)
+      sum += achPoints;
+      return { p: kuerzel, name: name || kuerzel, sum, exact, champ: st.champs[kuerzel] || "", champHit, achPoints };
     })
     .sort((a, b) => b.sum - a.sum || b.exact - a.exact);
 }
