@@ -1,4 +1,4 @@
-import { db } from "./connection.js";
+import { db, getSetting, setSetting } from "./connection.js";
 import { createUser, updateUser } from "./users.js";
 import { score, POINTS } from "../services/scoring.js";
 import { encryptSecret, decryptSecret } from "../services/secrets.js";
@@ -44,12 +44,16 @@ export function setAiProviderTest(provider, ok) {
   db.prepare(`INSERT INTO ai_provider_keys(provider,test_ok,test_at,updated_at) VALUES(?,?,datetime('now'),datetime('now'))
     ON CONFLICT(provider) DO UPDATE SET test_ok=excluded.test_ok, test_at=excluded.test_at`).run(provider, ok ? 1 : 0);
 }
-// Key presence (masked to the last 4) + last test result per provider — never the raw key.
+// Per-provider model chosen for the connection test (persisted; "" = use the default).
+export const getAiProviderModel = (provider) => getSetting(`aiProviderModel:${provider}`, "") || "";
+export const setAiProviderModel = (provider, model) => setSetting(`aiProviderModel:${provider}`, (model || "").trim());
+
+// Key presence (masked to the last 4) + last test result + saved test model per provider — never the raw key.
 export function aiProviderKeyMeta(provider) {
   const r = db.prepare("SELECT key_enc,test_ok,test_at FROM ai_provider_keys WHERE provider=?").get(provider);
   let masked = null;
   if (r?.key_enc) { try { const k = decryptSecret(r.key_enc); masked = k ? `••••${k.slice(-4)}` : "••••"; } catch { masked = "••••"; } }
-  return { hasKey: !!r?.key_enc, masked, testOk: r?.test_ok == null ? null : !!r.test_ok, testAt: r?.test_at || null };
+  return { hasKey: !!r?.key_enc, masked, testOk: r?.test_ok == null ? null : !!r.test_ok, testAt: r?.test_at || null, model: getAiProviderModel(provider) };
 }
 // Per-provider request/token/error aggregates from the prediction log → { [provider]: {…} }.
 export function aiProviderStats() {

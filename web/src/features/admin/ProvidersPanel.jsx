@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Modal, Button, TextField, Input, Label, Spinner } from "@heroui/react";
+import { Modal, Button, TextField, Input, Label, Spinner, ComboBox, ListBox } from "@heroui/react";
 import { Pencil, Plug, RotateCcw, AlertTriangle } from "lucide-react";
 import ProviderLogo from "@/components/ProviderLogo.jsx";
 import DataTable from "@/components/DataTable.jsx";
 import Notice from "@/components/Notice.jsx";
-import { getAiProviders, setAiProviderKey, testAiProvider, getAiProviderErrors } from "./admin.js";
+import { getAiProviders, setAiProviderKey, testAiProvider, fetchAiProviderModels, setAiProviderModel, getAiProviderErrors } from "./admin.js";
 
 // ≈ USD per 1M tokens (blended) — a rough cost signal only; edit as prices change.
 const PRICES = { anthropic: 9, openai: 6, gemini: 5, mistral: 4 };
@@ -17,9 +17,23 @@ function ProviderEditModal({ p, onSaved, onFlash, onClose }) {
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
-  const save = async () => { setBusy(true); try { await setAiProviderKey(p.id, key); onFlash?.(`${p.name}: Key gespeichert`); onSaved(); onClose(); } catch (e) { onFlash?.(e.message); } finally { setBusy(false); } };
+  const [model, setModel] = useState(p.model || p.defaultModel || "");
+  const [models, setModels] = useState([]);
+  const [modelsBusy, setModelsBusy] = useState(false);
+  const [modelsErr, setModelsErr] = useState("");
+  // The single "Speichern" (bottom) saves key + test model together; enabled when either changed.
+  const dirtyModel = p.hasKey && model.trim() !== (p.model || p.defaultModel || "");
+  const save = async () => {
+    setBusy(true);
+    try {
+      if (key.trim()) await setAiProviderKey(p.id, key);
+      if (p.hasKey) await setAiProviderModel(p.id, model.trim()); // persist the chosen test model (picker only shown with a key)
+      onFlash?.(`${p.name}: gespeichert`); onSaved(); onClose();
+    } catch (e) { onFlash?.(e.message); } finally { setBusy(false); }
+  };
   const clear = async () => { try { await setAiProviderKey(p.id, ""); onFlash?.(`${p.name}: Key entfernt`); onSaved(); onClose(); } catch (e) { onFlash?.(e.message); } };
-  const test = async () => { setTesting(true); try { const r = await testAiProvider(p.id); onFlash?.(r.ok ? `${p.name}: Verbindung ok` : `${p.name}: ${r.error || "Fehler"}`); onSaved(); } catch (e) { onFlash?.(e.message); } finally { setTesting(false); } };
+  const loadModels = async () => { setModelsBusy(true); setModelsErr(""); try { const d = await fetchAiProviderModels(p.id); setModels(d.models || []); } catch (e) { setModelsErr(e.message); } finally { setModelsBusy(false); } };
+  const test = async () => { setTesting(true); try { const r = await testAiProvider(p.id, model.trim() || undefined); onFlash?.(r.ok ? `${p.name}: Verbindung ok${model.trim() ? ` (${model.trim()})` : ""}` : `${p.name}: ${r.error || "Fehler"}`); onSaved(); } catch (e) { onFlash?.(e.message); } finally { setTesting(false); } };
   return (
     <Modal.Backdrop isOpen onOpenChange={(o) => !o && onClose()}>
       <Modal.Container placement="center"><Modal.Dialog className="w-full sm:max-w-[420px]">
@@ -31,12 +45,43 @@ function ProviderEditModal({ p, onSaved, onFlash, onClose }) {
             <Label className="text-xs text-muted">API-Key {p.hasKey ? "(neuer Key ersetzt den alten)" : "(verschlüsselt gespeichert)"}</Label>
             <Input type="password" placeholder="sk-…" />
           </TextField>
+          {p.hasKey && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted">Modell für den Test</span>
+              <div className="flex items-center gap-2">
+                <ComboBox allowsCustomValue allowsEmptyCollection menuTrigger="focus" className="min-w-0 flex-1"
+                  inputValue={model} onInputChange={setModel}
+                  onSelectionChange={(k) => { if (k != null) setModel(String(k)); }}>
+                  <ComboBox.InputGroup>
+                    <Input placeholder="wählen oder eingeben …" />
+                    <ComboBox.Trigger />
+                  </ComboBox.InputGroup>
+                  <ComboBox.Popover>
+                    <ListBox>
+                      {models.map((m) => (
+                        <ListBox.Item key={m.id} id={m.id} textValue={m.id}>
+                          <span className="flex w-full items-center justify-between gap-2">
+                            <span className="min-w-0 truncate">{m.id}</span>
+                            <span className="shrink-0 text-[10px] text-muted">{m.contextLimit ? `${Math.round(m.contextLimit / 1000)}k` : ""}</span>
+                          </span>
+                          <ListBox.ItemIndicator />
+                        </ListBox.Item>
+                      ))}
+                    </ListBox>
+                  </ComboBox.Popover>
+                </ComboBox>
+                <Button variant="secondary" size="sm" onPress={loadModels} isDisabled={modelsBusy}>{modelsBusy ? "lädt …" : "Modelle laden"}</Button>
+              </div>
+              {modelsErr ? <span className="text-[11px] text-danger">{modelsErr}</span>
+                : <span className="text-[11px] text-muted">{models.length > 0 ? `${models.length} Modelle · ` : ""}„Modelle laden" holt die echte Liste; „Speichern" sichert Key + Testmodell{p.model ? ` · aktuell: ${p.model}` : ""}.</span>}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" size="sm" onPress={test} isPending={testing} isDisabled={!p.hasKey}><Plug size={13} /> Verbindung testen</Button>
             {p.hasKey && <Button variant="ghost" size="sm" onPress={clear}><RotateCcw size={13} /> Key entfernen</Button>}
             <div className="ml-auto flex gap-2">
               <Button variant="tertiary" onPress={onClose}>Schließen</Button>
-              <Button variant="primary" onPress={save} isPending={busy} isDisabled={!key.trim()}>Speichern</Button>
+              <Button variant="primary" onPress={save} isPending={busy} isDisabled={!(key.trim() || dirtyModel)}>Speichern</Button>
             </div>
           </div>
         </Modal.Body>
@@ -61,7 +106,7 @@ export default function ProvidersPanel({ onFlash }) {
   const test = async (p) => { setTestingId(p.id); try { const r = await testAiProvider(p.id); onFlash?.(r.ok ? `${p.name}: Verbindung ok` : `${p.name}: ${r.error || "Fehler"}`); load(); } catch (e) { onFlash?.(e.message); } finally { setTestingId(null); } };
 
   const columns = [
-    { key: "provider", header: "Provider", isRowHeader: true, sortable: true, sort: (p) => p.name, render: (p) => <span className="flex items-center gap-2"><ProviderLogo provider={p.id} size={18} /><span className="font-semibold">{p.name}</span><span className="text-[10px] text-muted">{p.defaultModel}</span></span> },
+    { key: "provider", header: "Provider", isRowHeader: true, sortable: true, sort: (p) => p.name, render: (p) => <span className="flex items-center gap-2"><ProviderLogo provider={p.id} size={18} /><span className="font-semibold">{p.name}</span><span className="text-[10px] text-muted" title={p.model ? "gespeichertes Testmodell" : "Default-Modell"}>{p.model || p.defaultModel}</span></span> },
     { key: "status", header: "Status / Key", sortable: true, sort: (p) => (p.testOk === true ? 2 : p.testOk === false ? 0 : 1), render: (p) => <span className="flex items-center gap-1.5 text-xs"><span className={`size-2 shrink-0 rounded-full ${dotCls(p)}`} title={p.testOk === true ? "Verbindung ok" : p.testOk === false ? "Verbindung fehlgeschlagen" : "ungetestet"} />{p.hasKey ? <span className="tabular-nums text-muted">{p.masked}</span> : <span className="text-danger">kein Key</span>}</span> },
     { key: "requests", header: "Anfragen", sortable: true, sort: (p) => p.requests, render: (p) => <span className="tabular-nums">{p.requests}</span> },
     { key: "tokens", header: "Token", sortable: true, sort: (p) => p.tokens, render: (p) => <span className="tabular-nums">{fmtTokens(p.tokens)}</span> },

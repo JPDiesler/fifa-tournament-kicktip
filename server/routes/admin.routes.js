@@ -11,6 +11,7 @@ import {
   getSourceConfig, setSourceConfig, getLivePollSeconds, setLivePollSeconds,
   listAiPlayers, createAiPlayer, updateAiPlayer, getAiPlayerById,
   setAiProviderKey, getAiProviderKey, setAiProviderTest, aiProviderKeyMeta, aiProviderStats, aiProviderErrors, aiPlayerCountByProvider,
+  getAiProviderModel, setAiProviderModel,
   setAiTestResult, aiPlayerStats, aiLastError, recentAiPredictions, deleteAiPrediction,
   aiRanking, getSetting, setSetting, setTeamMeta, teamOverrides,
 } from "../db.js";
@@ -246,8 +247,27 @@ router.post("/admin/ai-providers/:provider/test", requireAdmin, async (req, res)
   if (!adapter) return res.status(400).json({ error: "Unbekannter Provider" });
   const apiKey = getAiProviderKey(provider);
   if (!apiKey) return res.status(400).json({ error: "Kein API-Key" });
-  try { await adapter.testConnection({ apiKey }); setAiProviderTest(provider, true); res.json({ ok: true }); }
+  const model = (req.body?.model || "").trim() || getAiProviderModel(provider) || undefined; // chosen, else saved, else default
+  try { await adapter.testConnection({ apiKey, model }); setAiProviderTest(provider, true); res.json({ ok: true }); }
   catch (e) { setAiProviderTest(provider, false); res.json({ ok: false, error: String(e?.message || e).split(apiKey).join("***").slice(0, 300) }); }
+});
+// Persist the model used for this provider's test (and as the test fallback above). "" → default.
+router.post("/admin/ai-providers/:provider/model", requireAdmin, (req, res) => {
+  const provider = (req.params.provider || "").trim();
+  if (!isKnownProvider(provider)) return res.status(400).json({ error: "Unbekannter Provider" });
+  setAiProviderModel(provider, req.body?.model ?? "");
+  res.json({ ok: true, model: getAiProviderModel(provider) });
+});
+// Live model list for a provider (admin model picker on the provider test), saved key.
+router.post("/admin/ai-providers/:provider/models", requireAdmin, async (req, res) => {
+  const provider = (req.params.provider || "").trim();
+  const adapter = getAiAdapter(provider);
+  if (!adapter) return res.status(400).json({ error: "Unbekannter Provider" });
+  if (!adapter.listModels) return res.json({ models: [] });
+  const apiKey = getAiProviderKey(provider);
+  if (!apiKey) return res.status(400).json({ error: "Kein API-Key" });
+  try { res.json({ models: await adapter.listModels({ apiKey }) }); }
+  catch (e) { res.status(400).json({ error: String(e?.message || e).split(apiKey).join("***").slice(0, 300) }); }
 });
 router.get("/admin/ai-providers/:provider/errors", requireAdmin, (req, res) =>
   res.json({ errors: aiProviderErrors((req.params.provider || "").trim(), 30) }));

@@ -71,8 +71,14 @@ export async function getAiProviders() {
 export async function setAiProviderKey(provider, apiKey) {
   return j(await post(`/api/admin/ai-providers/${provider}/key`, { apiKey }), "Speichern fehlgeschlagen"); // "" clears
 }
-export async function testAiProvider(provider) {
-  return j(await post(`/api/admin/ai-providers/${provider}/test`), "Test fehlgeschlagen"); // { ok, error? }
+export async function testAiProvider(provider, model) {
+  return j(await post(`/api/admin/ai-providers/${provider}/test`, { model }), "Test fehlgeschlagen"); // { ok, error? }
+}
+export async function fetchAiProviderModels(provider) {
+  return j(await post(`/api/admin/ai-providers/${provider}/models`, {}), "Modelle nicht ladbar"); // { models: [{id,label?,contextLimit?}] }
+}
+export async function setAiProviderModel(provider, model) {
+  return j(await post(`/api/admin/ai-providers/${provider}/model`, { model }), "Modell speichern fehlgeschlagen"); // { ok, model }
 }
 export async function getAiProviderErrors(provider) {
   return j(await fetch(`/api/admin/ai-providers/${provider}/errors`), "Fehlerlog nicht ladbar"); // { errors: [...] }
