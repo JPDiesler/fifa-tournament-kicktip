@@ -156,6 +156,15 @@ CREATE TABLE IF NOT EXISTS ai_provider_keys (
   test_at    TEXT,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- AI-generated matchday recap (one per finished calendar day). Surfaced on the standings
+-- and pushed once; also a building block for the later "Turnier-Wrapped".
+CREATE TABLE IF NOT EXISTS matchday_recaps (
+  day        TEXT PRIMARY KEY,   -- 'YYYY-MM-DD'
+  text       TEXT NOT NULL,
+  provider   TEXT,
+  model      TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `);
 
 // Migration: consolidate legacy per-player AI keys → per-provider (first key per provider

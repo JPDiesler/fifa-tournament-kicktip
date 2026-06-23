@@ -25,6 +25,18 @@ export async function predict({ systemPrompt, bundle, apiKey, model }) {
   return { prediction: extractJson(text), raw: text, latencyMs, tokens };
 }
 
+// Free-text generation (no JSON enforcement) — used by the matchday recap.
+export async function generateText({ systemPrompt, prompt, apiKey, model, maxTokens = 700 }) {
+  const client = new Mistral({ apiKey });
+  const t0 = Date.now();
+  const r = await client.chat.complete({
+    model: model || meta.defaultModel,
+    messages: [{ role: "system", content: systemPrompt }, { role: "user", content: prompt }],
+    maxTokens,
+  });
+  return { text: textOf(r.choices?.[0]?.message?.content).trim(), latencyMs: Date.now() - t0, tokens: r.usage?.totalTokens || 0 };
+}
+
 export async function testConnection({ apiKey, model }) {
   const client = new Mistral({ apiKey });
   await client.chat.complete({ model: model || meta.defaultModel, messages: [{ role: "user", content: "ping" }], maxTokens: 8 });

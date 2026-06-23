@@ -7,6 +7,7 @@ export * from "./db/users.js";
 export * from "./db/tips.js";
 export * from "./db/matches.js";
 export * from "./db/ai.js";
+export * from "./db/recap.js";
 export * from "./db/push.js";
 export * from "./db/settings.js";
 export * from "./db/state.js";

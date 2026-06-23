@@ -38,6 +38,20 @@ export async function predict({ systemPrompt, bundle, apiKey, model, signal, rea
   return { prediction: extractJson(text), raw: text, latencyMs, tokens };
 }
 
+// Free-text generation (no JSON enforcement) — used by the matchday recap.
+export async function generateText({ systemPrompt, prompt, apiKey, model, signal, maxTokens = 700 }) {
+  const client = new OpenAI({ apiKey, maxRetries: 0, timeout: TIMEOUT });
+  const req = {
+    model: model || meta.defaultModel,
+    messages: [{ role: "system", content: systemPrompt }, { role: "user", content: prompt }],
+    max_completion_tokens: maxTokens,
+  };
+  const effort = DEFAULT_EFFORT; if (effort) req.reasoning_effort = effort;
+  const t0 = Date.now();
+  const resp = await client.chat.completions.create(req, { signal });
+  return { text: (resp.choices?.[0]?.message?.content || "").trim(), latencyMs: Date.now() - t0, tokens: resp.usage?.total_tokens || 0 };
+}
+
 export async function testConnection({ apiKey, model }) {
   const client = new OpenAI({ apiKey, maxRetries: 0, timeout: 30_000 });
   await client.chat.completions.create({ model: model || meta.defaultModel, max_completion_tokens: 8, messages: [{ role: "user", content: "ping" }] });

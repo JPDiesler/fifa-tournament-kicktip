@@ -34,6 +34,20 @@ export async function predict({ systemPrompt, bundle, apiKey, model, signal, thi
   return { prediction: extractJson(text), raw: text, latencyMs, tokens };
 }
 
+// Free-text generation (no JSON enforcement) — used by the matchday recap. Returns plain prose.
+export async function generateText({ systemPrompt, prompt, apiKey, model, signal, maxTokens = 700 }) {
+  const client = new Anthropic({ apiKey, maxRetries: 0, timeout: TIMEOUT });
+  const t0 = Date.now();
+  const msg = await client.messages.create({
+    model: model || meta.defaultModel,
+    max_tokens: maxTokens,
+    system: systemPrompt,
+    messages: [{ role: "user", content: prompt }],
+  }, { signal });
+  const text = (msg.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+  return { text, latencyMs: Date.now() - t0, tokens: (msg.usage?.input_tokens || 0) + (msg.usage?.output_tokens || 0) };
+}
+
 // Minimal connection check (no match prompt) — verifies key + model are usable.
 export async function testConnection({ apiKey, model }) {
   const client = new Anthropic({ apiKey, maxRetries: 0, timeout: 30_000 });

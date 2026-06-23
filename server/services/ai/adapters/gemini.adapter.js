@@ -21,6 +21,19 @@ export async function predict({ systemPrompt, bundle, apiKey, model }) {
   return { prediction: extractJson(text), raw: text, latencyMs, tokens };
 }
 
+// Free-text generation (no JSON enforcement) — used by the matchday recap.
+export async function generateText({ systemPrompt, prompt, apiKey, model, maxTokens = 700 }) {
+  const ai = new GoogleGenAI({ apiKey, httpOptions: { timeout: TIMEOUT } });
+  const t0 = Date.now();
+  const r = await ai.models.generateContent({
+    model: model || meta.defaultModel,
+    contents: prompt,
+    config: { systemInstruction: systemPrompt, maxOutputTokens: maxTokens },
+  });
+  const u = r.usageMetadata || {};
+  return { text: (r.text || "").trim(), latencyMs: Date.now() - t0, tokens: u.totalTokenCount || ((u.promptTokenCount || 0) + (u.candidatesTokenCount || 0)) };
+}
+
 export async function testConnection({ apiKey, model }) {
   const ai = new GoogleGenAI({ apiKey });
   await ai.models.generateContent({ model: model || meta.defaultModel, contents: "ping", config: { maxOutputTokens: 8 } });

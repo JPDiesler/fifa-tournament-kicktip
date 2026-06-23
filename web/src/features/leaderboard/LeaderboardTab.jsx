@@ -5,6 +5,7 @@ import { known } from "@/lib/scoring.js";
 import Flag from "@/components/Flag.jsx";
 import PlayerName from "@/components/PlayerName.jsx";
 import ScoreTrend from "./ScoreTrend.jsx";
+import RecapCard from "./RecapCard.jsx";
 import MyStatsTab from "@/features/stats/MyStatsTab.jsx";
 import PointsHistory from "@/features/stats/PointsHistory.jsx";
 import Head2Head from "@/features/stats/Head2Head.jsx";
@@ -65,6 +66,7 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
 
       {mode === "gesamt" && (
         <div className="space-y-3">
+          <RecapCard recap={st?.recap} />
           <Table variant="primary" aria-label="Rangliste">
             <Table.ScrollContainer>
               <Table.Content aria-label="Rangliste">

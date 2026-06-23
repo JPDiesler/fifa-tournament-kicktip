@@ -255,6 +255,13 @@ export async function runDailySummary(now = Date.now()) {
     }
   }
 }
+// KI matchday recap — broadcast once per day (idempotent). The recap text is generated +
+// stored by services/ai/recap.js; this just notifies. Body is a short teaser.
+export async function notifyMatchdayRecap(day, text) {
+  if (!markSentOnce(`recapPush:${day}`)) return;
+  const body = text.length > 90 ? `${text.slice(0, 88)}…` : text;
+  await dispatch("recap", () => ({ title: "🤖 KI-Spieltags-Rückblick", body, tag: `recap-${day}`, url: "/", actions: OPEN }));
+}
 // Newly unlocked achievements → one push per (player, achievement), ever. Unlock is
 // monotonic, so the markSentOnce ledger is the natural guard. Run from the reminder cron.
 export async function runAchievementNotifications() {

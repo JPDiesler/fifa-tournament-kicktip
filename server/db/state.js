@@ -2,6 +2,7 @@ import { db, getSetting } from "./connection.js";
 import { kuerzelById } from "./_shared.js";
 import { liveByMatch, broadcastsByMatch, detailByMatch, teamMetaState } from "./matches.js";
 import { playersMeta } from "./ai.js";
+import { latestRecap } from "./recap.js";
 import { MATCHES, CHAMP_BONUS } from "../data.js";
 import { score } from "../services/scoring.js";
 import { computeAchievements, achievementPoints } from "../services/achievements.js";
@@ -59,6 +60,7 @@ export function stateForUser(meKuerzel) {
     // Achievements for the current player — computed from the FULL state (others' tips are
     // needed for lone-wolf/contrarian, but only ever on scored = long-locked matches).
     achievements: meKuerzel ? computeAchievements(meKuerzel, legacyState()) : [],
+    recap: latestRecap(), // newest KI matchday recap ({ day, text }) or null
     capabilities: getSetting("capabilities", null),
     meta: getSetting("meta", {}),
     locks: { offsetMin: TIP_LOCK_OFFSET_MIN, serverNow: now, champLocked, champLockTs, lockedMatches },
