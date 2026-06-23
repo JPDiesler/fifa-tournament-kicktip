@@ -1,5 +1,35 @@
 # WM 2026 Tippspiel — Albert Weil
 
+> **🌍 English — quick orientation** (full documentation is in German below)
+>
+> A self-hosted, Kicktipp-style **World-Cup-2026 prediction game** for a small private
+> group, packaged as a single Docker container. Players predict group + knockout match
+> scores and the champion; results, the live scoreline/phase, knockout pairings and the
+> champion are fetched automatically from api-football. The UI is German.
+>
+> **Quickstart (Docker):**
+> ```bash
+> cp .env.example .env     # set SESSION_SECRET, ADMIN_PASSWORD, API_FOOTBALL_KEY
+> docker compose up -d --build
+> ```
+> Then open `http://<host>:5173` and sign in as admin (`ADMIN_USERNAME` / `ADMIN_PASSWORD`).
+>
+> **Stack:** Express + better-sqlite3 (server) · React 19 + Vite 5 + Tailwind v4 +
+> HeroUI v3-beta (web) · **api-football** as the sole data source (Season 2026 needs a
+> paid plan). Data lives in SQLite under the `/data` volume — no external DB server.
+>
+> **License:** the code is **MIT** (see [`LICENSE`](LICENSE)). Bundled visual assets
+> (flags, broadcaster logos, federation crests) are third-party and **not** relicensed —
+> see [`NOTICE`](NOTICE). **Contributing / build notes:** [`CONTRIBUTING.md`](CONTRIBUTING.md);
+> roadmap: [`ROADMAP.md`](ROADMAP.md).
+
+> **⚠️ Source of truth — `data.js`:** The tournament definition (teams + schedule)
+> lives in **`server/data.js`**. `web/src/data.js` must stay **byte-identical** to it.
+> Today the web copy is kept in sync **by hand** — edit `server/data.js` and mirror the
+> change into `web/src/data.js` in the same commit. (Phase 1 of [`ROADMAP.md`](ROADMAP.md)
+> makes the web copy an auto-generated artifact with a CI staleness check.) **Treat
+> `server/data.js` as canonical; never let the two drift.**
+
 Selbst gehostetes Tippspiel: Vorrunde + K.o. mit Turnierbaum, Weltmeister-Bonus,
 automatische Auswertung (klassisch 3/2/1, Weltmeister +10), **automatischer
 Ergebnis- & Weltmeister-Abruf** und **Near-Live-Anzeige** (verzögerter Zwischenstand
@@ -143,7 +173,12 @@ cd server && npm install && DATA_DIR=./data SESSION_SECRET=dev ADMIN_PASSWORD=te
 cd web && npm install && npm run dev                                                          # :5173, /api → :8080
 ```
 
-## Flaggen & Sender-Logos
-Werden **beim Build** heruntergeladen (`web/scripts/download-flags.mjs` und
-`download-broadcasters.mjs`, via `prebuild`) und lokal nach `web/src/assets/`
-gelegt — kein Hotlink zur Laufzeit.
+## Flaggen, Sender-Logos & Crests
+Werden **beim Build** heruntergeladen (`web/scripts/download-flags.mjs`,
+`download-broadcasters.mjs`, `download-team-logos.mjs`, via `prebuild`) und lokal nach
+`web/src/assets/` gelegt — kein Hotlink zur Laufzeit. Diese Assets sind
+Drittanbieter-Material (Wikimedia Commons / Wikipedia) und **nicht** unter MIT lizenziert —
+Quellen und Bedingungen siehe [`NOTICE`](NOTICE).
+
+## Lizenz
+Quellcode: **MIT** (siehe [`LICENSE`](LICENSE)). Mitwirken: [`CONTRIBUTING.md`](CONTRIBUTING.md).
