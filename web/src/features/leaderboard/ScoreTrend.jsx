@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Popover, Button, SearchField } from "@heroui/react";
 import { ChevronDown } from "lucide-react";
 import ProviderLogo from "@/components/ProviderLogo.jsx";
@@ -51,6 +51,14 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
     setW(el.clientWidth);
     return () => ro.disconnect();
   }, []);
+  // Touch has no "pointer leave" → once a tap pins the tooltip, a tap anywhere
+  // outside the chart dismisses it (mouse still clears on leave; see below).
+  useEffect(() => {
+    if (active == null) return;
+    const onDocDown = (e) => { if (!wrapRef.current?.contains(e.target)) setActive(null); };
+    document.addEventListener("pointerdown", onDocDown);
+    return () => document.removeEventListener("pointerdown", onDocDown);
+  }, [active]);
 
   if (!matchdays.length) return <p className="p-6 text-center text-sm text-muted">Noch keine ausgewerteten Spieltage.</p>;
 
@@ -200,7 +208,7 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
         </div>
       )}
 
-      <div ref={wrapRef} className="relative w-full touch-pan-y" onPointerMove={onMove} onPointerDown={onMove} onPointerLeave={(e) => { if (e.pointerType === "mouse") setActive(null); }}>
+      <div ref={wrapRef} className="relative w-full touch-pan-y" onPointerMove={onMove} onPointerDown={onMove} onPointerCancel={() => setActive(null)} onPointerLeave={(e) => { if (e.pointerType === "mouse") setActive(null); }}>
         {w > 0 && (
           <svg width={w} height={H} role="img" aria-label={title}>
             {/* y grid + labels */}

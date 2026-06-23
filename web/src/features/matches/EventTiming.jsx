@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 // When events happen across the match, per team — api-football buckets goals/cards into
 // 15-min windows and gives the SHARE (%) per window. Smooth monotone lines over time,
@@ -29,6 +29,14 @@ export default function EventTiming({ timing, knockout = false, homeColor = "#22
     ro.observe(el); setW(el.clientWidth);
     return () => ro.disconnect();
   }, []);
+  // Touch has no "pointer leave" → once a tap pins the tooltip, a tap anywhere
+  // outside the chart dismisses it (mouse still clears on leave; see below).
+  useEffect(() => {
+    if (active == null) return;
+    const onDocDown = (e) => { if (!wrapRef.current?.contains(e.target)) setActive(null); };
+    document.addEventListener("pointerdown", onDocDown);
+    return () => document.removeEventListener("pointerdown", onDocDown);
+  }, [active]);
   if (!timing?.home && !timing?.away) return null;
 
   const norm = (arr) => { const s = (arr || []).slice(0, N).map((v) => Number(v) || 0); while (s.length < N) s.push(0); return s; };
@@ -95,7 +103,7 @@ export default function EventTiming({ timing, knockout = false, homeColor = "#22
         </div>
       </div>
 
-      <div ref={wrapRef} className="relative w-full touch-pan-y" onPointerMove={onMove} onPointerDown={onMove} onPointerLeave={(e) => { if (e.pointerType === "mouse") setActive(null); }}>
+      <div ref={wrapRef} className="relative w-full touch-pan-y" onPointerMove={onMove} onPointerDown={onMove} onPointerCancel={() => setActive(null)} onPointerLeave={(e) => { if (e.pointerType === "mouse") setActive(null); }}>
         {w > 0 && has && (
           <svg width={w} height={H} role="img" aria-label="Ereignis-Timing über die Spielzeit">
             <defs><clipPath id="et-clip"><rect x={pad.l - 3} y={pad.t - 4} width={innerW + 6} height={innerH + 7} /></clipPath></defs>
