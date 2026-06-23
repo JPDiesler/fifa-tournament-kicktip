@@ -8,7 +8,7 @@ import { codeForName, known } from "../fixtures.js";
 import { getAdapter } from "../sources/index.js";
 import { orientOdds } from "../sources/oddsParse.js";
 import { budgetedCall } from "../coordinator.js";
-import { extIdsByMatch, getResolved } from "../../db.js";
+import { extIdsByMatch, getResolved, getMatchPreview } from "../../db.js";
 
 const matchByN = new Map(MATCHES.map((m) => [m.n, m]));
 const teamName = (code) => TEAMS[code]?.name || code;
@@ -27,6 +27,15 @@ function sidesFor(m, matchN) {
   return null;
 }
 
+// Pre-match 1X2 / O-U 2.5 / BTTS decimal odds from the cached preview (already oriented
+// to our home/away by buildPreview). The LLM de-vigs them as the market anchor — read
+// only, NO extra api-football call (the preview is prefetched ~every 3h).
+function oddsFromPreview(prev) {
+  const bm = prev?.odds?.bookmakers?.[0];
+  if (!bm?.mw || (bm.mw.home == null && bm.mw.draw == null && bm.mw.away == null)) return null;
+  return { home: bm.mw.home, draw: bm.mw.draw, away: bm.mw.away, over_under: bm.ou25 || null, btts: bm.btts || null, bookmaker: bm.name || null };
+}
+
 // Build the per-match bundle, or null if the match is unknown / K.o. teams unresolved.
 export async function buildBundle(matchN) {
   const m = matchByN.get(Number(matchN));
@@ -35,6 +44,7 @@ export async function buildBundle(matchN) {
   if (!sides) return null; // K.o. pairing not resolved yet → defer
   const { home, away } = sides;
   const ext = extIdsByMatch(matchN);
+  const odds = oddsFromPreview(getMatchPreview(matchN));
   const base = {
     match_id: matchN,
     scoring: SCORING,
@@ -44,6 +54,7 @@ export async function buildBundle(matchN) {
       venue: m.ven, kickoff: m.dt, neutral_venue: true, // World Cup → all venues neutral
       home, away,
     },
+    ...(odds ? { odds } : {}),
   };
 
   const apiAd = getAdapter("apifootball");

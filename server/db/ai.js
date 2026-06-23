@@ -1,6 +1,6 @@
 import { db } from "./connection.js";
 import { createUser, updateUser } from "./users.js";
-import { score } from "../services/scoring.js";
+import { score, POINTS } from "../services/scoring.js";
 import { encryptSecret, decryptSecret } from "../services/secrets.js";
 
 // ---------- AI players (real users marked is_ai=1) ----------
@@ -118,6 +118,51 @@ export function calibrationFor(userId) {
     goal_bias_away: +(ba / n).toFixed(2),
     note: "auto-aggregiert aus bisherigen Tipps vs. Ergebnissen",
   };
+}
+
+// Per-player tip HISTORY for the v2 self-evaluation (soll-ist): the last `limit`
+// resolved tips with predicted lambda/probs vs. the actual result + scored tier, plus
+// probability-calibration buckets (predicted dominant-outcome prob vs. realized hit
+// rate). Built from stored predictions + results — ZERO api calls. null until ≥3 tips.
+// The prompt's guardrails forbid using this for gambler's-fallacy outcome shifts.
+export function historyFor(userId, limit = 20) {
+  const rows = db.prepare(`SELECT p.match_n, p.tip_h, p.tip_a, p.prediction, r.h AS rh, r.a AS ra
+    FROM ai_predictions p JOIN results r ON r.match_n=p.match_n
+    WHERE p.user_id=? AND p.status='done' AND p.tip_h IS NOT NULL AND p.tip_a IS NOT NULL AND r.h!='' AND r.a!=''
+    ORDER BY p.attempted_at DESC LIMIT ?`).all(userId, limit);
+  if (rows.length < 3) return null;
+  const tierOf = (pts) => (pts === POINTS.exact ? "exact" : pts === POINTS.goal_diff ? "goal_diff" : pts === POINTS.tendency ? "tendency" : "miss");
+  const tips = [], buckets = {};
+  for (const x of rows) {
+    let pred = null; try { pred = JSON.parse(x.prediction || "null"); } catch { /* skip */ }
+    const rh = Number(x.rh), ra = Number(x.ra);
+    const actual = rh > ra ? "home" : rh < ra ? "away" : "draw";
+    const pts = score({ h: String(x.tip_h), a: String(x.tip_a) }, { h: String(rh), a: String(ra) }) ?? 0;
+    tips.push({
+      fixture: x.match_n,
+      tipped: { home: Number(x.tip_h), away: Number(x.tip_a) },
+      predicted_lambda: pred?.lambda ?? null,
+      predicted_probs: pred?.outcome_probabilities ?? null,
+      actual: { home: rh, away: ra },
+      points: pts,
+      tier_hit: tierOf(pts),
+    });
+    const op = pred?.outcome_probabilities;
+    if (op) {
+      const pr = { home: Number(op.home_win) || 0, draw: Number(op.draw) || 0, away: Number(op.away_win) || 0 };
+      const s = pr.home + pr.draw + pr.away || 1;
+      for (const o of ["home", "draw", "away"]) pr[o] /= s;
+      const dom = ["home", "draw", "away"].reduce((m, o) => (pr[o] > pr[m] ? o : m), "home");
+      const b = (Math.floor(pr[dom] * 10) / 10).toFixed(1); // 0.5, 0.6, …
+      (buckets[b] ||= { conf: 0, n: 0, hits: 0 });
+      buckets[b].conf += pr[dom]; buckets[b].n++; if (dom === actual) buckets[b].hits++;
+    }
+  }
+  const calibration_buckets = Object.keys(buckets).sort().map((b) => {
+    const v = buckets[b];
+    return { bucket: b, n: v.n, predicted: +(v.conf / v.n).toFixed(2), realized: +(v.hits / v.n).toFixed(2) };
+  });
+  return { tips, calibration_buckets };
 }
 
 // Calibration ranking of the AI players over their resolved predictions:

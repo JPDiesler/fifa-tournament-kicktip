@@ -80,6 +80,29 @@ export function leaderboard() {
     .sort((a, b) => b.sum - a.sum || b.exact - a.exact);
 }
 
+// ---------- pool standings per player (for the AI strategy layer) ----------
+// kuerzel → { my_rank, my_points, leader_points, gap_to_leader, gap_to_chasers,
+// matches_remaining, field_size } — derived from the same leaderboard the humans see.
+// Computed once (one leaderboard build) and looked up per AI player in the scheduler.
+export function poolStandingsByKuerzel() {
+  const board = leaderboard();
+  const played = db.prepare("SELECT COUNT(*) AS c FROM results WHERE h!='' AND a!=''").get().c;
+  const matches_remaining = MATCHES.length - played;
+  const leader_points = board[0]?.sum ?? 0;
+  const field_size = board.length;
+  const out = {};
+  board.forEach((r, i) => {
+    const below = board[i + 1];
+    out[r.p] = {
+      my_rank: i + 1, my_points: r.sum, leader_points,
+      gap_to_leader: leader_points - r.sum,
+      gap_to_chasers: below ? r.sum - below.sum : null,
+      matches_remaining, field_size,
+    };
+  });
+  return out;
+}
+
 // ---------- per-day breakdown (Tagessieger + points per day) ----------
 export function matchdayBreakdown() {
   const st = legacyState();

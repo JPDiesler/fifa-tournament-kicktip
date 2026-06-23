@@ -9,6 +9,7 @@ import {
   hasAiPrediction, claimAiPrediction, finishAiPrediction,
   hasAiChamp, claimAiChamp, finishAiChamp,
   getAiPlayerById, getAiPrediction, deleteAiPrediction, calibrationFor,
+  historyFor, poolStandingsByKuerzel,
 } from "../../db.js";
 import { getAiAdapter } from "./index.js";
 import { matchSystemPrompt, championSystemPrompt } from "./prompt.js";
@@ -54,21 +55,48 @@ async function tipOne(p, matchN, bundle) {
   }
 }
 
+// Per-player, per-tick context merged into the shared bundle (never mutates it):
+// calibration (goal-bias + probability buckets), recent tip history, and the player's
+// pool standing for the strategy layer. All from our own DB — no api-football calls.
+function playerContext(p, standingsMap) {
+  try {
+    const cal = calibrationFor(p.id);
+    const hist = historyFor(p.id);
+    const ctx = {};
+    if (cal || hist?.calibration_buckets?.length)
+      ctx.calibration = { ...(cal || {}), ...(hist?.calibration_buckets?.length ? { buckets: hist.calibration_buckets } : {}) };
+    if (hist?.tips?.length) ctx.history = hist.tips;
+    const st = standingsMap?.[p.kuerzel];
+    if (st) ctx.standings = st;
+    return ctx;
+  } catch (e) {
+    console.error(`KI-Kontext ${p.kuerzel} übersprungen (Tipp ohne Anreicherung):`, e?.message || e);
+    return {}; // graceful: the player still tips on the base bundle
+  }
+}
+
 // Place all due match tips this tick. The bundle is built once per match and reused
-// across players; LLM calls run concurrently (each player has its own provider/key).
+// across players; per-player context (calibration/history/standings) is merged on top
+// without mutating it. LLM calls run concurrently (each player has its own provider/key).
 export async function runAiTips(now = Date.now()) {
   const players = listActiveAiPlayers();
   if (!players.length) return;
+  let standingsMap = null;          // one leaderboard build per tick, only once a tip is due
+  const ctxCache = new Map();
+  const ctxFor = (p) => {
+    if (!ctxCache.has(p.id)) {
+      if (!standingsMap) { try { standingsMap = poolStandingsByKuerzel(); } catch { standingsMap = {}; } }
+      ctxCache.set(p.id, playerContext(p, standingsMap));
+    }
+    return ctxCache.get(p.id);
+  };
   const tasks = [];
   for (const n of aiTipWindow(now)) {
     const need = players.filter((p) => !hasAiPrediction(p.id, n));
     if (!need.length) continue;
     const bundle = await buildBundle(n); // null = defer (e.g. K.o. pairing not resolved yet)
     if (!bundle) continue;
-    for (const p of need) {
-      const cal = calibrationFor(p.id); // per-player self-correction from past tips
-      tasks.push(tipOne(p, n, cal ? { ...bundle, calibration: cal } : bundle));
-    }
+    for (const p of need) tasks.push(tipOne(p, n, { ...bundle, ...ctxFor(p) }));
   }
   if (tasks.length) await Promise.all(tasks);
 }
@@ -89,8 +117,7 @@ export async function placeTipNow(userId, matchN = null) {
   const bundle = await buildBundle(n);
   if (!bundle) throw new Error("Bundle nicht verfügbar (Paarung evtl. noch offen)");
   deleteAiPrediction(userId, n);
-  const cal = calibrationFor(userId);
-  await tipOne(p, n, cal ? { ...bundle, calibration: cal } : bundle);
+  await tipOne(p, n, { ...bundle, ...playerContext(p, poolStandingsByKuerzel()) });
   return { matchN: n, prediction: getAiPrediction(userId, n) };
 }
 

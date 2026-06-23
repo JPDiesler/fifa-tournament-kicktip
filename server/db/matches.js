@@ -93,6 +93,13 @@ export function setMatchPreview(n, preview) {
     ON CONFLICT(match_n) DO UPDATE SET preview=excluded.preview, updated_at=datetime('now')`)
     .run(Number(n), preview ? JSON.stringify(preview) : null);
 }
+// One match's cached preview (predictions/form/h2h/injuries/odds), or null. Used by the
+// AI bundle to read the already-fetched pre-match odds without a new api-football call.
+export function getMatchPreview(n) {
+  const r = db.prepare("SELECT preview FROM match_detail WHERE match_n=?").get(Number(n));
+  if (!r?.preview) return null;
+  try { return JSON.parse(r.preview); } catch { return null; }
+}
 // Observed final match clock (minute/injury/phase) — written once per match when it
 // finishes. Upserts only the final_* columns, leaving any scorers/cards intact.
 export function setMatchFinalTime(n, f) {
