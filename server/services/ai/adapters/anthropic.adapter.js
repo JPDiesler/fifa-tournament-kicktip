@@ -20,7 +20,7 @@ export async function predict({ systemPrompt, bundle, apiKey, model, signal, thi
   const manualThinking = thinkingBudget > 0 && !ADAPTIVE_THINKING.test(mdl);
   const req = {
     model: mdl,
-    max_tokens: manualThinking ? thinkingBudget + 1500 : 4000,
+    max_tokens: manualThinking ? thinkingBudget + 2000 : 4000,
     system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
     messages: [{ role: "user", content: JSON.stringify(bundle) }],
   };

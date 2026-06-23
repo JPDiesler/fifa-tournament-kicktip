@@ -11,6 +11,10 @@ export const meta = { id: "openai", name: "ChatGPT (OpenAI)", defaultModel: "gpt
 // Env-overridable (e.g. "low"/"medium"); set "" to omit the param for non-reasoning models.
 const TIMEOUT = Number(process.env.AI_TIMEOUT_MS || 120_000);
 const DEFAULT_EFFORT = process.env.OPENAI_REASONING_EFFORT ?? "none";
+// Output cap. Must cover reasoning tokens (reasoning models spend them from this budget)
+// PLUS the full v2 JSON — without it gpt-5.x truncates the answer ("could not finish …
+// max_tokens reached"). Generous default; lower via env for a model with a smaller cap.
+const MAX_OUT = Number(process.env.AI_MAX_OUTPUT_TOKENS || 16000);
 
 export async function predict({ systemPrompt, bundle, apiKey, model, signal, reasoningEffort }) {
   const client = new OpenAI({ apiKey, maxRetries: 0, timeout: TIMEOUT });
@@ -21,6 +25,7 @@ export async function predict({ systemPrompt, bundle, apiKey, model, signal, rea
       { role: "user", content: JSON.stringify(bundle) },
     ],
     response_format: { type: "json_object" },
+    max_completion_tokens: MAX_OUT,
   };
   const effort = reasoningEffort ?? DEFAULT_EFFORT;
   if (effort) req.reasoning_effort = effort;
