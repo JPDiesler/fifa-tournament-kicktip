@@ -15,6 +15,7 @@ import { getAiAdapter } from "./index.js";
 import { matchSystemPrompt, championSystemPrompt } from "./prompt.js";
 import { buildBundle, buildChampionBundle } from "./bundle.js";
 import { validateMatchPrediction, validateChampionPrediction } from "./schema.js";
+import { toAiError } from "./errors.js";
 
 const LEAD_MIN = Number(process.env.AI_TRIGGER_LEAD_MIN || 10);      // open the window at kickoff−10
 const CHAMP_LEAD_MS = Number(process.env.AI_CHAMP_LEAD_MIN || 720) * 60_000; // champion: 12h before K.o.
@@ -22,6 +23,26 @@ const FALLBACK = (process.env.AI_FALLBACK || "off").toLowerCase() === "on";
 
 // Strip a known secret from an error message before it is stored/logged.
 const redact = (msg, key) => (key ? String(msg).split(key).join("***") : String(msg));
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const RETRY_DELAYS = [800, 3200]; // backoff before retry 2 & 3 → 3 attempts total
+
+// One LLM prediction with up to 3 attempts, retrying ONLY transient provider errors
+// (overload/rate-limit/5xx/timeout/network) with backoff; permanent errors (auth / bad
+// request / invalid response) fail fast. Every error is normalized to a transparent
+// AiError. Idempotency is unaffected — the (player,match) claim is held across the
+// retries, so there is still at most one tip per fixture.
+async function predictWithRetry(adapter, args, provider) {
+  for (let i = 0; ; i++) {
+    try { return await adapter.predict(args); }
+    catch (raw) {
+      const e = toAiError(raw, provider);
+      if (!e.retryable || i >= RETRY_DELAYS.length) throw e;
+      console.warn(`KI ${provider}: ${e.message} — Versuch ${i + 1}/${RETRY_DELAYS.length + 1} fehlgeschlagen, neuer Versuch in ${RETRY_DELAYS[i]}ms`);
+      await sleep(RETRY_DELAYS[i]);
+    }
+  }
+}
 
 // Matches whose AI-tip window is open: [kickoff−LEAD, kickoff−5min). Pure + exported
 // for testing. A match drops out the moment it locks (kickoff−5).
@@ -43,7 +64,7 @@ async function tipOne(p, matchN, bundle) {
     return;
   }
   try {
-    const { prediction, latencyMs, tokens } = await adapter.predict({ systemPrompt: matchSystemPrompt(), bundle, apiKey, model: p.ai_model });
+    const { prediction, latencyMs, tokens } = await predictWithRetry(adapter, { systemPrompt: matchSystemPrompt(), bundle, apiKey, model: p.ai_model }, p.ai_provider);
     const { tip } = validateMatchPrediction(prediction);
     setUserTips(p.kuerzel, { [matchN]: tip }); // normal tip path (server re-checks the lock)
     finishAiPrediction(p.id, matchN, { status: "done", tip, prediction, latencyMs, tokens });
@@ -138,7 +159,7 @@ export async function runAiChamp(now = Date.now()) {
     }
     try {
       if (!bundle) { bundle = await buildChampionBundle(); validCodes = (bundle.teams || []).map((t) => t.code); }
-      const { prediction } = await adapter.predict({ systemPrompt: championSystemPrompt(), bundle, apiKey, model: p.ai_model });
+      const { prediction } = await predictWithRetry(adapter, { systemPrompt: championSystemPrompt(), bundle, apiKey, model: p.ai_model }, p.ai_provider);
       const { code } = validateChampionPrediction(prediction, validCodes);
       setChamp(p.kuerzel, code);
       finishAiChamp(p.id, { status: "done", code, prediction });
