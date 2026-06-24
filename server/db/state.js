@@ -5,7 +5,7 @@ import { playersMeta } from "./ai.js";
 import { latestRecap } from "./recap.js";
 import { MATCHES, CHAMP_BONUS } from "../data.js";
 import { score } from "../services/scoring.js";
-import { computeAchievements, achievementPoints } from "../services/achievements.js";
+import { computeAchievements, achievementPoints, achievementPointsByDay } from "../services/achievements.js";
 import { isTipLocked, isChampLocked, champLockTs, TIP_LOCK_OFFSET_MIN } from "../services/locks.js";
 
 // ---------- legacy state shape (keeps the current /api/state contract) ----------
@@ -111,8 +111,19 @@ export function poolStandingsByKuerzel() {
   return out;
 }
 
-// ---------- per-day breakdown (Tagessieger + points per day) ----------
+// ---------- per-day breakdown (Tagessieger + points per day + achievement bonus) ----------
+// Memoised on a results+roster signature: the (heavy) per-day achievement replay only reruns
+// when a result actually changes, so the 30s /api/matchdays poll is cheap. Tips on already-
+// scored matches are immutable (locked), so they don't affect the signature.
+let _mdCache = { sig: null, val: null };
+function _mdSig() {
+  const players = db.prepare("SELECT COUNT(*) n FROM users WHERE kuerzel IS NOT NULL AND is_superadmin=0").get().n;
+  const res = db.prepare("SELECT match_n,h,a FROM results WHERE h!='' AND a!='' ORDER BY match_n").all().map((r) => `${r.match_n}:${r.h}:${r.a}`).join(",");
+  return `${players}|${res}`;
+}
 export function matchdayBreakdown() {
+  const sig = _mdSig();
+  if (_mdCache.sig === sig) return _mdCache.val;
   const st = legacyState();
   const players = db.prepare("SELECT kuerzel, name FROM users WHERE kuerzel IS NOT NULL AND is_superadmin=0 ORDER BY kuerzel").all();
   const byDay = {};
@@ -120,11 +131,15 @@ export function matchdayBreakdown() {
     const day = m.dt.slice(0, 10);
     (byDay[day] ||= { day, label: m.disp.split(" · ")[0], matches: [] }).matches.push(m);
   }
+  const orderedDays = Object.keys(byDay).sort();
+  const scorableOf = (matches) => matches.some((m) => { const r = st.results[m.n]; return r && r.h !== "" && r.a !== ""; });
+  // chronological scorable days → per-player achievement points NEWLY earned each day
+  const achByDay = achievementPointsByDay(st, orderedDays.filter((d) => scorableOf(byDay[d].matches)).map((d) => ({ day: d, matchNs: byDay[d].matches.map((m) => m.n) })));
   const days = [];
-  for (const day of Object.keys(byDay).sort()) {
+  for (const day of orderedDays) {
     const { label, matches } = byDay[day];
-    const scorable = matches.some((m) => { const r = st.results[m.n]; return r && r.h !== "" && r.a !== ""; });
-    if (!scorable) continue;
+    if (!scorableOf(matches)) continue;
+    const ach = achByDay[day] || {};
     const rows = players
       .map(({ kuerzel, name }) => {
         let pts = 0, any = false;
@@ -132,11 +147,13 @@ export function matchdayBreakdown() {
           const p = score((st.tips[kuerzel] || {})[m.n], st.results[m.n]);
           if (p !== null) { pts += p; any = true; }
         }
-        return { p: kuerzel, name: name || kuerzel, pts, any };
+        return { p: kuerzel, name: name || kuerzel, pts, achPts: ach[kuerzel] || 0, any };
       })
-      .filter((r) => r.any)
-      .sort((a, b) => b.pts - a.pts);
-    days.push({ day, label, count: matches.length, rows, top: rows.length ? rows[0].pts : 0 });
+      .filter((r) => r.any || r.achPts > 0)
+      .sort((a, b) => (b.pts + b.achPts) - (a.pts + a.achPts));
+    days.push({ day, label, count: matches.length, rows, top: rows.reduce((mx, r) => Math.max(mx, r.pts), 0) });
   }
-  return days.reverse(); // most recent first
+  const val = days.reverse(); // most recent first
+  _mdCache = { sig, val };
+  return val;
 }

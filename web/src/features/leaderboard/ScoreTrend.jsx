@@ -24,6 +24,9 @@ function niceTicks(max, count = 4) {
 }
 
 const MODES = [["punkte", "Punkte"], ["platz", "Platz"], ["spieltag", "Spieltag"]];
+// Bonus (achievement) bar segment: the app accent, slightly darkened, so it reads as "extra"
+// on top of the match-points bar without clashing.
+const BONUS_FILL = "color-mix(in oklab, var(--app-accent) 80%, black)";
 
 // Interactive chart of each player's progress across the scored matchdays. Built
 // client-side from the per-day breakdown (`matchdays`, newest-first) and the
@@ -69,11 +72,14 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
   const n = labels.length;
   const P = players.length;
 
-  const cum = {}, series = {}, daily = {};
-  players.forEach((pl) => { cum[pl.p] = 0; series[pl.p] = []; daily[pl.p] = []; });
+  // Per day: match points (`daily`) + achievement bonus earned that day (`dailyAch`). The
+  // cumulative line (`series`) sums BOTH so achievement points fold in chronologically.
+  const cum = {}, series = {}, daily = {}, dailyAch = {};
+  players.forEach((pl) => { cum[pl.p] = 0; series[pl.p] = []; daily[pl.p] = []; dailyAch[pl.p] = []; });
   daysAsc.forEach((d) => {
     const byP = Object.fromEntries(d.rows.map((r) => [r.p, r.pts]));
-    players.forEach((pl) => { const dp = byP[pl.p] || 0; daily[pl.p].push(dp); cum[pl.p] += dp; series[pl.p].push(cum[pl.p]); });
+    const byA = Object.fromEntries(d.rows.map((r) => [r.p, r.achPts || 0]));
+    players.forEach((pl) => { const dp = byP[pl.p] || 0, da = byA[pl.p] || 0; daily[pl.p].push(dp); dailyAch[pl.p].push(da); cum[pl.p] += dp + da; series[pl.p].push(cum[pl.p]); });
   });
   // placement per day (1 = best) from cumulative points; tiebreak by name for stability
   const rankSeries = {}; players.forEach((pl) => (rankSeries[pl.p] = []));
@@ -113,7 +119,7 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
   const ticksP = niceTicks(maxCum); const topP = ticksP[ticksP.length - 1];
   const Yp = (v) => pad.t + innerH * (1 - v / topP);
   const Yr = (r) => (P <= 1 ? pad.t + innerH / 2 : pad.t + innerH * ((r - 1) / (P - 1)));
-  const maxD = Math.max(1, ...daily[focus]);
+  const maxD = Math.max(1, ...daily[focus].map((v, i) => v + dailyAch[focus][i]));
   const ticksB = niceTicks(maxD); const topB = ticksB[ticksB.length - 1];
   const Yb = (v) => pad.t + innerH * (1 - v / topB);
 
@@ -139,8 +145,10 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
     if (mode === "platz")
       return shown.map((pl) => ({ pl, val: `#${rankSeries[pl.p][active]}`, sort: rankSeries[pl.p][active] }))
         .sort((a, b) => a.sort - b.sort);
-    const get = mode === "spieltag" ? (p) => daily[p][active] : (p) => series[p][active];
-    return shown.map((pl) => ({ pl, val: get(pl.p), sort: get(pl.p) })).sort((a, b) => b.sort - a.sort);
+    if (mode === "spieltag")
+      return shown.map((pl) => { const v = daily[pl.p][active], a = dailyAch[pl.p][active] || 0; return { pl, val: v + a, ach: a, sort: v + a }; })
+        .sort((a, b) => b.sort - a.sort);
+    return shown.map((pl) => ({ pl, val: series[pl.p][active], sort: series[pl.p][active] })).sort((a, b) => b.sort - a.sort);
   };
   const title = mode === "platz" ? "Platzierungs-Verlauf"
     : mode === "spieltag" ? `Punkte je Spieltag · ${focusName}`
@@ -240,11 +248,13 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
             {/* ----- content per mode ----- */}
             {mode === "spieltag" ? (
               daily[focus].map((v, i) => {
-                const bw = Math.max(2, bin * 0.6), y = Yb(v);
+                const a = dailyAch[focus][i] || 0, bw = Math.max(2, bin * 0.6);
+                const yMain = Yb(v), yTot = Yb(v + a); // total bar (match+bonus); bonus caps the top
                 return (
                   <g key={`b${i}`} opacity={active == null || active === i ? 1 : 0.45}>
-                    <rect x={Xbar(i) - bw / 2} y={y} width={bw} height={Math.max(0, H - pad.b - y)} rx="2" fill={colorOf({ p: focus })} />
-                    {v > 0 && <text x={Xbar(i)} y={y - 3} textAnchor="middle" fontSize="9" fill="var(--muted)">{v}</text>}
+                    {(v + a) > 0 && <rect x={Xbar(i) - bw / 2} y={yTot} width={bw} height={Math.max(0, H - pad.b - yTot)} rx="2" fill={colorOf({ p: focus })} />}
+                    {a > 0 && <rect x={Xbar(i) - bw / 2} y={yTot} width={bw} height={Math.max(0, yMain - yTot)} rx="2" style={{ fill: BONUS_FILL }} />}
+                    {(v + a) > 0 && <text x={Xbar(i)} y={yTot - 3} textAnchor="middle" fontSize="9" fill="var(--muted)">{a > 0 ? `${v}+${a}` : v}</text>}
                   </g>
                 );
               })
@@ -279,11 +289,11 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
             <div className="rounded-lg border border-border bg-overlay px-2 py-1.5 text-[11px] shadow-lg">
               <div className="mb-1 font-semibold">{labels[active]}</div>
               <div className="flex flex-col gap-0.5">
-                {tipRows().map(({ pl, val }) => (
+                {tipRows().map(({ pl, val, ach }) => (
                   <div key={pl.p} className={`flex items-center gap-1.5 ${pl.p === me ? "font-bold text-app-accent" : ""}`}>
                     <span className="inline-block size-2 shrink-0 rounded-full" style={{ background: colorOf(pl) }} />
                     <span className="min-w-0 truncate">{pl.name}</span>
-                    <span className="ml-auto pl-2 tabular-nums">{val}</span>
+                    <span className="ml-auto pl-2 tabular-nums">{val}{ach > 0 && <span className="text-app-accent"> (+{ach})</span>}</span>
                   </div>
                 ))}
               </div>

@@ -98,3 +98,24 @@ export function achievementPoints(kuerzel, st) {
   const m = metrics(kuerzel, st);
   return ACHIEVEMENTS.reduce((s, a) => s + (a.measure(m) >= a.target ? a.points : 0), 0);
 }
+
+// Per-matchday attribution: how many achievement points each player NEWLY earned on each day,
+// by replaying the (monotonic) total against a state cut to the matches played up to that day.
+// `daysAsc` = [{ day, matchNs }] oldest-first. Returns { [day]: { [kuerzel]: deltaPts } }.
+// Deltas are ≥ 0 and sum (over days) to achievementPoints() — so the charts add up exactly.
+export function achievementPointsByDay(st, daysAsc) {
+  const allK = Object.keys(st.tips || {});
+  const seen = new Set();
+  const prev = {}; for (const k of allK) prev[k] = 0;
+  const out = {};
+  for (const { day, matchNs } of daysAsc) {
+    for (const n of matchNs) seen.add(n);
+    const cut = { tips: {}, results: {} };
+    for (const n of seen) if (st.results[n]) cut.results[n] = st.results[n];
+    for (const k of allK) { const t = st.tips[k] || {}, ct = {}; for (const n of seen) if (t[n]) ct[n] = t[n]; cut.tips[k] = ct; }
+    const d = {};
+    for (const k of allK) { const p = achievementPoints(k, cut); d[k] = p - prev[k]; prev[k] = p; }
+    out[day] = d;
+  }
+  return out;
+}
