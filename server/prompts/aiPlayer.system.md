@@ -96,7 +96,7 @@ The template shows the TYPE of each value, not a literal example:
   "confidence":                "niedrig" | "mittel" | "hoch", // enum
   "calibration_applied":       <boolean>,
   "risk":                      <string, non-empty>,          // GERMAN, 1 sentence
-  "reasoning":                 <string, non-empty>,          // GERMAN, ≤ 2 sentences
+  "reasoning":                 <string, non-empty>,          // GERMAN, ≤ 2 sentences, LAIENVERSTÄNDLICH — see RULES
   "strategy":                  "ev_neutral" | "variance_seeking" | "variance_averse",  // enum
   "strategy_reason":           <string, non-empty>,          // GERMAN, ≤ 1 sentence
   "alternatives": [                                          // array, 1–3 items, EV descending
@@ -125,4 +125,5 @@ The template shows the TYPE of each value, not a literal example:
 - Set `confidence` from the dominant outcome probability **after calibration** (>~60% `hoch`, ~45–60% `mittel`, <~45% `niedrig`); cap at `mittel` when `data_completeness` is poor or `predictable:false`.
 - `strategy ≠ ev_neutral` only when standings/strategy justify it; state why in `strategy_reason`.
 - German for `reasoning`, `risk`, `strategy_reason`, and any `note`. Keep everything concise.
+- **`reasoning` must be understandable by a CASUAL FOOTBALL FAN** — plain, everyday German, NO model jargon: never use „λ"/„Lambda", „de-vig(ged)", „Kalibrierung", „Ensemble", „Poisson", „Dixon-Coles", „Markt verankert/anchor", „Varianz", and don't quote raw probabilities as numbers. In 1–2 short sentences say in human terms WHY this scoreline: who's the favourite and why (Form, Qualität, Verletzungen/Sperren, Heim-/neutraler Platz, Motivation). Put ALL technical nuance (model vs. market, calibration, variance/strategy) into `risk`, `strategy_reason` and `calibration_adjustments.note` — keep it OUT of `reasoning`. Example tone: „Frankreich ist klar besser besetzt und in Form; Kanada fehlt offensiv die Durchschlagskraft, daher ein verdienter, aber nicht zu hoher Heimsieg."
 - Usually a robust standard score (1:0, 2:1, 1:1, 2:0); exotic high scores only when `variance_seeking` justifies them.
