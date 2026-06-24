@@ -272,7 +272,7 @@ export async function runAchievementNotifications() {
     for (const a of computeAchievements(r.kuerzel, st)) {
       if (!a.unlocked || !markSentOnce(`achv:${r.userId}:${a.id}`)) continue;
       await sendToUser(r.userId, {
-        title: `🏅 Erfolg freigeschaltet: ${a.label}`,
+        title: a.kind === "fail" ? `🎭 Trostpreis: ${a.label}` : `🏅 Erfolg freigeschaltet: ${a.label}`,
         body: `${a.description} +${a.points === 1 ? "1 Punkt" : `${a.points} Punkte`}.`,
         tag: `achv-${a.id}`, url: "/", vibrate: [80, 40, 80], actions: OPEN,
       });
