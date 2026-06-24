@@ -247,20 +247,6 @@ export default function App() {
           </div>
         )}
 
-        <div className="mt-3">
-          <ChampionBar
-            me={me}
-            teams={TEAMS}
-            champ={me ? (st.champs[me] || "") : ""}
-            onSetChamp={setChamp}
-            championActual={st.championActual}
-            champBonus={CHAMP_BONUS}
-            champLocked={!!st.locks?.champLocked}
-            champs={st.champs}
-            board={board}
-          />
-        </div>
-
         <Tabs selectedKey={tab} onSelectionChange={(k) => setTab(String(k))} className="mt-3">
           <Tabs.ListContainer className="top-safe-nav sticky z-20 -mx-3 bg-background/90 px-3 py-2 backdrop-blur">
             <Tabs.List aria-label="Ansicht" className="w-full">
@@ -304,6 +290,19 @@ export default function App() {
           </Tabs.Panel>
 
           <Tabs.Panel id="ko" className="pt-3">
+            <div className="mb-3">
+              <ChampionBar
+                me={me}
+                teams={TEAMS}
+                champ={me ? (st.champs[me] || "") : ""}
+                onSetChamp={setChamp}
+                championActual={st.championActual}
+                champBonus={CHAMP_BONUS}
+                champLocked={!!st.locks?.champLocked}
+                champs={st.champs}
+                board={board}
+              />
+            </div>
             <Bracket
               matches={MATCHES}
               me={me}
