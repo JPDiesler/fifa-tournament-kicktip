@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Drawer, Chip } from "@heroui/react";
-import { Lock, Info } from "lucide-react";
+import { Lock, Info, AlarmClockOff } from "lucide-react";
 import { MATCHES } from "@/data";
 import Flag from "@/components/Flag.jsx";
 import PlayerName from "@/components/PlayerName.jsx";
@@ -48,9 +48,10 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   const [aiStrategies, setAiStrategies] = useState({}); // kuerzel → strategy, for the per-tip badge
   const broadcasts = match ? (st.broadcasts?.[match.n] || []) : [];
   const kitByCode = useMemo(() => buildKitColors(st, teamCode), [st.details, teamCode]);
-  // Fetch the AI players' chosen strategies once the tips are visible (locked) — same gate
-  // as the comparison list below. {} otherwise / for v1 predictions without a strategy.
-  const stratLocked = !!(isOpen && match && (st.locks?.lockedMatches || []).includes(match.n));
+  // Fetch the AI players' chosen strategies once the tips are visible (locked) AND keep them
+  // available after full-time (a finished match always has a result). {} for v1 predictions
+  // without a strategy.
+  const stratLocked = !!(isOpen && match && ((st.locks?.lockedMatches || []).includes(match.n) || (st.results?.[match.n]?.h ?? "") !== ""));
   useEffect(() => {
     setAiStrategies({});
     if (!stratLocked) return;
@@ -90,6 +91,8 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   const displayList = effRes
     ? [...tipped].sort((a, b) => (b.pts ?? -1) - (a.pts ?? -1)) // live/final → leader first (incl. me)
     : tipped.filter((o) => !o.isMe);                           // pre-score → just the others' tips
+  // Players who didn't submit a tip before the lock → a "Deadline verpasst" hint (once tips are revealed).
+  const missed = locked ? (board || []).filter((b) => { const t = (st.tips[b.p] || {})[n]; return !(t && (t.h !== "" || t.a !== "")); }) : [];
 
   // "Dein Tipp" lives directly in the (single-scroll) Drawer.Body below — NOT inside the swipe
   // carousel. The carousel pins a fixed pixel height and each slide scrolls on its own, so a focused
@@ -151,6 +154,12 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
                 </div>
               );
             })}
+          </div>
+        )}
+        {locked && missed.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-border bg-overlay/40 px-3 py-2 text-[11px] text-muted">
+            <span className="inline-flex shrink-0 items-center gap-1 font-semibold"><AlarmClockOff size={12} /> Deadline verpasst:</span>
+            {missed.map((b) => <span key={b.p} className={b.p === me ? "font-semibold text-app-accent" : ""}><PlayerName kuerzel={b.p} /></span>)}
           </div>
         )}
       </div>
