@@ -1,3 +1,4 @@
+import { Accordion } from "@heroui/react";
 import { groupStandings, thirdPlaceTable } from "./groups.js";
 import { PHASES } from "@/lib/scoring.js";
 import Flag from "@/components/Flag.jsx";
@@ -60,95 +61,133 @@ function HeadCells() {
   );
 }
 
-// "Gruppenphase" tab: per group a standings table (top 2 highlighted) plus the group's matches in
-// compact, clickable form; below the last group, the best-thirds table (top 8 highlighted).
+// Collapsed-state glance: the four teams in standing order (place 1 left → 4 right) as a compact
+// right-aligned row, flag over the country code (same flag size as the match cards). Hidden once the
+// item is expanded (the full table below then shows the same teams).
+function GroupPreview({ table }) {
+  return (
+    <span className="ml-auto flex items-center gap-2.5 group-aria-[expanded=true]:hidden sm:gap-4">
+      {table.map((t) => (
+        <span key={t.code} className="flex flex-col items-center gap-0.5">
+          <Flag code={t.code} sm />
+          <span className="text-[9px] font-semibold uppercase leading-none text-muted">{t.code}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+// "Gruppenphase" tab: each group is a collapsible accordion item — collapsed shows the group name +
+// the four teams in standing order; expanded shows the full standings table + the group's matches.
+// Below the groups, the best-thirds table (top 8 highlighted), likewise collapsible.
 export default function GroupStage({ groupCodes, matches, teams, st, me, teamLabel, teamCode, score, onOpenMatch, onOpenBroadcasts }) {
+  const codes = groupCodes.filter((c) => matches.some((m) => m.ph === c));
   const thirds = thirdPlaceTable(groupCodes, matches, st.results, teams);
   const filled = new Set(thirds.map((t) => t.group));
   const pending = groupCodes.filter((c) => !filled.has(c)); // groups still to be decided → placeholder rows
+
   return (
-    <div className="space-y-6">
-      {groupCodes.map((code) => {
+    <Accordion variant="default" allowsMultipleExpanded hideSeparator className="space-y-2">
+      {codes.map((code) => {
         const ms = matches.filter((m) => m.ph === code);
-        if (!ms.length) return null;
         const label = PHASES.find((p) => p.code === code)?.label || code;
         const table = groupStandings(code, matches, st.results, teams);
         return (
-          <div key={code}>
-            <div className="mb-1.5 px-1 text-xs font-bold uppercase tracking-wider text-muted">{label}</div>
+          <Accordion.Item key={code} id={code} className="overflow-hidden rounded-xl bg-background-secondary">
+            <Accordion.Heading>
+              <Accordion.Trigger className="group">
+                <span className="flex min-w-0 flex-1 items-center gap-3">
+                  <span className="shrink-0 text-xs font-bold uppercase tracking-wider text-muted">{label}</span>
+                  <GroupPreview table={table} />
+                </span>
+                <Accordion.Indicator />
+              </Accordion.Trigger>
+            </Accordion.Heading>
+            <Accordion.Panel>
+              <Accordion.Body className="space-y-2">
+                <div className="overflow-hidden rounded-xl border border-border bg-surface">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-muted">
+                        <th className="px-2 py-1.5 text-left font-semibold">#</th>
+                        <th className="px-1 py-1.5 text-left font-semibold">Team</th>
+                        <HeadCells />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {table.map((t, i) => <StandRow key={t.code} t={t} rank={i + 1} highlight={i < 2} />)}
+                    </tbody>
+                  </table>
+                </div>
 
+                {/* matches as a compact 2×3 grid (3 per row on ≥sm) */}
+                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                  {ms.map((m) => {
+                    const result = st.results[m.n];
+                    const myTip = (st.tips[me] || {})[m.n];
+                    return (
+                      <MatchCard
+                        key={m.n}
+                        match={m}
+                        home={{ label: teamLabel(m, "h"), short: (teamCode(m, "h") || teamLabel(m, "h")).toUpperCase(), code: teamCode(m, "h") }}
+                        away={{ label: teamLabel(m, "a"), short: (teamCode(m, "a") || teamLabel(m, "a")).toUpperCase(), code: teamCode(m, "a") }}
+                        result={result}
+                        points={score(myTip, result)}
+                        hasTip={!!(myTip && (myTip.h !== "" || myTip.a !== ""))}
+                        locked={(st.locks?.lockedMatches || []).includes(m.n)}
+                        live={st.live?.[m.n]}
+                        serverNow={st.locks?.serverNow}
+                        liveMinuteOn={st.capabilities?.liveMinute === true}
+                        broadcasts={st.broadcasts?.[m.n] || []}
+                        onOpen={() => onOpenMatch(m.n)}
+                        onOpenBroadcasts={() => onOpenBroadcasts(m.n)}
+                        compact
+                      />
+                    );
+                  })}
+                </div>
+              </Accordion.Body>
+            </Accordion.Panel>
+          </Accordion.Item>
+        );
+      })}
+
+      {/* Best third-placed teams — the 8 of 12 that advance (filled as groups finish). */}
+      <Accordion.Item id="thirds" className="overflow-hidden rounded-xl bg-background-secondary">
+        <Accordion.Heading>
+          <Accordion.Trigger className="group">
+            <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2 pr-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted">Beste Drittplatzierte</span>
+              <span className="text-[11px] font-normal normal-case text-muted">Top 8 erreichen die K.-o.-Runde</span>
+            </span>
+            <Accordion.Indicator />
+          </Accordion.Trigger>
+        </Accordion.Heading>
+        <Accordion.Panel>
+          <Accordion.Body>
             <div className="overflow-hidden rounded-xl border border-border bg-surface">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-muted">
                     <th className="px-2 py-1.5 text-left font-semibold">#</th>
                     <th className="px-1 py-1.5 text-left font-semibold">Team</th>
+                    <th className="px-1 py-1.5 text-center font-semibold">Gr.</th>
                     <HeadCells />
                   </tr>
                 </thead>
                 <tbody>
-                  {table.map((t, i) => <StandRow key={t.code} t={t} rank={i + 1} highlight={i < 2} />)}
+                  {/* decided thirds ranked + highlighted (top 8 qualify), then one placeholder per open group → always 12 rows */}
+                  {thirds.map((t, i) => (
+                    <StandRow key={t.code} t={t} rank={i + 1} highlight={i < 8}
+                      extra={<td className="px-1 py-1.5 text-center font-semibold text-muted">{t.group}</td>} />
+                  ))}
+                  {pending.map((code) => <PendingThirdRow key={code} code={code} />)}
                 </tbody>
               </table>
             </div>
-
-            {/* matches as a compact 2×3 grid (3 per row on ≥sm) */}
-            <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-              {ms.map((m) => {
-                const result = st.results[m.n];
-                const myTip = (st.tips[me] || {})[m.n];
-                return (
-                  <MatchCard
-                    key={m.n}
-                    match={m}
-                    home={{ label: teamLabel(m, "h"), short: (teamCode(m, "h") || teamLabel(m, "h")).toUpperCase(), code: teamCode(m, "h") }}
-                    away={{ label: teamLabel(m, "a"), short: (teamCode(m, "a") || teamLabel(m, "a")).toUpperCase(), code: teamCode(m, "a") }}
-                    result={result}
-                    points={score(myTip, result)}
-                    hasTip={!!(myTip && (myTip.h !== "" || myTip.a !== ""))}
-                    locked={(st.locks?.lockedMatches || []).includes(m.n)}
-                    live={st.live?.[m.n]}
-                    serverNow={st.locks?.serverNow}
-                    liveMinuteOn={st.capabilities?.liveMinute === true}
-                    broadcasts={st.broadcasts?.[m.n] || []}
-                    onOpen={() => onOpenMatch(m.n)}
-                    onOpenBroadcasts={() => onOpenBroadcasts(m.n)}
-                    compact
-                  />
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-
-      {/* Best third-placed teams — the 8 of 12 that advance (filled as groups finish). */}
-      <div>
-        <div className="mb-1.5 flex items-baseline justify-between px-1">
-          <span className="text-xs font-bold uppercase tracking-wider text-muted">Beste Drittplatzierte</span>
-          <span className="text-[11px] text-muted">Top 8 erreichen die K.-o.-Runde</span>
-        </div>
-        <div className="overflow-hidden rounded-xl border border-border bg-surface">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-muted">
-                <th className="px-2 py-1.5 text-left font-semibold">#</th>
-                <th className="px-1 py-1.5 text-left font-semibold">Team</th>
-                <th className="px-1 py-1.5 text-center font-semibold">Gr.</th>
-                <HeadCells />
-              </tr>
-            </thead>
-            <tbody>
-              {/* decided thirds ranked + highlighted (top 8 qualify), then one placeholder per open group → always 12 rows */}
-              {thirds.map((t, i) => (
-                <StandRow key={t.code} t={t} rank={i + 1} highlight={i < 8}
-                  extra={<td className="px-1 py-1.5 text-center font-semibold text-muted">{t.group}</td>} />
-              ))}
-              {pending.map((code) => <PendingThirdRow key={code} code={code} />)}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+          </Accordion.Body>
+        </Accordion.Panel>
+      </Accordion.Item>
+    </Accordion>
   );
 }
