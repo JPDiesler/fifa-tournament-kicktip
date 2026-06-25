@@ -24,9 +24,9 @@ function niceTicks(max, count = 4) {
 }
 
 const MODES = [["punkte", "Punkte"], ["platz", "Platz"], ["spieltag", "Spieltag"]];
-// Bonus (achievement) bar segment: the app accent, slightly darkened, so it reads as "extra"
-// on top of the match-points bar without clashing.
-const BONUS_FILL = "color-mix(in oklab, var(--app-accent) 80%, black)";
+// Bonus (achievement) bar segment: the focused player's own colour, 25% darker, so it reads
+// as "extra" stacked on the match-points bar while staying tied to that player.
+const darken = (c) => `color-mix(in srgb, ${c} 75%, black)`;
 
 // Interactive chart of each player's progress across the scored matchdays. Built
 // client-side from the per-day breakdown (`matchdays`, newest-first) and the
@@ -250,10 +250,11 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
               daily[focus].map((v, i) => {
                 const a = dailyAch[focus][i] || 0, bw = Math.max(2, bin * 0.6);
                 const yMain = Yb(v), yTot = Yb(v + a); // total bar (match+bonus); bonus caps the top
+                const focusColor = colorOf({ p: focus });
                 return (
                   <g key={`b${i}`} opacity={active == null || active === i ? 1 : 0.45}>
-                    {(v + a) > 0 && <rect x={Xbar(i) - bw / 2} y={yTot} width={bw} height={Math.max(0, H - pad.b - yTot)} rx="2" fill={colorOf({ p: focus })} />}
-                    {a > 0 && <rect x={Xbar(i) - bw / 2} y={yTot} width={bw} height={Math.max(0, yMain - yTot)} rx="2" style={{ fill: BONUS_FILL }} />}
+                    {(v + a) > 0 && <rect x={Xbar(i) - bw / 2} y={yTot} width={bw} height={Math.max(0, H - pad.b - yTot)} rx="2" fill={focusColor} />}
+                    {a > 0 && <rect x={Xbar(i) - bw / 2} y={yTot} width={bw} height={Math.max(0, yMain - yTot)} rx="2" style={{ fill: darken(focusColor) }} />}
                     {(v + a) > 0 && <text x={Xbar(i)} y={yTot - 3} textAnchor="middle" fontSize="9" fill="var(--muted)">{a > 0 ? `${v}+${a}` : v}</text>}
                   </g>
                 );
