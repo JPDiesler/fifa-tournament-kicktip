@@ -30,7 +30,7 @@ test("achievements: big day (10+ pts on one matchday) + catalog is 32 (20 win + 
   assert.equal(ACHIEVEMENTS.length, 32);
   assert.equal(ACHIEVEMENTS.filter((a) => a.kind === "win").length, 20);
   assert.equal(ACHIEVEMENTS.filter((a) => a.kind === "fail").length, 12);
-  assert.ok(ACHIEVEMENTS.filter((a) => a.kind === "fail").every((a) => a.points > 3)); // equalizer: bigger points
+  assert.ok(ACHIEVEMENTS.filter((a) => a.kind === "fail").every((a) => a.points >= 1 && a.points <= 8)); // equalizer points, rebalanced down
   assert.ok(new Set(ACHIEVEMENTS.map((a) => a.id)).size === 32, "ids are unique");
   // wins are tiered: common→1, rare→2, epic→3 (points always match the tier)
   const TIER_PTS = { common: 1, rare: 2, epic: 3 };
@@ -66,11 +66,11 @@ test("achievements: lone wolf (3×) + contrarian (4×) require the field", () =>
 
 test("fail achievements: a cold streak of wrong-way tips unlocks the equalizer badges", () => {
   const tips = {}, results = {};
-  for (let i = 0; i < 10; i++) { const n = CHRONO[i].n; tips[n] = { h: "0", a: "2" }; results[n] = { h: "2", a: "0" }; } // tipped away, home won → 0 pts, opposite tendency
+  for (let i = 0; i < 10; i++) { const n = CHRONO[i].n; tips[n] = { h: "0", a: "2" }; results[n] = { h: "2", a: "0" }; } // tipped 0:2, played 2:0 → 0 pts AND exact mirror
   const a = byId(computeAchievements("AA", { tips: { AA: tips }, results }));
   assert.equal(a.first_zero.unlocked, true);     // ≥ 5 zeros (revealed)
   assert.equal(a.cold_streak.unlocked, true);    // 6 zero in a row
-  assert.equal(a.anti_talent.unlocked, true);    // 10 opposite-winner tips
+  assert.equal(a.anti_talent.unlocked, true);    // 10 exact mirror tips ≥ 3
   assert.equal(a.false_start.unlocked, true);    // first 3 (settled) all zero
   assert.equal(a.ice_cold, undefined);           // needs 12 → still hidden
   assert.equal(a.zero_collector, undefined);     // needs 30 → still hidden
@@ -209,11 +209,12 @@ test("plausibility gate covers the field-relative fails (lone_loser/herd): farm 
   const herd = (aa) => { const tips = { AA: {}, BB: {}, CC: {} }, results = {}; for (const n of ns3) { tips.AA[n] = aa; tips.BB[n] = { h: "1", a: "0" }; tips.CC[n] = { h: "2", a: "0" }; results[n] = { h: "0", a: "1" }; } return { tips, results }; };
   assert.equal(byId(computeAchievements("AA", herd({ h: "1", a: "0" }))).herd.unlocked, true);
   assert.equal(byId(computeAchievements("AA", herd({ h: "9", a: "0" }))).herd, undefined);
-  // lone_loser: AA blank while the whole field scores (target 2)
-  const ns2 = CHRONO.slice(0, 2).map((m) => m.n);
-  const lone = (aa) => { const tips = { AA: {}, BB: {}, CC: {} }, results = {}; for (const n of ns2) { tips.AA[n] = aa; tips.BB[n] = { h: "0", a: "1" }; tips.CC[n] = { h: "0", a: "1" }; results[n] = { h: "0", a: "1" }; } return { tips, results }; };
-  assert.equal(byId(computeAchievements("AA", lone({ h: "1", a: "0" }))).lone_loser.unlocked, true);
-  assert.equal(byId(computeAchievements("AA", lone({ h: "9", a: "0" }))).lone_loser, undefined);
+  // lone_loser (Versager des Tages): sole player to finish a fully-decided matchday on 0 points (target 1)
+  const byDay = {}; for (const m of CHRONO) (byDay[m.dt.slice(0, 10)] ||= []).push(m);
+  const day = Object.values(byDay)[0]; // a fully-decided day; AA loses all, the field scores
+  const lone = (aa) => { const tips = { AA: {}, BB: {}, CC: {} }, results = {}; for (const m of day) { tips.AA[m.n] = aa; tips.BB[m.n] = { h: "0", a: "1" }; tips.CC[m.n] = { h: "0", a: "1" }; results[m.n] = { h: "0", a: "1" }; } return { tips, results }; };
+  assert.equal(byId(computeAchievements("AA", lone({ h: "1", a: "0" }))).lone_loser.unlocked, true);  // plausible wrong tip → sole 0 → unlocks
+  assert.equal(byId(computeAchievements("AA", lone({ h: "9", a: "0" }))).lone_loser, undefined);      // farm tip → no genuine attempt → hidden
 });
 
 test("zero-run isn't glued across a SCORED implausible tip (no false ice_cold; phoenix still fires)", () => {

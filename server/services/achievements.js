@@ -93,19 +93,19 @@ export const ACHIEVEMENTS = [
   { id: "phoenix", kind: "win", tier: "epic", label: "Phönix", description: "Lande direkt nach 5 punktlosen Spielen einen Volltreffer.", points: 3, target: 1, measure: (m) => m.phoenix },
   { id: "comeback", kind: "win", tier: "epic", label: "Comeback-Hellseher", description: "Sag einen Sieger richtig voraus, der einem Rückstand hinterherlief.", points: 3, target: 1, measure: (m) => m.comeback },
   { id: "penalty_prophet", kind: "win", tier: "epic", label: "Elfer-Prophet", description: "Tippe ein K.o.-Spiel richtig als Remis, das im Elfmeterschießen endet.", points: 3, target: 1, measure: (m) => m.elfer },
-  // --- fails (bad luck / blunders; BIGGER points → equalizer; plausibility-gated + hidden) ---
-  { id: "first_zero", kind: "fail", label: "Nietenstart", description: "Liege bei 5 Tipps komplett daneben.", points: 4, target: 5, measure: (m) => m.zeroCount },
-  { id: "cold_streak", kind: "fail", label: "Pechvogel", description: "6 Spiele in Folge ohne einen Punkt.", points: 5, target: 6, streak: true, measure: (m) => m.longestZeroRun, currentMeasure: (m) => m.currentZeroRun },
-  { id: "ice_cold", kind: "fail", label: "Totalausfall", description: "12 Spiele in Folge ohne einen Punkt.", points: 8, target: 12, streak: true, measure: (m) => m.longestZeroRun, currentMeasure: (m) => m.currentZeroRun },
+  // --- fails (bad luck / blunders; equalizer for laggards; plausibility-gated + hidden) ---
+  { id: "first_zero", kind: "fail", label: "Nietenstart", description: "Liege bei 5 Tipps komplett daneben.", points: 3, target: 5, measure: (m) => m.zeroCount },
+  { id: "cold_streak", kind: "fail", label: "Pechvogel", description: "6 Spiele in Folge ohne einen Punkt.", points: 3, target: 6, streak: true, measure: (m) => m.longestZeroRun, currentMeasure: (m) => m.currentZeroRun },
+  { id: "ice_cold", kind: "fail", label: "Totalausfall", description: "12 Spiele in Folge ohne einen Punkt.", points: 6, target: 12, streak: true, measure: (m) => m.longestZeroRun, currentMeasure: (m) => m.currentZeroRun },
   { id: "zero_collector", kind: "fail", label: "Nieten-Sammler", description: "30 Tipps komplett daneben.", points: 5, target: 30, measure: (m) => m.zeroCount },
-  { id: "black_hole", kind: "fail", label: "Schwarzes Loch", description: "45 Tipps komplett daneben.", points: 7, target: 45, measure: (m) => m.zeroCount },
-  { id: "washout", kind: "fail", label: "Rabenschwarzer Tag", description: "Geh an einem Spieltag mit ≥2 Tipps komplett leer aus.", points: 5, target: 1, measure: (m) => m.badDays },
-  { id: "total_blackout", kind: "fail", label: "Komplett-Blackout", description: "Geh an einem Spieltag mit ≥3 Tipps komplett leer aus.", points: 7, target: 1, measure: (m) => m.bigBadDays },
-  { id: "cellar_regular", kind: "fail", label: "Nullrunden-Abo", description: "Geh an 3 Spieltagen IN FOLGE komplett leer aus.", points: 6, target: 3, streak: true, measure: (m) => m.longestZeroDayRun, currentMeasure: (m) => m.currentZeroDayRun },
-  { id: "lone_loser", kind: "fail", label: "Versager des Tages", description: "Als Einzige(r) in 2 Spielen leer ausgehen.", points: 6, target: 2, measure: (m) => m.loneLoser },
-  { id: "herd", kind: "fail", label: "Herdentier", description: "3-mal mit der Mehrheit auf die falsche Tendenz tippen.", points: 4, target: 3, measure: (m) => m.herd },
-  { id: "false_start", kind: "fail", label: "Fehlstart", description: "Verpatze deine ersten 3 gewerteten Tipps (alle null).", points: 5, target: 1, measure: (m) => m.falseStart },
-  { id: "anti_talent", kind: "fail", label: "Antitalent", description: "Tippe 10-mal den Sieger genau falschherum.", points: 5, target: 10, measure: (m) => m.wrongTendency },
+  { id: "black_hole", kind: "fail", label: "Schwarzes Loch", description: "45 Tipps komplett daneben.", points: 5, target: 45, measure: (m) => m.zeroCount },
+  { id: "washout", kind: "fail", label: "Rabenschwarzer Tag", description: "Geh an einem Spieltag mit ≥2 Tipps komplett leer aus.", points: 1, target: 1, measure: (m) => m.badDays },
+  { id: "total_blackout", kind: "fail", label: "Komplett-Blackout", description: "Geh an einem Spieltag mit ≥3 Tipps komplett leer aus.", points: 3, target: 1, measure: (m) => m.bigBadDays },
+  { id: "cellar_regular", kind: "fail", label: "Nullrunden-Abo", description: "Geh an 3 Spieltagen IN FOLGE komplett leer aus.", points: 4, target: 3, streak: true, measure: (m) => m.longestZeroDayRun, currentMeasure: (m) => m.currentZeroDayRun },
+  { id: "lone_loser", kind: "fail", label: "Versager des Tages", description: "Beende als Einzige(r) einen Spieltag ganz ohne Punkte.", points: 2, target: 1, measure: (m) => m.loneLoserDay },
+  { id: "herd", kind: "fail", label: "Herdentier", description: "3-mal mit der Mehrheit auf die falsche Tendenz tippen.", points: 1, target: 3, measure: (m) => m.herd },
+  { id: "false_start", kind: "fail", label: "Fehlstart", description: "Verpatze deine ersten 3 gewerteten Tipps (alle null).", points: 2, target: 1, measure: (m) => m.falseStart },
+  { id: "anti_talent", kind: "fail", label: "Antitalent", description: "Tippe 3-mal das exakt spiegelverkehrte Ergebnis (z. B. 1:3 statt 3:1).", points: 5, target: 3, measure: (m) => m.mirrorCount },
 ];
 
 // All monotonic metrics for one player, from the full state (`st.tips` of EVERY player +
@@ -116,7 +116,7 @@ function metrics(kuerzel, st, details = {}) {
   const tips = st.tips?.[kuerzel] || {}, results = st.results || {};
   const allK = Object.keys(st.tips || {}), others = allK.filter((k) => k !== kuerzel);
 
-  let exact = 0, tipped = 0, zeroCount = 0, wrongTendency = 0;
+  let exact = 0, tipped = 0, zeroCount = 0, mirrorCount = 0;
   let zeroZero = 0, torfest = 0, blowout = 0, phoenix = 0, lateWinner = 0, comeback = 0, redCardGame = 0, elfer = 0;
   let zStreak = 0; // running pointless streak, for Phönix
   // Streak runs as gap-aware running counters. A tipped-but-PENDING match is a GAP that breaks every
@@ -145,7 +145,9 @@ function metrics(kuerzel, st, details = {}) {
     // can't be glued into a "12 in a row without a point" streak, and absurd losses can't farm it.
     if (pl && pt === 0) { zeroCount++; zRun++; if (zRun > zBest) zBest = zRun; zCur = zRun; }
     else { zRun = 0; zCur = 0; }
-    if (pl && mt != null && rt != null && mt !== 0 && rt !== 0 && mt !== rt) wrongTendency++; // predicted a winner, the other side won
+    // Antitalent: the tipped score is the EXACT mirror of the result (e.g. 1:3 tipped, 3:1 played) —
+    // right magnitudes, wrong way round. Only non-draw plausible tips qualify.
+    if (pl && mt != null && mt !== 0 && Number(t.h) === Number(res.a) && Number(t.a) === Number(res.h)) mirrorCount++;
     // result + Spielverlauf wins (curious / timeline). The score-derived ones (0:0/Torfest/Kanter)
     // and lastGoalMinute/hadRedCard only ever grow, so they're monotonic; comeback depends on goal
     // ORDER and is gated on a COMPLETE goal log so a partial timeline can't unlock-then-flip.
@@ -171,7 +173,7 @@ function metrics(kuerzel, st, details = {}) {
   const byDay = {};
   for (const m of CHRONO) (byDay[m.dt.slice(0, 10)] ||= []).push(m);
   const dayPts = (k, ms) => { let pts = 0, any = false; for (const m of ms) { const p = score(st.tips[k]?.[m.n], results[m.n]); if (p !== null) { pts += p; any = true; } } return any ? pts : null; };
-  let matchdayWins = 0, perfectDays = 0, bestDayPts = 0, badDays = 0, bigBadDays = 0;
+  let matchdayWins = 0, perfectDays = 0, bestDayPts = 0, badDays = 0, bigBadDays = 0, loneLoserDay = 0;
   let zdRun = 0, zdBest = 0, zdCur = 0; // consecutive blank-day run (gap-aware, like the match streaks)
   for (const dk of Object.keys(byDay).sort()) {
     const ms = byDay[dk];
@@ -195,6 +197,12 @@ function metrics(kuerzel, st, details = {}) {
       const blank = myPts === 0; // truly leer = 0 points across ALL tips → an implausible WIN that day still counts (not leer)
       zdRun = blank ? zdRun + 1 : 0; if (zdRun > zdBest) zdBest = zdRun; zdCur = zdRun; // consecutive blank matchdays
       if (blank) { if (failScored >= 2) badDays++; if (failScored >= 3) bigBadDays++; }
+      // Versager des Tages: the SOLE player to finish the day on 0 points (everyone else who tipped scored).
+      if (blank) {
+        let otherZero = false, otherScored = false;
+        for (const k of others) { const p = dayPts(k, ms); if (p == null) continue; if (p === 0) otherZero = true; else otherScored = true; }
+        if (!otherZero && otherScored) loneLoserDay++;
+      }
     }
     if (ms.length >= 2) {
       const scored = ms.map((m) => score(tips[m.n], results[m.n])).filter((p) => p !== null);
@@ -202,14 +210,14 @@ function metrics(kuerzel, st, details = {}) {
     }
   }
 
-  // field-relative, per scored match: lone wolf / contrarian (win, ungated) + lone loser / herd (fail, plausible).
-  let loneWolf = 0, loneLoser = 0, contrarian = 0, herd = 0;
+  // field-relative, per scored match: lone wolf / contrarian (win, ungated) + herd (fail, plausible).
+  // (Versager des Tages is judged per matchday above, not per match.)
+  let loneWolf = 0, contrarian = 0, herd = 0;
   for (const m of CHRONO) {
     const res = results[m.n]; if (!hasResult(res)) continue;
     const myPt = score(tips[m.n], res), pl = plausible(tips[m.n]);
     const oth = others.map((k) => score(st.tips[k]?.[m.n], res)).filter((p) => p != null);
     if (myPt != null && myPt > 0 && oth.length && !oth.some((p) => p > 0)) loneWolf++;
-    if (pl && myPt === 0 && oth.length && oth.every((p) => p > 0)) loneLoser++;
     const myTen = tendency(tips[m.n]), resTen = tendency(res);
     if (myTen != null) {
       const tens = others.map((k) => tendency(st.tips[k]?.[m.n])).filter((t) => t != null);
@@ -222,13 +230,13 @@ function metrics(kuerzel, st, details = {}) {
   }
 
   return {
-    exact, tipped, zeroCount, wrongTendency, falseStart,
+    exact, tipped, zeroCount, mirrorCount, falseStart,
     zeroZero, torfest, blowout, phoenix, lateWinner, comeback, redCardGame, elfer,
     longestPointRun: pBest, longestExactRun: eBest, longestZeroRun: zBest,
     currentPointRun: pCur, currentExactRun: eCur, currentZeroRun: zCur,
     longestZeroDayRun: zdBest, currentZeroDayRun: zdCur,
-    matchdayWins, perfectDays, bestDayPts, badDays, bigBadDays,
-    loneWolf, loneLoser, contrarian, herd,
+    matchdayWins, perfectDays, bestDayPts, badDays, bigBadDays, loneLoserDay,
+    loneWolf, contrarian, herd,
   };
 }
 
