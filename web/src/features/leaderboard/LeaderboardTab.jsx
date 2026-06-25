@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Table, Pagination, Button, ToggleButton, ToggleButtonGroup } from "@heroui/react";
+import { Table, Pagination, Button, Popover, ToggleButton, ToggleButtonGroup } from "@heroui/react";
 import { Check, X, Share2 } from "lucide-react";
 import { known } from "@/lib/scoring.js";
 import Flag from "@/components/Flag.jsx";
@@ -16,9 +16,10 @@ const PAGE_SIZES = [10, 25, 50, Infinity]; // Infinity = "Alle"
 const SUBTABS = [["gesamt", "Gesamt"], ["persoenlich", "Persönlich"], ["duell", "Duell"]];
 
 // Total = Tipp-Punkte + Erfolgs-Punkte. `sum` (server) already folds the achievement bonus in,
-// so the pure tip points (match scores + WM-Tipp) are simply sum − achPoints.
+// so the pure tip points (match scores + WM-Tipp) are simply sum − achPoints. The Tipp/Erfolge
+// split is no longer a column (too wide on mobile) — it lives in a per-row Popover on Gesamt.
 const tipPts = (t) => t.sum - (t.achPoints || 0);
-const SORT_VAL = { tipp: tipPts, ach: (t) => t.achPoints || 0, sum: (t) => t.sum, exact: (t) => t.exact };
+const SORT_VAL = { sum: (t) => t.sum, exact: (t) => t.exact };
 
 // "Punktstand" tab: Gesamt (table + chart), Persönlich (Bilanz + history), Duell
 // (head-to-head). One toolbar share button (next to the sub-tabs) exports the
@@ -88,16 +89,6 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
                 <Table.Header>
                   <Table.Column isRowHeader className="whitespace-nowrap px-2 sm:px-4">#</Table.Column>
                   <Table.Column className="whitespace-nowrap px-2 sm:px-4">Spieler</Table.Column>
-                  <Table.Column allowsSorting id="tipp" className="whitespace-nowrap px-2 sm:px-4">
-                    {({ sortDirection }) => <Table.SortableColumnHeader sortDirection={sortDirection}>Tipp</Table.SortableColumnHeader>}
-                  </Table.Column>
-                  <Table.Column allowsSorting id="ach" className="whitespace-nowrap px-2 sm:px-4">
-                    {({ sortDirection }) => (
-                      <Table.SortableColumnHeader sortDirection={sortDirection}>
-                        <span className="sm:hidden">Erf.</span><span className="hidden sm:inline">Erfolge</span>
-                      </Table.SortableColumnHeader>
-                    )}
-                  </Table.Column>
                   <Table.Column allowsSorting id="sum" className="whitespace-nowrap px-2 sm:px-4">
                     {({ sortDirection }) => (
                       <Table.SortableColumnHeader sortDirection={sortDirection}>
@@ -108,7 +99,9 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
                   <Table.Column allowsSorting id="exact" className="hidden whitespace-nowrap px-2 sm:table-cell sm:px-4">
                     {({ sortDirection }) => <Table.SortableColumnHeader sortDirection={sortDirection}>Exakt</Table.SortableColumnHeader>}
                   </Table.Column>
-                  <Table.Column className="hidden whitespace-nowrap px-2 sm:table-cell sm:px-4">WM-Tipp</Table.Column>
+                  <Table.Column className="whitespace-nowrap px-2 sm:px-4">
+                    <span className="sm:hidden">WM</span><span className="hidden sm:inline">WM-Tipp</span>
+                  </Table.Column>
                 </Table.Header>
                 <Table.Body>
                   {rows.map((t, i) => (
@@ -118,19 +111,37 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
                         <PlayerName kuerzel={t.p} showName className="max-w-[7.5rem] font-semibold sm:max-w-none" />
                         {t.name && t.name !== t.p && <div className="text-xs text-muted">{t.p}</div>}
                       </Table.Cell>
-                      <Table.Cell className="px-2 text-center font-semibold sm:px-4">{tipPts(t)}</Table.Cell>
                       <Table.Cell className="px-2 text-center sm:px-4">
-                        <span className={t.achPoints ? "font-semibold text-app-accent" : "text-muted"}>{t.achPoints ? `+${t.achPoints}` : 0}</span>
+                        {/* Gesamt is the only points column; tap it for the Tipp/Erfolge split. */}
+                        <Popover>
+                          <Popover.Trigger className="mx-auto inline-flex cursor-pointer items-center rounded text-base font-bold text-success underline decoration-success/40 decoration-dotted underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-app-accent">
+                            {t.sum}
+                          </Popover.Trigger>
+                          <Popover.Content className="w-44">
+                            <Popover.Dialog className="p-3">
+                              <Popover.Arrow />
+                              <div className="flex flex-col gap-1 text-xs">
+                                <div className="flex items-center justify-between gap-4">
+                                  <span className="text-muted">Tipp-Punkte</span><span className="font-semibold tabular-nums">{tipPts(t)}</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-4">
+                                  <span className="text-muted">Erfolge</span>
+                                  <span className={`font-semibold tabular-nums ${t.achPoints ? "text-app-accent" : "text-muted"}`}>{t.achPoints ? `+${t.achPoints}` : 0}</span>
+                                </div>
+                                <div className="mt-0.5 flex items-center justify-between gap-4 border-t border-border pt-1.5">
+                                  <span className="text-muted">Gesamt</span><span className="font-bold tabular-nums text-success">{t.sum}</span>
+                                </div>
+                              </div>
+                            </Popover.Dialog>
+                          </Popover.Content>
+                        </Popover>
                       </Table.Cell>
-                      <Table.Cell className="px-2 text-center text-base font-bold text-success sm:px-4">{t.sum}</Table.Cell>
                       <Table.Cell className="hidden px-2 text-center text-muted sm:table-cell sm:px-4">{t.exact}</Table.Cell>
-                      <Table.Cell className="hidden px-2 sm:table-cell sm:px-4">
+                      <Table.Cell className="px-2 sm:px-4">
                         {t.champ ? (
                           <span className="inline-flex items-center gap-1.5">
                             {known(t.champ) && <Flag code={t.champ} sm />}
-                            {/* mobile: flag + code only; from sm up the full team name */}
-                            <span className="sm:hidden">{t.champ}</span>
-                            <span className="hidden sm:inline">{teams[t.champ] ? teams[t.champ].name : t.champ}</span>
+                            <span className="font-medium">{t.champ}</span>
                             {championActual && (t.champHit ? <Check size={14} className="text-success" /> : <X size={14} className="text-muted" />)}
                           </span>
                         ) : (
