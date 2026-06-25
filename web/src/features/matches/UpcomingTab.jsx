@@ -80,13 +80,11 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, isCo
   }, [matches, liveSet, query, sort, status, phase, openOnly, st, me]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Render matches with sticky-free day headers (chrono sorts); flat for the points sort.
-  // `divided` draws a hairline (with the list's own spacing) between consecutive cards — used
-  // for the past list so each finished match reads as its own entry in the history log.
-  const renderRows = (rows, grouped, divided = false) => {
+  const renderRows = (rows, grouped) => {
     const counts = {};
     if (grouped) for (const m of rows) counts[dayKey(m)] = (counts[dayKey(m)] || 0) + 1;
     const out = [];
-    let lastDay = null, prevCard = false;
+    let lastDay = null;
     for (const m of rows) {
       if (grouped) {
         const dk = dayKey(m);
@@ -96,12 +94,10 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, isCo
               <span>{dayLabel(m)}</span><span className="font-normal normal-case">{counts[dk]} {counts[dk] === 1 ? "Spiel" : "Spiele"}</span>
             </div>,
           );
-          lastDay = dk; prevCard = false;
+          lastDay = dk;
         }
       }
-      if (divided && prevCard) out.push(<div key={`sep-${m.n}`} className="mx-1 border-t border-border/60" />);
       out.push(card(m));
-      prevCard = true;
     }
     return out;
   };
@@ -199,8 +195,8 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, isCo
         <p className="p-8 text-center text-sm text-muted">Keine Spiele für diese Auswahl.</p>
       ) : useAccordion ? (
         <div className="space-y-2">
-          <Accordion variant="surface" className="rounded-2xl">
-            <Accordion.Item id="past">
+          <Accordion variant="default">
+            <Accordion.Item id="past" className="overflow-hidden rounded-xl bg-background-secondary">
               <Accordion.Heading>
                 <Accordion.Trigger>
                   Vergangene Spiele<span className="ml-1.5 font-normal text-muted">{past.length}</span>
@@ -208,7 +204,7 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, isCo
                 </Accordion.Trigger>
               </Accordion.Heading>
               <Accordion.Panel>
-                <Accordion.Body className="space-y-2">{renderRows(past, true, true)}</Accordion.Body>
+                <Accordion.Body className="space-y-2">{renderRows(past, true)}</Accordion.Body>
               </Accordion.Panel>
             </Accordion.Item>
           </Accordion>
