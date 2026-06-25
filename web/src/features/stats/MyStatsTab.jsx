@@ -37,7 +37,7 @@ export default function MyStatsTab({ me, st, board = [], matchdays = [], teams =
         <div>
           <div className="text-[11px] uppercase tracking-wider text-muted">Gesamtpunkte</div>
           <div className="text-4xl font-extrabold text-success">{total}</div>
-          {row?.achPoints > 0 && <div className="text-[11px] text-muted">inkl. +{row.achPoints} aus Abzeichen</div>}
+          {row?.achPoints > 0 && <div className="text-[11px] text-muted">inkl. +{row.achPoints} aus Erfolgen</div>}
         </div>
         <div className="text-right">
           <div className="text-[11px] uppercase tracking-wider text-muted">Platz</div>
