@@ -80,11 +80,13 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, isCo
   }, [matches, liveSet, query, sort, status, phase, openOnly, st, me]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Render matches with sticky-free day headers (chrono sorts); flat for the points sort.
-  const renderRows = (rows, grouped) => {
+  // `divided` draws a hairline (with the list's own spacing) between consecutive cards — used
+  // for the past list so each finished match reads as its own entry in the history log.
+  const renderRows = (rows, grouped, divided = false) => {
     const counts = {};
     if (grouped) for (const m of rows) counts[dayKey(m)] = (counts[dayKey(m)] || 0) + 1;
     const out = [];
-    let lastDay = null;
+    let lastDay = null, prevCard = false;
     for (const m of rows) {
       if (grouped) {
         const dk = dayKey(m);
@@ -94,16 +96,18 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, isCo
               <span>{dayLabel(m)}</span><span className="font-normal normal-case">{counts[dk]} {counts[dk] === 1 ? "Spiel" : "Spiele"}</span>
             </div>,
           );
-          lastDay = dk;
+          lastDay = dk; prevCard = false;
         }
       }
+      if (divided && prevCard) out.push(<div key={`sep-${m.n}`} className="mx-1 border-t border-border/60" />);
       out.push(card(m));
+      prevCard = true;
     }
     return out;
   };
 
   const grouped = sort !== "points";
-  const past = sort === "asc" ? list.filter(isPast) : [];
+  const past = sort === "asc" ? list.filter(isPast).reverse() : []; // newest finished match first
   const upcoming = sort === "asc" ? list.filter((m) => !isPast(m)) : [];
   const useAccordion = past.length > 0 && upcoming.length > 0; // both present (default chrono view)
 
@@ -204,7 +208,7 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, isCo
                 </Accordion.Trigger>
               </Accordion.Heading>
               <Accordion.Panel>
-                <Accordion.Body className="space-y-2">{renderRows(past, true)}</Accordion.Body>
+                <Accordion.Body className="space-y-2">{renderRows(past, true, true)}</Accordion.Body>
               </Accordion.Panel>
             </Accordion.Item>
           </Accordion>
