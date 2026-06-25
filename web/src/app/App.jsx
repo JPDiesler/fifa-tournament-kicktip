@@ -14,6 +14,7 @@ import ChampionBar from "@/features/champion/ChampionBar.jsx";
 import OpenTipsBanner from "@/features/matches/OpenTipsBanner.jsx";
 import UpcomingTab from "@/features/matches/UpcomingTab.jsx";
 import GroupStage from "@/features/matches/GroupStage.jsx";
+import { groupStandings, groupFinished } from "@/features/matches/groups.js";
 import Bracket from "@/features/matches/Bracket.jsx";
 import MatchDetail from "@/features/matches/MatchDetail.jsx";
 import BroadcastDrawer from "@/features/broadcasts/BroadcastDrawer.jsx";
@@ -161,14 +162,30 @@ export default function App() {
   const handleLoggedIn = async (u) => { setUser(u); await load(false); };
   const handleLogout = async () => { await apiLogout(); setUser(null); setAdminOpen(false); setSt(EMPTY_STATE); setBoard([]); setMatchdays([]); };
 
+  // Once a group's six matches are in, resolve its bracket placeholders ("Sieger Gruppe A",
+  // "2. Gruppe A") to the real teams locally — so the K.o. tree fills as soon as a group is
+  // decided, ahead of api-football. The complex "3. (…)" third-place slots stay with the API.
+  const groupSlots = useMemo(() => {
+    const map = {};
+    for (const code of GROUP_PHASES) {
+      const table = groupStandings(code, MATCHES, st.results, TEAMS);
+      if (!groupFinished(table)) continue;
+      map[`Sieger Gruppe ${code}`] = table[0].code;
+      map[`2. Gruppe ${code}`] = table[1].code;
+    }
+    return map;
+  }, [st.results]);
+
   // Effective team code / label per match side. K.o. sides are filled by api-football
-  // (st.resolved); until then the slot shows its placeholder ("Sieger Gruppe A").
+  // (st.resolved); failing that, by the local group resolution above; until then the slot
+  // shows its placeholder ("Sieger Gruppe A").
   const teamCode = (m, side) => {
     const r = st.resolved[m.n];
     const rc = r && (side === "h" ? r.homeCode : r.awayCode);
     if (rc) return rc;
     const own = side === "h" ? m.h : m.a;
-    return known(own) ? own : null;
+    if (known(own)) return own;
+    return groupSlots[own] || null;
   };
   const teamLabel = (m, side) => {
     const code = teamCode(m, side);
