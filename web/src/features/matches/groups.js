@@ -22,3 +22,20 @@ export function groupStandings(groupCode, matches, results, teams) {
     .map((t) => ({ ...t, gd: t.gf - t.ga }))
     .sort((x, y) => y.pts - x.pts || y.gd - x.gd || y.gf - x.gf || x.name.localeCompare(y.name));
 }
+
+// A group is finished once all four teams have played their three matches.
+export const groupFinished = (table) => table.length === 4 && table.every((t) => t.sp >= 3);
+
+// Ranking of the third-placed teams across all finished groups (48-team format: the best 8 of 12
+// advance). Compared directly in one table by the standard criteria (Pkt → +/- → Tore); they never
+// met, so there is no head-to-head tiebreak. Only finished groups contribute (D3: a third place is
+// entered once its group is decided). `group` carries the source-group letter for display.
+export function thirdPlaceTable(groupCodes, matches, results, teams) {
+  const thirds = [];
+  for (const code of groupCodes) {
+    const table = groupStandings(code, matches, results, teams);
+    if (!groupFinished(table) || !table[2]) continue;
+    thirds.push({ ...table[2], group: code });
+  }
+  return thirds.sort((x, y) => y.pts - x.pts || y.gd - x.gd || y.gf - x.gf || x.name.localeCompare(y.name));
+}
