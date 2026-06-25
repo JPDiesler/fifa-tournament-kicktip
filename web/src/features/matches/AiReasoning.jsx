@@ -163,7 +163,7 @@ export default function AiReasoning({ matchN, player, providerMeta, home, away, 
               KI-Begründung · {player}
             </Modal.Heading>
           </Modal.Header>
-          <Modal.Body>
+          <Modal.Body className="max-h-[70dvh] overflow-y-auto">
             {!data ? (
               <div className="flex justify-center py-6"><Spinner /></div>
             ) : data.error ? (
