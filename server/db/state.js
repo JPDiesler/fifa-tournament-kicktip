@@ -8,6 +8,15 @@ import { score } from "../services/scoring.js";
 import { computeAchievements, achievementPoints, achievementPointsByDay } from "../services/achievements.js";
 import { isTipLocked, isChampLocked, champLockTs, TIP_LOCK_OFFSET_MIN } from "../services/locks.js";
 
+// Distinct calendar match days, sorted ascending — used to number the KI-Rückblick ("Spieltag 10/24").
+const MATCH_DAYS = [...new Set(MATCHES.map((m) => m.dt.slice(0, 10)))].sort();
+function recapWithDay() {
+  const r = latestRecap();
+  if (!r) return null;
+  const i = MATCH_DAYS.indexOf(r.day);
+  return { ...r, no: i >= 0 ? i + 1 : null, total: MATCH_DAYS.length };
+}
+
 // ---------- legacy state shape (keeps the current /api/state contract) ----------
 export function legacyState() {
   const kOf = kuerzelById();
@@ -62,7 +71,7 @@ export function stateForUser(meKuerzel) {
     // Achievements for the current player — computed from the FULL state (others' tips are
     // needed for lone-wolf/contrarian, but only ever on scored = long-locked matches).
     achievements: meKuerzel ? computeAchievements(meKuerzel, legacyState(), det) : [],
-    recap: latestRecap(), // newest KI matchday recap ({ day, text }) or null
+    recap: recapWithDay(), // newest KI matchday recap ({ day, text, no, total }) or null
     capabilities: getSetting("capabilities", null),
     meta: getSetting("meta", {}),
     locks: { offsetMin: TIP_LOCK_OFFSET_MIN, serverNow: now, champLocked, champLockTs, lockedMatches },
