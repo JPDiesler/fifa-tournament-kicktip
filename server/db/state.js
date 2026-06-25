@@ -50,16 +50,18 @@ export function stateForUser(meKuerzel) {
   for (const row of db.prepare("SELECT * FROM resolved").all())
     resolved[row.match_n] = { homeName: row.home_name, awayName: row.away_name, homeCode: row.home_code, awayCode: row.away_code, winner: row.winner };
 
+  const det = detailByMatch(); // Spielverlauf (scorers/cards/shootout) — for both the UI and detail-based achievements
+
   return {
     me: meKuerzel,
     tips, champs, results, resolved, live: liveByMatch(), broadcasts: broadcastsByMatch(),
-    details: detailByMatch(),
+    details: det,
     teamMeta: teamMetaState(),
     players: playersMeta(),
     championActual: getSetting("championActual", ""),
     // Achievements for the current player — computed from the FULL state (others' tips are
     // needed for lone-wolf/contrarian, but only ever on scored = long-locked matches).
-    achievements: meKuerzel ? computeAchievements(meKuerzel, legacyState()) : [],
+    achievements: meKuerzel ? computeAchievements(meKuerzel, legacyState(), det) : [],
     recap: latestRecap(), // newest KI matchday recap ({ day, text }) or null
     capabilities: getSetting("capabilities", null),
     meta: getSetting("meta", {}),
@@ -70,6 +72,7 @@ export function stateForUser(meKuerzel) {
 // ---------- leaderboard (server-side scoring) ----------
 export function leaderboard() {
   const st = legacyState();
+  const det = detailByMatch(); // Spielverlauf for detail-based achievement points (one query, reused per player)
   const players = db.prepare("SELECT kuerzel, name FROM users WHERE kuerzel IS NOT NULL AND is_superadmin=0 ORDER BY kuerzel").all();
   const championActual = st.championActual;
   return players
@@ -81,7 +84,7 @@ export function leaderboard() {
       }
       const champHit = !!(championActual && st.champs[kuerzel] === championActual);
       if (champHit) sum += CHAMP_BONUS;
-      const achPoints = achievementPoints(kuerzel, st); // bonus from unlocked achievements (points-relevant)
+      const achPoints = achievementPoints(kuerzel, st, det); // bonus from unlocked achievements (points-relevant)
       sum += achPoints;
       return { p: kuerzel, name: name || kuerzel, sum, exact, champ: st.champs[kuerzel] || "", champHit, achPoints };
     })
@@ -119,7 +122,13 @@ let _mdCache = { sig: null, val: null };
 function _mdSig() {
   const players = db.prepare("SELECT COUNT(*) n FROM users WHERE kuerzel IS NOT NULL AND is_superadmin=0").get().n;
   const res = db.prepare("SELECT match_n,h,a FROM results WHERE h!='' AND a!='' ORDER BY match_n").all().map((r) => `${r.match_n}:${r.h}:${r.a}`).join(",");
-  return `${players}|${res}`;
+  // Detail-based achievements (Last-Minute/Comeback/Platzverweis/Elfer) depend on the Spielverlauf
+  // CONTENT (goal minutes, sides, card text, shootout), not just its size — so fold in updated_at,
+  // which setMatchDetail bumps on every write. A pure in-place correction (e.g. a goal minute 87→84,
+  // same byte length) thus still busts the cache so the chart re-runs in lock-step with the leaderboard.
+  const det = db.prepare("SELECT match_n,updated_at u,CASE WHEN shootout IS NULL THEN 0 ELSE 1 END so FROM match_detail ORDER BY match_n").all().map((r) => `${r.match_n}:${r.u}:${r.so}`).join(",");
+  const win = db.prepare("SELECT match_n,winner FROM resolved WHERE winner IS NOT NULL ORDER BY match_n").all().map((r) => `${r.match_n}:${r.winner}`).join(",");
+  return `${players}|${res}|${det}|${win}`;
 }
 export function matchdayBreakdown() {
   const sig = _mdSig();
@@ -133,8 +142,11 @@ export function matchdayBreakdown() {
   }
   const orderedDays = Object.keys(byDay).sort();
   const scorableOf = (matches) => matches.some((m) => { const r = st.results[m.n]; return r && r.h !== "" && r.a !== ""; });
-  // chronological scorable days → per-player achievement points NEWLY earned each day
-  const achByDay = achievementPointsByDay(st, orderedDays.filter((d) => scorableOf(byDay[d].matches)).map((d) => ({ day: d, matchNs: byDay[d].matches.map((m) => m.n) })));
+  // Per-day achievement attribution. Replay over ALL days in order (not just scorable ones): some
+  // metrics depend on the full tip sequence (Fehlstart membership, the Phönix run-reset), so dropping
+  // a result-less day from the replay would let a later day inherit points that the full state never
+  // awards — making the chart disagree with the leaderboard. Result-less days simply contribute 0.
+  const achByDay = achievementPointsByDay(st, orderedDays.map((d) => ({ day: d, matchNs: byDay[d].matches.map((m) => m.n) })), detailByMatch());
   const days = [];
   for (const day of orderedDays) {
     const { label, matches } = byDay[day];

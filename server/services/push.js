@@ -10,7 +10,7 @@ import { kickoff, champLockTs, isChampLocked, isTipLocked } from "./locks.js";
 import { APP_URL } from "../config.js";
 import {
   getSetting, setSetting, markSentOnce, pushRecipients, subscriptionsForUser,
-  removePushSubscription, broadcastsByMatch, legacyState, leaderboard,
+  removePushSubscription, broadcastsByMatch, legacyState, leaderboard, detailByMatch,
 } from "../db.js";
 import { computeAchievements } from "./achievements.js";
 
@@ -267,12 +267,13 @@ export async function notifyMatchdayRecap(day, text) {
 export async function runAchievementNotifications() {
   ensureVapid();
   const st = legacyState();
+  const det = detailByMatch(); // Spielverlauf for detail-based achievements (one query, reused per recipient)
   for (const r of pushRecipients()) {
     if (r.prefs.achievement === false || !r.kuerzel) continue;
-    for (const a of computeAchievements(r.kuerzel, st)) {
+    for (const a of computeAchievements(r.kuerzel, st, det)) {
       if (!a.unlocked || !markSentOnce(`achv:${r.userId}:${a.id}`)) continue;
       await sendToUser(r.userId, {
-        title: a.kind === "fail" ? `🎭 Trostpreis: ${a.label}` : `🏅 Erfolg freigeschaltet: ${a.label}`,
+        title: a.kind === "fail" ? `🎭 Versteckter Erfolg: ${a.label}` : `🏅 Erfolg freigeschaltet: ${a.label}`,
         body: `${a.description} +${a.points === 1 ? "1 Punkt" : `${a.points} Punkte`}.`,
         tag: `achv-${a.id}`, url: "/", vibrate: [80, 40, 80], actions: OPEN,
       });
