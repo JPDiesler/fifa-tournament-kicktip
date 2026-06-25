@@ -195,7 +195,7 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, isCo
         <p className="p-8 text-center text-sm text-muted">Keine Spiele für diese Auswahl.</p>
       ) : useAccordion ? (
         <div className="space-y-2">
-          <Accordion variant="default">
+          <Accordion variant="default" hideSeparator>
             <Accordion.Item id="past" className="overflow-hidden rounded-xl bg-background-secondary">
               <Accordion.Heading>
                 <Accordion.Trigger>
