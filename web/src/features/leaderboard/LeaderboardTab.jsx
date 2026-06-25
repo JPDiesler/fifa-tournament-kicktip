@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Table, Pagination, Button, ToggleButton, ToggleButtonGroup } from "@heroui/react";
 import { Check, X, Share2 } from "lucide-react";
 import { known } from "@/lib/scoring.js";
@@ -15,6 +15,11 @@ import { shareStandings, shareBilanz, shareDuel } from "@/lib/shareImage.js";
 const PAGE_SIZES = [10, 25, 50, Infinity]; // Infinity = "Alle"
 const SUBTABS = [["gesamt", "Gesamt"], ["persoenlich", "Persönlich"], ["duell", "Duell"]];
 
+// Total = Tipp-Punkte + Erfolgs-Punkte. `sum` (server) already folds the achievement bonus in,
+// so the pure tip points (match scores + WM-Tipp) are simply sum − achPoints.
+const tipPts = (t) => t.sum - (t.achPoints || 0);
+const SORT_VAL = { tipp: tipPts, ach: (t) => t.achPoints || 0, sum: (t) => t.sum, exact: (t) => t.exact };
+
 // "Punktstand" tab: Gesamt (table + chart), Persönlich (Bilanz + history), Duell
 // (head-to-head). One toolbar share button (next to the sub-tabs) exports the
 // active view as a PNG.
@@ -24,11 +29,21 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
   const [pageSize, setPageSize] = useState(10);
   const [duelA, setDuelA] = useState(null);
   const [duelB, setDuelB] = useState(null);
+  const [sortDescriptor, setSortDescriptor] = useState({ column: "sum", direction: "descending" });
 
-  const pageCount = Math.max(1, Math.ceil(totals.length / pageSize));
+  // `totals` arrives in canonical standing order (by sum, then exact) — keep that for ties so the
+  // table stays stable, and let the user re-sort by any points column.
+  const sorted = useMemo(() => {
+    const f = SORT_VAL[sortDescriptor.column] || SORT_VAL.sum;
+    const dir = sortDescriptor.direction === "ascending" ? 1 : -1;
+    const order = new Map(totals.map((t, i) => [t.p, i]));
+    return [...totals].sort((a, b) => (f(a) - f(b)) * dir || order.get(a.p) - order.get(b.p));
+  }, [totals, sortDescriptor]);
+
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
   const safePage = Math.min(page, pageCount);
   const start = (safePage - 1) * pageSize;
-  const rows = pageSize === Infinity ? totals : totals.slice(start, start + pageSize);
+  const rows = pageSize === Infinity ? sorted : sorted.slice(start, start + pageSize);
   const paged = totals.length > 10; // only show controls beyond the default page
   const today = new Date().toLocaleDateString("de-DE");
 
@@ -69,15 +84,31 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
           <RecapCard recap={st?.recap} />
           <Table variant="primary" aria-label="Rangliste">
             <Table.ScrollContainer>
-              <Table.Content aria-label="Rangliste">
+              <Table.Content aria-label="Rangliste" sortDescriptor={sortDescriptor} onSortChange={(d) => { setSortDescriptor(d); setPage(1); }}>
                 <Table.Header>
                   <Table.Column isRowHeader className="whitespace-nowrap px-2 sm:px-4">#</Table.Column>
                   <Table.Column className="whitespace-nowrap px-2 sm:px-4">Spieler</Table.Column>
-                  <Table.Column className="whitespace-nowrap px-2 sm:px-4">
-                    <span className="sm:hidden">Pkt</span><span className="hidden sm:inline">Punkte</span>
+                  <Table.Column allowsSorting id="tipp" className="whitespace-nowrap px-2 sm:px-4">
+                    {({ sortDirection }) => <Table.SortableColumnHeader sortDirection={sortDirection}>Tipp</Table.SortableColumnHeader>}
                   </Table.Column>
-                  <Table.Column className="whitespace-nowrap px-2 sm:px-4">Exakt</Table.Column>
-                  <Table.Column className="whitespace-nowrap px-2 sm:px-4">WM-Tipp</Table.Column>
+                  <Table.Column allowsSorting id="ach" className="whitespace-nowrap px-2 sm:px-4">
+                    {({ sortDirection }) => (
+                      <Table.SortableColumnHeader sortDirection={sortDirection}>
+                        <span className="sm:hidden">Erf.</span><span className="hidden sm:inline">Erfolge</span>
+                      </Table.SortableColumnHeader>
+                    )}
+                  </Table.Column>
+                  <Table.Column allowsSorting id="sum" className="whitespace-nowrap px-2 sm:px-4">
+                    {({ sortDirection }) => (
+                      <Table.SortableColumnHeader sortDirection={sortDirection}>
+                        <span className="sm:hidden">Ges.</span><span className="hidden sm:inline">Gesamt</span>
+                      </Table.SortableColumnHeader>
+                    )}
+                  </Table.Column>
+                  <Table.Column allowsSorting id="exact" className="hidden whitespace-nowrap px-2 sm:table-cell sm:px-4">
+                    {({ sortDirection }) => <Table.SortableColumnHeader sortDirection={sortDirection}>Exakt</Table.SortableColumnHeader>}
+                  </Table.Column>
+                  <Table.Column className="hidden whitespace-nowrap px-2 sm:table-cell sm:px-4">WM-Tipp</Table.Column>
                 </Table.Header>
                 <Table.Body>
                   {rows.map((t, i) => (
@@ -87,9 +118,13 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
                         <PlayerName kuerzel={t.p} showName className="max-w-[7.5rem] font-semibold sm:max-w-none" />
                         {t.name && t.name !== t.p && <div className="text-xs text-muted">{t.p}</div>}
                       </Table.Cell>
+                      <Table.Cell className="px-2 text-center font-semibold sm:px-4">{tipPts(t)}</Table.Cell>
+                      <Table.Cell className="px-2 text-center sm:px-4">
+                        <span className={t.achPoints ? "font-semibold text-app-accent" : "text-muted"}>{t.achPoints ? `+${t.achPoints}` : 0}</span>
+                      </Table.Cell>
                       <Table.Cell className="px-2 text-center text-base font-bold text-success sm:px-4">{t.sum}</Table.Cell>
-                      <Table.Cell className="px-2 text-center text-muted sm:px-4">{t.exact}</Table.Cell>
-                      <Table.Cell className="px-2 sm:px-4">
+                      <Table.Cell className="hidden px-2 text-center text-muted sm:table-cell sm:px-4">{t.exact}</Table.Cell>
+                      <Table.Cell className="hidden px-2 sm:table-cell sm:px-4">
                         {t.champ ? (
                           <span className="inline-flex items-center gap-1.5">
                             {known(t.champ) && <Flag code={t.champ} sm />}
