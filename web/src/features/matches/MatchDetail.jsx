@@ -355,7 +355,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
         </Drawer.Dialog>
       </Drawer.Content>
     </Drawer.Backdrop>
-    <AiReasoning matchN={n} player={reasonFor} providerMeta={reasonFor ? st.players?.[reasonFor] : null} home={home} away={away} onClose={() => setReasonFor(null)} />
+    <AiReasoning matchN={n} player={reasonFor} providerMeta={reasonFor ? st.players?.[reasonFor] : null} home={home} away={away} jokersEnabled={st.jokersEnabled} onClose={() => setReasonFor(null)} />
     </>
   );
 }

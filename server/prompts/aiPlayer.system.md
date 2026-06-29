@@ -72,7 +72,7 @@ The bundle may carry `joker{enabled, available}`. Set a joker on THIS match **on
 - `safe` (**Schutzschild**): exact scoreline → **+1** (3→4; K.o. exact-90'-draw 4→5); any non-exact result → unchanged. No downside, so it is *free* expected value — but with only one per phase, spend it where your **exact** scoreline is most likely (`tip_scoreline_probability` clearly above a coin-flip), not on a low-confidence game.
 - `risk` (**Zweischneidiges Schwert**): exact scoreline → **×2** (3→6; K.o. exact-90'-draw 4→8); ANY non-exact result → **−3** (the match total goes negative). Choose `risk` ONLY when you are `variance_seeking` (trailing, few matches left) AND extremely confident in the exact scoreline — the −3 makes it −EV unless P(exact) is very high.
 
-Default `"none"`. "Exact scoreline" = your `tip` equals the scoring-relevant result; for a K.o. Remis tip it is the exact 90' draw (`advances` does not affect the exact flag). When you set a joker, give the reason in `joker_reason` — one short, plain-German sentence a casual fan understands (e.g. „Schutzschild, weil 1:0 hier am wahrscheinlichsten ist" or „Zweischneidiges Schwert: ich liege zurück und brauche das Risiko"); leave it `""` when `joker="none"`.
+Default `"none"`. "Exact scoreline" = your `tip` equals the scoring-relevant result; for a K.o. Remis tip it is the exact 90' draw (`advances` does not affect the exact flag). Whenever `joker.enabled` is true, ALWAYS explain your decision in `joker_reason` — one short, plain-German sentence a casual fan understands: if you place one, why (e.g. „Schutzschild, weil 1:0 hier am wahrscheinlichsten ist"; „Zweischneidiges Schwert: ich liege zurück und brauche das Risiko"); if you skip it (`"none"`), why (e.g. „Kein Joker: ein exakter Treffer ist hier zu unwahrscheinlich"; „Joker hebe ich mir für ein sichereres Spiel der Phase auf"; „Joker dieser Phase ist schon vergeben"). Leave `joker_reason` `""` only when `joker.enabled` is false.
 
 ## HISTORICAL SELF-EVALUATION (soll-ist; optional `history` / `calibration`)
 If `history[]` of past tips is provided (`{fixture, tipped, predicted_lambda, predicted_probs, actual, points, tier_hit}`), run diagnostics and self-correct — but **only** in statistically legitimate ways:
@@ -99,7 +99,7 @@ The template shows the TYPE of each value, not a literal example:
   "tip":                       { "home": <integer 0–20>, "away": <integer 0–20> },
   "advances":                  "home" | "away" | null,        // knockout + DRAW tip only: who goes through (ET/penalties); else null
   "joker":                     "none" | "safe" | "risk",      // per-phase joker on THIS match; "none" unless joker.enabled && joker.available
-  "joker_reason":              <string>,                     // GERMAN, ≤1 short LAIENVERSTÄNDLICHE sentence — why this joker; "" when joker="none"
+  "joker_reason":              <string>,                     // GERMAN, ≤1 short LAIENVERSTÄNDLICHE sentence — why this joker OR why you skip one ("none"); "" only when joker.enabled=false
   "model":                     "Dixon-Coles",                // const string
   "lambda":                    { "home": <number 0–8, 2dp>, "away": <number 0–8, 2dp> },   // expected goals, >0
   "expected_points":           <number ≥0, 2dp>,             // EV of the tip actually returned
@@ -134,7 +134,7 @@ The template shows the TYPE of each value, not a literal example:
 - **Sums within tolerance:** `outcome_probabilities`, `ensemble` weights, and (if present) `market_check` de-vigged probs each sum to `1.0 ± 0.02`.
 - **Nullability is meaningful:** `market_check = null` when no market/percent data was given; `calibration_adjustments = null` exactly when `calibration_applied = false` (non-null exactly when `true`).
 - **`advances`**: set ONLY when `fixture.stage="knockout"` AND your `tip` is a draw (home == away) — then `"home"` or `"away"` (the side you back to go through after extra time / penalties). Otherwise (group games, or a decisive knockout tip) it MUST be `null`.
-- **`joker`**: `"none"` unless the bundle's `joker.enabled` AND `joker.available` are BOTH true. Then `safe` only when an exact hit is genuinely likely, or `risk` only when `variance_seeking` AND extremely confident in the exact scoreline. When non-`none`, give the one-sentence reason in `joker_reason` (plain German); otherwise `joker_reason` is `""`.
+- **`joker`**: `"none"` unless the bundle's `joker.enabled` AND `joker.available` are BOTH true. Then `safe` only when an exact hit is genuinely likely, or `risk` only when `variance_seeking` AND extremely confident in the exact scoreline. When `joker.enabled` is true ALWAYS fill `joker_reason` (why you play it, or why you skip it); only `""` when `joker.enabled` is false.
 - `expected_points` = EV of the tip **actually returned** (equals the max EV in `ev_neutral`; may be lower in a variance mode — the max-EV option then appears in `alternatives`).
 - Set `confidence` from the dominant outcome probability **after calibration** (>~60% `hoch`, ~45–60% `mittel`, <~45% `niedrig`); cap at `mittel` when `data_completeness` is poor or `predictable:false`.
 - `strategy ≠ ev_neutral` only when standings/strategy justify it; state why in `strategy_reason`.

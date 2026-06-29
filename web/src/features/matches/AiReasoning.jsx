@@ -131,7 +131,7 @@ function Alternatives({ alts }) {
 // Detail popup for an AI player's tip: a team-matchup header with the predicted score, a
 // plain-language verdict, then the model internals (outcome bar, key stats, model-mix,
 // market-vs-model, alternatives). Fetched on open; the server gates visibility.
-export default function AiReasoning({ matchN, player, providerMeta, home, away, onClose }) {
+export default function AiReasoning({ matchN, player, providerMeta, home, away, jokersEnabled, onClose }) {
   const [data, setData] = useState(null); // null = loading | { error } | { prediction, … }
 
   useEffect(() => {
@@ -196,16 +196,20 @@ export default function AiReasoning({ matchN, player, providerMeta, home, away, 
                   </div>
                 )}
 
-                {/* joker the AI placed on this match (1 per phase) + why */}
-                {(data.tip?.joker === "risk" || data.tip?.joker === "safe") && (
-                  <div className="-mt-2 rounded-xl border border-border bg-overlay/40 px-3 py-2.5 text-xs">
-                    <div className="flex items-center justify-center gap-1.5">
-                      <JokerBadge joker={data.tip.joker} />
-                      <span className="font-semibold">{data.tip.joker === "risk" ? "Zweischneidiges Schwert" : "Schutzschild"}</span>
-                      <span className="text-muted">{data.tip.joker === "risk" ? "exakt ×2 · sonst −3" : "exakt +1"}</span>
+                {/* joker decision (1 per phase) — what the AI placed and why, or why it skipped one */}
+                {jokersEnabled && (
+                  (data.tip?.joker === "risk" || data.tip?.joker === "safe") ? (
+                    <div className="-mt-2 rounded-xl border border-border bg-overlay/40 px-3 py-2.5 text-xs">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <JokerBadge joker={data.tip.joker} />
+                        <span className="font-semibold">{data.tip.joker === "risk" ? "Zweischneidiges Schwert" : "Schutzschild"}</span>
+                        <span className="text-muted">{data.tip.joker === "risk" ? "exakt ×2 · sonst −3" : "exakt +1"}</span>
+                      </div>
+                      {p?.joker_reason && <p className="mt-1.5 text-center leading-snug text-muted">{p.joker_reason}</p>}
                     </div>
-                    {p?.joker_reason && <p className="mt-1.5 text-center leading-snug text-muted">{p.joker_reason}</p>}
-                  </div>
+                  ) : p?.joker_reason ? (
+                    <p className="-mt-2 text-center text-xs leading-snug text-muted"><span className="font-semibold text-foreground">Kein Joker</span> · {p.joker_reason}</p>
+                  ) : null
                 )}
 
                 {/* plain-language reasoning — the takeaway */}
