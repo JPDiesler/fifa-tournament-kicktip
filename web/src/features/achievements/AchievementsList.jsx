@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Accordion, Modal, Meter } from "@heroui/react";
+import { Accordion, Modal, Meter, Button } from "@heroui/react";
 import {
   Target, Crosshair, Sparkles, Flame, Zap, Trophy, Crown, Star, Gem, Swords, Wind, CalendarCheck,
   Shield, PartyPopper, Rocket, Sunrise, Clock, RotateCcw, RectangleVertical, Goal,
@@ -76,7 +76,7 @@ export default function AchievementsList({ achievements = [] }) {
                         <span className="font-semibold text-foreground">{unlocked.length}</span>/{items.length} · <span className={`font-semibold ${tone.pts}`}>+{pts}</span> Punkte
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                       {items.map((a, idx) => {
                         // hidden (locked Pleite/Niete) → masked placeholder, revealed only once unlocked
                         if (a.hidden) {
@@ -91,8 +91,8 @@ export default function AchievementsList({ achievements = [] }) {
                         }
                         const I = iconOf(a.id), done = a.unlocked;
                         return (
-                          <button key={a.id} type="button" onClick={() => setOpenId(a.id)}
-                            className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-left transition hover:border-app-accent/60 ${done ? tone.border : "border-border bg-overlay opacity-60"}`}>
+                          <Button key={a.id} variant="tertiary" onPress={() => setOpenId(a.id)}
+                            className={`h-auto flex-col items-stretch gap-1.5 rounded-lg border p-2.5 text-left hover:border-app-accent/60 ${done ? tone.border : "border-border bg-overlay opacity-60"}`}>
                             <div className="flex items-center justify-between">
                               <I size={20} className={done ? tone.icon : "text-muted"} />
                               {done ? <Check size={14} className={tone.pts} /> : <Lock size={12} className="text-muted" />}
@@ -104,7 +104,7 @@ export default function AchievementsList({ achievements = [] }) {
                               </Meter>
                               <span className="shrink-0 text-[10px] tabular-nums text-muted">{a.progress.current}/{a.progress.target}</span>
                             </div>
-                          </button>
+                          </Button>
                         );
                       })}
                     </div>
