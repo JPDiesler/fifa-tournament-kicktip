@@ -1,7 +1,6 @@
 import { Trophy, Lock, Check, X } from "lucide-react";
 import { Card, Chip } from "@heroui/react";
 import Flag from "@/components/Flag.jsx";
-import PlayerName from "@/components/PlayerName.jsx";
 import TeamSelect from "./TeamSelect.jsx";
 import { known } from "@/lib/scoring.js";
 
@@ -9,9 +8,10 @@ import { known } from "@/lib/scoring.js";
 // champion" control lives in the admin modal now.)
 export default function ChampionBar({ me, teams, champ, onSetChamp, champBonus, champLocked, championActual, champs, board }) {
   const teamName = (c) => (teams[c] ? teams[c].name : c);
-  const others = champLocked
-    ? (board || []).filter((b) => b.p !== me && champs?.[b.p]).map((b) => ({ k: b.p, code: champs[b.p] }))
-    : [];
+  // All players' picks grouped by country (no names), most-backed first — revealed at K.o. start.
+  const byCountry = {};
+  if (champLocked) for (const b of board || []) { const c = champs?.[b.p]; if (c && known(c)) byCountry[c] = (byCountry[c] || 0) + 1; }
+  const grouped = Object.entries(byCountry).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 
   return (
     <Card variant="default" className="border border-app-accent/30">
@@ -46,19 +46,20 @@ export default function ChampionBar({ me, teams, champ, onSetChamp, champBonus, 
           </div>
         </div>
 
-        {/* other players' picks — revealed once the K.o. phase starts */}
-        {champLocked && others.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-border pt-2 text-xs">
-            {others.map((o) => (
-              <span key={o.k} className="inline-flex items-center gap-1.5">
-                <PlayerName kuerzel={o.k} className="font-semibold" />
-                {known(o.code) && <Flag code={o.code} sm />}
-                <span className="text-muted">{teamName(o.code)}</span>
-                {championActual && (o.code === championActual
-                  ? <Check size={12} className="text-success" />
-                  : <X size={12} className="text-muted" />)}
-              </span>
-            ))}
+        {/* all players' picks, grouped by country (no names) — revealed once the K.o. phase starts */}
+        {champLocked && grouped.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5 border-t border-border pt-2 text-xs">
+            {grouped.map(([code, n]) => {
+              const isActual = championActual && code === championActual;
+              return (
+                <span key={code} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 ${isActual ? "bg-success/15" : "bg-overlay"}`}>
+                  <Flag code={code} sm />
+                  <span className="font-semibold uppercase">{code}</span>
+                  {n > 1 && <span className="tabular-nums text-muted">×{n}</span>}
+                  {isActual && <Check size={12} className="text-success" />}
+                </span>
+              );
+            })}
           </div>
         )}
       </Card.Content>
