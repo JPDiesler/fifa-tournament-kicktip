@@ -10,7 +10,7 @@ import LoginScreen from "@/features/auth/LoginScreen.jsx";
 import Navbar from "@/components/Navbar.jsx";
 import AdminModal from "@/features/admin/AdminModal.jsx";
 import HelpModal from "@/components/HelpModal.jsx";
-import WhatsNewModal, { WHATS_NEW_VERSION } from "@/components/WhatsNewModal.jsx";
+import WhatsNewModal, { pendingReleases } from "@/components/WhatsNewModal.jsx";
 import ChampionBar from "@/features/champion/ChampionBar.jsx";
 import OpenTipsBanner from "@/features/matches/OpenTipsBanner.jsx";
 import UpcomingTab from "@/features/matches/UpcomingTab.jsx";
@@ -59,6 +59,8 @@ export default function App() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const [whatsNewReleases, setWhatsNewReleases] = useState([]);
+  const whatsNewShownRef = useRef(false);
   const [tab, setTab] = useState("anstehend");
   const [st, setSt] = useState(EMPTY_STATE);
   const stView = useMemo(() => withDebugPen(st), [st]); // debug-pen overlay (no-op unless ?debugpen=1)
@@ -121,11 +123,13 @@ export default function App() {
       setAuthChecked(true);
     })();
   }, []);
-  // Show the "Neu im Tippspiel" overlay once per release, after login.
+  // Show the "Neu im Tippspiel" changelog once per user for any unseen release. Wait for real state
+  // (st !== EMPTY_STATE) so jokersEnabled is known before deciding which releases are live; open once.
   useEffect(() => {
-    if (!user) return;
-    try { if (localStorage.getItem("whatsNewSeen") !== WHATS_NEW_VERSION) setWhatsNewOpen(true); } catch { /* ignore */ }
-  }, [user]);
+    if (!user || st === EMPTY_STATE || whatsNewShownRef.current) return;
+    const pending = pendingReleases({ jokersEnabled: st.jokersEnabled });
+    if (pending.length) { whatsNewShownRef.current = true; setWhatsNewReleases(pending); setWhatsNewOpen(true); }
+  }, [user, st]);
   // Background refresh while logged in (fallback / live-minute ticking).
   useEffect(() => {
     if (!user) return;
@@ -397,12 +401,14 @@ export default function App() {
         onClose={() => setHelpOpen(false)}
         champBonus={CHAMP_BONUS}
         lockOffsetMin={st.locks?.offsetMin || 5}
+        jokersEnabled={st.jokersEnabled}
         isAdmin={user.isAdmin}
       />
 
       <WhatsNewModal
         isOpen={whatsNewOpen}
-        onClose={() => { setWhatsNewOpen(false); try { localStorage.setItem("whatsNewSeen", WHATS_NEW_VERSION); } catch { /* ignore */ } }}
+        releases={whatsNewReleases}
+        onClose={() => setWhatsNewOpen(false)}
       />
 
       <Toast.Provider placement="bottom" />
