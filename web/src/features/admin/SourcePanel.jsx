@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from "react";
-import { Button, TextField, Label, Input, Spinner, Chip, Meter, toast } from "@heroui/react";
-import { Plug, RefreshCw, RotateCcw, ChevronDown } from "lucide-react";
+import { Button, TextField, Label, Input, Spinner, Chip, Meter, Disclosure, NumberField, toast } from "@heroui/react";
+import { Plug, RefreshCw, RotateCcw } from "lucide-react";
 import { getSources, setProviderToken, testProvider, saveSourceConfig, refreshDetails, getRefreshStatus } from "./admin.js";
 
 // Connection state → dot colour + label (single provider, so no capability matrix).
@@ -10,7 +10,6 @@ const STATE = {
   unconfigured: { label: "kein API-Key", dot: "bg-muted/50", text: "text-muted" },
   error: { label: "Fehler beim letzten Poll", dot: "bg-danger", text: "text-danger" },
 };
-const numInput = "rounded-md border border-border bg-surface px-1.5 py-0.5 text-xs text-foreground";
 const fmtNum = (n) => (Number.isFinite(n) ? n.toLocaleString("de-DE") : "—");
 
 // The one api-football card: connection status, a daily-budget meter (live quota once
@@ -87,13 +86,15 @@ function ProviderCard({ provider, onChanged, onFlash }) {
         </div>
       </div>
 
-      <div className="mt-3 border-t border-border pt-2">
-        <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-1.5 text-xs text-muted hover:text-foreground">
-          <ChevronDown size={13} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
-          <span>API-Key {provider.tokenMasked ? <span className="tabular-nums text-foreground">{provider.tokenMasked}</span> : "—"}{provider.tokenSource === "env" ? " · aus .env" : provider.tokenSource === "db" ? " · im Web gesetzt" : ""}</span>
-          <span className="ml-auto">{open ? "schließen" : "ändern"}</span>
-        </button>
-        {open && (
+      <Disclosure isExpanded={open} onExpandedChange={setOpen} className="mt-3 border-t border-border pt-2">
+        <Disclosure.Heading>
+          <Disclosure.Trigger className="flex w-full items-center gap-1.5 text-xs text-muted hover:text-foreground">
+            <Disclosure.Indicator />
+            <span>API-Key {provider.tokenMasked ? <span className="tabular-nums text-foreground">{provider.tokenMasked}</span> : "—"}{provider.tokenSource === "env" ? " · aus .env" : provider.tokenSource === "db" ? " · im Web gesetzt" : ""}</span>
+            <span className="ml-auto">{open ? "schließen" : "ändern"}</span>
+          </Disclosure.Trigger>
+        </Disclosure.Heading>
+        <Disclosure.Content>
           <div className="mt-2 flex flex-col gap-2">
             <div className="flex flex-wrap items-end gap-2">
               <TextField aria-label={`${provider.name} API-Key`} type="password" value={token} onChange={setToken} autoComplete="off" className="min-w-44 flex-1">
@@ -104,14 +105,22 @@ function ProviderCard({ provider, onChanged, onFlash }) {
               {provider.tokenSource === "db" && <Button variant="tertiary" size="sm" isDisabled={busy} onPress={reset}>Zurücksetzen</Button>}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <label className="text-[11px] text-muted">Rate/min <input type="number" min="1" value={rate} onChange={(e) => setRate(e.target.value)} className={`ml-0.5 w-16 ${numInput}`} /></label>
-              <label className="text-[11px] text-muted">Tageslimit <input type="number" min="0" placeholder="kein" value={daily} onChange={(e) => setDaily(e.target.value)} className={`ml-0.5 w-24 ${numInput}`} /></label>
+              <span className="flex items-center gap-1 text-[11px] text-muted">Rate/min
+                <NumberField aria-label="Anfragen pro Minute" minValue={1} value={rate === "" ? NaN : Number(rate)} onChange={(n) => setRate(Number.isNaN(n) ? "" : String(n))} className="w-16">
+                  <NumberField.Group><NumberField.Input /></NumberField.Group>
+                </NumberField>
+              </span>
+              <span className="flex items-center gap-1 text-[11px] text-muted">Tageslimit
+                <NumberField aria-label="Tageslimit" minValue={0} value={daily === "" ? NaN : Number(daily)} onChange={(n) => setDaily(Number.isNaN(n) ? "" : String(n))} className="w-24">
+                  <NumberField.Group><NumberField.Input placeholder="kein" /></NumberField.Group>
+                </NumberField>
+              </span>
               <Button variant="tertiary" size="sm" isDisabled={busy} onPress={saveLimits}>Budget speichern</Button>
               <span className="text-[10px] text-muted">steuert den Live-Poll-Takt</span>
             </div>
           </div>
-        )}
-      </div>
+        </Disclosure.Content>
+      </Disclosure>
     </div>
   );
 }
@@ -169,12 +178,15 @@ export default function SourcePanel({ onFlash, onSync }) {
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="secondary" size="sm" isDisabled={busy} onPress={runSync}><RefreshCw size={15} /> Synchronisieren</Button>
         <Button variant="tertiary" size="sm" isPending={reloading} isDisabled={reloading} onPress={reloadDetails}><RotateCcw size={15} /> {reloading ? "lädt …" : "Details neu laden"}</Button>
-        <label className="ml-auto text-[11px] text-muted">
+        <span className="ml-auto flex items-center gap-1 text-[11px] text-muted">
           Live-Abruf alle
-          <input type="number" min="1" max="600" defaultValue={data.pollSeconds}
-            onBlur={(e) => Number(e.target.value) !== data.pollSeconds && savePoll(e.target.value)}
-            className={`mx-1 w-16 ${numInput}`} /> Sek
-        </label>
+          <NumberField aria-label="Live-Abruf-Intervall in Sekunden" minValue={1} maxValue={600} defaultValue={data.pollSeconds} className="w-16">
+            <NumberField.Group>
+              <NumberField.Input onBlur={(e) => Number(e.target.value) !== data.pollSeconds && savePoll(Number(e.target.value))} />
+            </NumberField.Group>
+          </NumberField>
+          Sek
+        </span>
       </div>
 
       <ProviderCard provider={data.provider} onChanged={load} onFlash={onFlash} />

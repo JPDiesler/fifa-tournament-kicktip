@@ -1,43 +1,39 @@
-import { useState } from "react";
-import { Popover, Button, SearchField } from "@heroui/react";
-import { ChevronDown } from "lucide-react";
+import { ComboBox, Input, ListBox } from "@heroui/react";
 
-// Compact searchable single-player picker (Popover + filter). `players` = [{ p, name }].
-export default function PlayerSelect({ players, value, onChange, ariaLabel }) {
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const sel = players.find((p) => p.p === value);
-  const list = players.filter((p) => `${p.name} ${p.p}`.toLowerCase().includes(q.toLowerCase()));
+const NONE = "__none__";
 
+// Searchable single-player picker (HeroUI ComboBox, filters by name). `players` = [{ p, name, … }].
+// `noneLabel` adds a leading clear entry (→ onChange("")); `renderItem(p)` overrides the default
+// name + Kürzel row (the ScoreTrend highlight picker passes coloured pills + AI badges).
+export default function PlayerSelect({
+  players, value, onChange, ariaLabel, placeholder = "Spieler …",
+  noneLabel, renderItem, className = "w-full",
+}) {
   return (
-    <Popover isOpen={open} onOpenChange={(o) => { setOpen(o); if (!o) setQ(""); }}>
-      <Button variant="secondary" size="sm" aria-label={ariaLabel} className="w-full justify-between gap-1">
-        <span className="truncate">{sel ? sel.name : "Spieler …"}</span>
-        <ChevronDown size={14} className="shrink-0" />
-      </Button>
-      <Popover.Content className="w-56">
-        <Popover.Dialog className="p-1.5">
-          <SearchField aria-label="Spieler suchen" value={q} onChange={setQ} className="mb-1">
-            <SearchField.Group>
-              <SearchField.SearchIcon />
-              <SearchField.Input autoFocus placeholder="Spieler suchen …" />
-              <SearchField.ClearButton />
-            </SearchField.Group>
-          </SearchField>
-          <ul className="max-h-56 overflow-y-auto">
-            {list.map((p) => (
-              <li key={p.p}>
-                <button onClick={() => { onChange(p.p); setOpen(false); setQ(""); }}
-                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-overlay ${value === p.p ? "bg-accent/15 font-semibold" : ""}`}>
-                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                  <span className="shrink-0 text-[10px] text-muted">{p.p}</span>
-                </button>
-              </li>
-            ))}
-            {!list.length && <li className="px-2 py-1.5 text-xs text-muted">Keine Treffer</li>}
-          </ul>
-        </Popover.Dialog>
-      </Popover.Content>
-    </Popover>
+    <ComboBox
+      aria-label={ariaLabel}
+      selectedKey={value || null}
+      onSelectionChange={(k) => onChange(k === NONE || k == null ? "" : String(k))}
+      className={className}
+    >
+      <ComboBox.InputGroup>
+        <Input placeholder={placeholder} />
+        <ComboBox.Trigger />
+      </ComboBox.InputGroup>
+      <ComboBox.Popover>
+        <ListBox>
+          {noneLabel && <ListBox.Item id={NONE} textValue={noneLabel}>{noneLabel}<ListBox.ItemIndicator /></ListBox.Item>}
+          {players.map((p) => (
+            <ListBox.Item key={p.p} id={p.p} textValue={p.name}>
+              {renderItem ? renderItem(p) : <>
+                <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                <span className="shrink-0 text-[10px] text-muted">{p.p}</span>
+              </>}
+              <ListBox.ItemIndicator />
+            </ListBox.Item>
+          ))}
+        </ListBox>
+      </ComboBox.Popover>
+    </ComboBox>
   );
 }

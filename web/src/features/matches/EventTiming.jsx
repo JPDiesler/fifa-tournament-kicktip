@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import SubTabs from "@/components/SubTabs.jsx";
 
 // When events happen across the match, per team — api-football buckets goals/cards into
 // 15-min windows and gives the SHARE (%) per window. Smooth monotone lines over time,
@@ -95,12 +96,7 @@ export default function EventTiming({ timing, knockout = false, homeColor = "#22
     <div className="rounded-xl border border-border bg-surface p-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs font-bold uppercase tracking-wider text-muted">Ereignis-Timing</div>
-        <div className="inline-flex rounded-lg border border-border bg-overlay p-0.5 text-[11px]">
-          {METRICS.map(([k, l]) => (
-            <button key={k} type="button" onClick={() => { setMetric(k); setActive(null); }}
-              className={`rounded-md px-2 py-0.5 transition ${metric === k ? "bg-accent font-semibold text-accent-foreground" : "text-muted"}`}>{l}</button>
-          ))}
-        </div>
+        <SubTabs items={METRICS} value={metric} ariaLabel="Kennzahl" onChange={(k) => { setMetric(k); setActive(null); }} />
       </div>
 
       <div ref={wrapRef} className="relative w-full touch-pan-y" onPointerMove={onMove} onPointerDown={onMove} onPointerCancel={() => setActive(null)} onPointerLeave={(e) => { if (e.pointerType === "mouse") setActive(null); }}>

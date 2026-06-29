@@ -4,6 +4,7 @@ import { Check, X, Share2 } from "lucide-react";
 import { known } from "@/lib/scoring.js";
 import Flag from "@/components/Flag.jsx";
 import PlayerName from "@/components/PlayerName.jsx";
+import SubTabs from "@/components/SubTabs.jsx";
 import ScoreTrend from "./ScoreTrend.jsx";
 import RecapCard from "./RecapCard.jsx";
 import MyStatsTab from "@/features/stats/MyStatsTab.jsx";
@@ -69,10 +70,7 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
   return (
     <div>
       <div className="mb-3 flex items-center justify-between gap-2">
-        <ToggleButtonGroup selectionMode="single" disallowEmptySelection size="sm" aria-label="Ansicht"
-          selectedKeys={new Set([mode])} onSelectionChange={(keys) => { const k = [...keys][0]; if (k) setMode(String(k)); }}>
-          {SUBTABS.map(([k, l]) => <ToggleButton key={k} id={k}>{l}</ToggleButton>)}
-        </ToggleButtonGroup>
+        <SubTabs items={SUBTABS} value={mode} ariaLabel="Ansicht" onChange={setMode} />
         {canShare && (
           <Button isIconOnly variant="secondary" size="sm" aria-label="Als Bild teilen" onPress={onShare}>
             <Share2 size={15} />

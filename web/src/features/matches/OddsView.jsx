@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight, Check } from "lucide-react";
+import { Button } from "@heroui/react";
 import { parsePct as pctNum } from "@/lib/num.js";
 
 // Rich odds card. Pre-match shows ALL bookmakers (switchable); in-play shows the live
@@ -64,14 +65,14 @@ export default function OddsView({ odds, live, model, home, away, homeColor = "#
     <div className={`space-y-3 pb-2 text-sm ${isLive && src.suspended ? "opacity-60" : ""}`}>
       {books.length > 1 && (
         <div className="flex items-center gap-1">
-          <button type="button" aria-label="Buchmacher zurück" onClick={() => setIdx((cur - 1 + books.length) % books.length)} className="flex size-6 shrink-0 items-center justify-center rounded-full text-muted hover:bg-overlay"><ChevronLeft size={16} /></button>
+          <Button isIconOnly variant="tertiary" size="sm" aria-label="Buchmacher zurück" onPress={() => setIdx((cur - 1 + books.length) % books.length)} className="size-6 shrink-0 rounded-full text-muted"><ChevronLeft size={16} /></Button>
           <div className="flex flex-1 gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {books.map((b, i) => (
               <button key={b.name + i} type="button" onClick={() => setIdx(i)}
                 className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${i === cur ? "bg-app-accent text-accent-foreground" : "bg-overlay text-muted hover:text-foreground"}`}>{b.name}</button>
             ))}
           </div>
-          <button type="button" aria-label="Buchmacher weiter" onClick={() => setIdx((cur + 1) % books.length)} className="flex size-6 shrink-0 items-center justify-center rounded-full text-muted hover:bg-overlay"><ChevronRight size={16} /></button>
+          <Button isIconOnly variant="tertiary" size="sm" aria-label="Buchmacher weiter" onPress={() => setIdx((cur + 1) % books.length)} className="size-6 shrink-0 rounded-full text-muted"><ChevronRight size={16} /></Button>
         </div>
       )}
 

@@ -128,14 +128,15 @@ function EntraModal({ open, onOpenChange, onCreated }) {
                 <div className="max-h-56 overflow-y-auto rounded-lg border border-border">
                   {list.length === 0 && <div className="p-3 text-xs text-muted">Keine Nutzer gefunden.</div>}
                   {list.slice(0, 200).map((p) => (
-                    <button
+                    <Button
                       key={p.id}
-                      onClick={() => { setSelected(p); if (!kuerzel) setKuerzel((p.displayName || "").slice(0, 3).toUpperCase()); }}
-                      className={`block w-full border-b border-border px-3 py-2 text-left text-sm last:border-0 hover:bg-surface ${selected?.id === p.id ? "bg-accent/10" : ""}`}
+                      variant="tertiary"
+                      onPress={() => { setSelected(p); if (!kuerzel) setKuerzel((p.displayName || "").slice(0, 3).toUpperCase()); }}
+                      className={`h-auto w-full flex-col items-start gap-0 rounded-none border-b border-border px-3 py-2 text-left text-sm last:border-0 hover:bg-surface ${selected?.id === p.id ? "bg-accent/10" : ""}`}
                     >
                       <div className="font-semibold">{p.displayName}</div>
                       <div className="text-xs text-muted">{p.userPrincipalName || p.mail}</div>
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 {selected && <Field label="Kürzel" value={kuerzel} onChange={setKuerzel} />}

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Popover } from "@heroui/react";
+import { Popover, Button } from "@heroui/react";
 import Flag from "@/components/Flag.jsx";
 import TeamLogo from "@/components/TeamLogo.jsx";
 import { hex, textOn } from "@/lib/teamColors.js";
@@ -313,7 +313,7 @@ export default function Lineups({ lineups, home, away, cards, playerStats }) {
             <div key={meta?.code || i} className="w-full shrink-0 px-0.5">
               <div className="mb-3 flex items-center gap-2.5 rounded-full bg-zinc-900 px-2 py-1.5 text-white">
                 {sides.length > 1 && !isHome && (
-                  <button type="button" aria-label="Zur Heimmannschaft" className={arrowCls} onClick={() => setIdx((n) => (n - 1 + sides.length) % sides.length)}><ChevronLeft size={18} /></button>
+                  <Button isIconOnly variant="tertiary" aria-label="Zur Heimmannschaft" className={arrowCls} onPress={() => setIdx((n) => (n - 1 + sides.length) % sides.length)}><ChevronLeft size={18} /></Button>
                 )}
                 <TeamLogo code={meta?.code} logo={meta?.logo} name={meta?.label} className="size-10" textClass="text-[11px]" fallbackBg={c} fallbackFg={tx} />
                 <div className="min-w-0 flex-1">
@@ -325,7 +325,7 @@ export default function Lineups({ lineups, home, away, cards, playerStats }) {
                 </div>
                 {team?.formation && <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold tabular-nums text-zinc-200">{team.formation}</span>}
                 {sides.length > 1 && isHome && (
-                  <button type="button" aria-label="Zur Gastmannschaft" className={arrowCls} onClick={() => setIdx((n) => (n + 1) % sides.length)}><ChevronRight size={18} /></button>
+                  <Button isIconOnly variant="tertiary" aria-label="Zur Gastmannschaft" className={arrowCls} onPress={() => setIdx((n) => (n + 1) % sides.length)}><ChevronRight size={18} /></Button>
                 )}
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start">

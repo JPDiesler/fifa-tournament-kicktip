@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ToggleButton } from "@heroui/react";
 
 // Spider/radar chart comparing two teams across N axes (api-football style). Custom SVG
 // (no chart lib). `axes` = [{ label, home, away }] where home/away are 0–100; the two
@@ -20,11 +21,12 @@ export default function RadarChart({ axes, homeColor = "#22c55e", awayColor = "#
   const dots = (sel, color) => list.map((_, i) => { const [x, y] = at(sel, i); return <circle key={sel + i} cx={x.toFixed(1)} cy={y.toFixed(1)} r="2.2" fill={color} />; });
 
   const LegendBtn = ({ side, color, label }) => (
-    <button type="button" onClick={() => setShow((s) => ({ ...s, [side]: !s[side] }))}
-      className={`flex items-center gap-1 rounded-full px-1.5 py-0.5 transition ${show[side] ? "" : "opacity-40"}`} aria-pressed={show[side]}>
+    <ToggleButton isSelected={show[side]} onChange={(v) => setShow((s) => ({ ...s, [side]: v }))} aria-label={label}
+      variant="ghost" size="sm"
+      className="h-auto gap-1 rounded-full px-1.5 py-0.5 text-xs text-foreground data-[selected=false]:opacity-40 data-[selected=true]:bg-transparent">
       <span className="size-2 rounded-full" style={{ background: color }} />
-      <span className={`min-w-0 truncate ${show[side] ? "" : "line-through"}`}>{label}</span>
-    </button>
+      <span className={show[side] ? "min-w-0 truncate" : "min-w-0 truncate line-through"}>{label}</span>
+    </ToggleButton>
   );
 
   return (

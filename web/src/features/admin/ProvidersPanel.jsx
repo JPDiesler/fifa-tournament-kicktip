@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Modal, Button, TextField, Input, Label, Spinner, ComboBox, ListBox } from "@heroui/react";
+import { Modal, Button, TextField, Input, Label, Spinner, ComboBox, ListBox, Link } from "@heroui/react";
 import { Pencil, Plug, RotateCcw, AlertTriangle } from "lucide-react";
 import ProviderLogo from "@/components/ProviderLogo.jsx";
 import DataTable from "@/components/DataTable.jsx";
@@ -111,7 +111,7 @@ export default function ProvidersPanel({ onFlash }) {
     { key: "requests", header: "Anfragen", sortable: true, sort: (p) => p.requests, render: (p) => <span className="tabular-nums">{p.requests}</span> },
     { key: "tokens", header: "Token", sortable: true, sort: (p) => p.tokens, render: (p) => <span className="tabular-nums">{fmtTokens(p.tokens)}</span> },
     { key: "cost", header: "≈ Kosten", sortable: true, sort: (p) => p.tokens, render: (p) => <span className="tabular-nums">{estCost(p.id, p.tokens)}</span> },
-    { key: "errors", header: "Fehler", sortable: true, sort: (p) => p.errors, render: (p) => <button type="button" onClick={() => openErrors(p)} className={`tabular-nums underline-offset-2 hover:underline ${p.errors ? "text-danger" : "text-muted"}`}>{p.errors}</button> },
+    { key: "errors", header: "Fehler", sortable: true, sort: (p) => p.errors, render: (p) => <Link onPress={() => openErrors(p)} className={`cursor-pointer tabular-nums underline-offset-2 ${p.errors ? "text-danger" : "text-muted"}`}>{p.errors}</Link> },
     { key: "players", header: "Spieler", sortable: true, sort: (p) => p.players, render: (p) => <span className="tabular-nums text-muted">{p.players}</span> },
     {
       key: "actions", header: "", render: (p) => (

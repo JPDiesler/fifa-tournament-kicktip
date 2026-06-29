@@ -1,65 +1,57 @@
-import { Accordion } from "@heroui/react";
+import { Accordion, Table } from "@heroui/react";
 import { groupStandings, thirdPlaceTable } from "./groups.js";
 import { PHASES } from "@/lib/scoring.js";
 import Flag from "@/components/Flag.jsx";
 import MatchCard from "./MatchCard.jsx";
 
-const TH = "px-1 py-1.5 text-center font-semibold";
+const TH = "px-1 py-1.5 text-center font-semibold text-muted";
 const TD = "px-1 py-1.5 text-center text-muted";
 
-// One standings row (shared by the group tables and the best-thirds table). `extra` renders an
-// optional trailing cell after the team (the source-group letter in the thirds table).
-function StandRow({ t, rank, highlight, extra }) {
-  return (
-    <tr className={`border-t border-border ${highlight ? "bg-app-accent/10" : ""}`}>
-      <td className="px-2 py-1.5 text-muted">{rank}</td>
-      <td className="px-1 py-1.5">
-        <span className="flex items-center gap-1.5">
-          <Flag code={t.code} sm />
-          <span className="truncate font-semibold">{t.name}</span>
-        </span>
-      </td>
-      {extra}
-      <td className={TD}>{t.sp}</td>
-      <td className={TD}>{t.w}</td>
-      <td className={TD}>{t.d}</td>
-      <td className={TD}>{t.l}</td>
-      <td className={`hidden whitespace-nowrap sm:table-cell ${TD}`}>{t.gf}:{t.ga}</td>
-      <td className={TD}>{t.gd > 0 ? `+${t.gd}` : t.gd}</td>
-      <td className="px-2 py-1.5 text-center font-bold">{t.pts}</td>
-    </tr>
-  );
-}
+// Cells/columns are returned as arrays (not wrapper components) so they stay direct Table
+// children — React Aria collections don't traverse custom components to find Column/Cell.
+const statColumns = () => [
+  <Table.Column key="sp" className={TH}>Sp</Table.Column>,
+  <Table.Column key="w" className={TH}>S</Table.Column>,
+  <Table.Column key="d" className={TH}>U</Table.Column>,
+  <Table.Column key="l" className={TH}>N</Table.Column>,
+  <Table.Column key="gf" className={`hidden sm:table-cell ${TH}`}>Tore</Table.Column>,
+  <Table.Column key="gd" className={TH}>+/-</Table.Column>,
+  <Table.Column key="pts" className="px-2 py-1.5 text-center font-semibold text-muted">Pkt</Table.Column>,
+];
+const statCells = (t) => [
+  <Table.Cell key="sp" className={TD}>{t.sp}</Table.Cell>,
+  <Table.Cell key="w" className={TD}>{t.w}</Table.Cell>,
+  <Table.Cell key="d" className={TD}>{t.d}</Table.Cell>,
+  <Table.Cell key="l" className={TD}>{t.l}</Table.Cell>,
+  <Table.Cell key="gf" className={`hidden whitespace-nowrap sm:table-cell ${TD}`}>{t.gf}:{t.ga}</Table.Cell>,
+  <Table.Cell key="gd" className={TD}>{t.gd > 0 ? `+${t.gd}` : t.gd}</Table.Cell>,
+  <Table.Cell key="pts" className="px-2 py-1.5 text-center font-bold">{t.pts}</Table.Cell>,
+];
 
-// Placeholder row for a group whose third place isn't decided yet — keeps the table at all 12 rows.
-function PendingThirdRow({ code }) {
-  const dash = <td className={TD}>–</td>;
-  return (
-    <tr className="border-t border-border text-muted">
-      <td className="px-2 py-1.5">–</td>
-      <td className="px-1 py-1.5 italic">noch offen</td>
-      <td className="px-1 py-1.5 text-center font-semibold">{code}</td>
-      {dash}{dash}{dash}{dash}
-      <td className={`hidden sm:table-cell ${TD}`}>–</td>
-      {dash}
-      <td className="px-2 py-1.5 text-center font-bold">–</td>
-    </tr>
-  );
-}
+// One standings row's cells (rank, team, [source group], stats). `extra` inserts the
+// group-letter cell used only by the best-thirds table.
+const rowCells = (t, rank, extra) => [
+  <Table.Cell key="rank" className="px-2 py-1.5 text-muted">{rank}</Table.Cell>,
+  <Table.Cell key="team" className="px-1 py-1.5" textValue={t.name}>
+    <span className="flex items-center gap-1.5"><Flag code={t.code} sm /><span className="truncate font-semibold">{t.name}</span></span>
+  </Table.Cell>,
+  ...(extra ? [extra] : []),
+  ...statCells(t),
+];
 
-function HeadCells() {
-  return (
-    <>
-      <th className={TH}>Sp</th>
-      <th className={TH}>S</th>
-      <th className={TH}>U</th>
-      <th className={TH}>N</th>
-      <th className={`hidden sm:table-cell ${TH}`}>Tore</th>
-      <th className={TH}>+/-</th>
-      <th className="px-2 py-1.5 text-center font-semibold">Pkt</th>
-    </>
-  );
-}
+// Placeholder row cells for a group whose third place isn't decided yet — keeps the thirds table at 12 rows.
+const pendingCells = (code) => [
+  <Table.Cell key="rank" className="px-2 py-1.5">–</Table.Cell>,
+  <Table.Cell key="team" className="px-1 py-1.5 italic" textValue="noch offen">noch offen</Table.Cell>,
+  <Table.Cell key="gr" className="px-1 py-1.5 text-center font-semibold">{code}</Table.Cell>,
+  <Table.Cell key="sp" className={TD}>–</Table.Cell>,
+  <Table.Cell key="w" className={TD}>–</Table.Cell>,
+  <Table.Cell key="d" className={TD}>–</Table.Cell>,
+  <Table.Cell key="l" className={TD}>–</Table.Cell>,
+  <Table.Cell key="gf" className={`hidden sm:table-cell ${TD}`}>–</Table.Cell>,
+  <Table.Cell key="gd" className={TD}>–</Table.Cell>,
+  <Table.Cell key="pts" className="px-2 py-1.5 text-center font-bold">–</Table.Cell>,
+];
 
 // Collapsed-state glance: the four teams in standing order (place 1 left → 4 right) as a compact
 // right-aligned row, flag over the country code (same flag size as the match cards). Hidden once the
@@ -105,20 +97,24 @@ export default function GroupStage({ groupCodes, matches, teams, st, me, teamLab
             </Accordion.Heading>
             <Accordion.Panel>
               <Accordion.Body className="space-y-2">
-                <div className="overflow-hidden rounded-xl border border-border bg-surface">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-muted">
-                        <th className="px-2 py-1.5 text-left font-semibold">#</th>
-                        <th className="px-1 py-1.5 text-left font-semibold">Team</th>
-                        <HeadCells />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {table.map((t, i) => <StandRow key={t.code} t={t} rank={i + 1} highlight={i < 2} />)}
-                    </tbody>
-                  </table>
-                </div>
+                <Table variant="primary" aria-label={`Tabelle ${label}`} className="text-xs">
+                  <Table.ScrollContainer>
+                    <Table.Content aria-label={`Tabelle ${label}`}>
+                      <Table.Header>
+                        <Table.Column className="px-2 py-1.5 text-left font-semibold text-muted">#</Table.Column>
+                        <Table.Column isRowHeader className="px-1 py-1.5 text-left font-semibold text-muted">Team</Table.Column>
+                        {statColumns()}
+                      </Table.Header>
+                      <Table.Body>
+                        {table.map((t, i) => (
+                          <Table.Row key={t.code} id={t.code} className={i < 2 ? "*:bg-app-accent/10" : ""}>
+                            {rowCells(t, i + 1)}
+                          </Table.Row>
+                        ))}
+                      </Table.Body>
+                    </Table.Content>
+                  </Table.ScrollContainer>
+                </Table>
 
                 {/* matches as a compact 2×3 grid (3 per row on ≥sm) */}
                 <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
@@ -165,26 +161,33 @@ export default function GroupStage({ groupCodes, matches, teams, st, me, teamLab
         </Accordion.Heading>
         <Accordion.Panel>
           <Accordion.Body>
-            <div className="overflow-hidden rounded-xl border border-border bg-surface">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-muted">
-                    <th className="px-2 py-1.5 text-left font-semibold">#</th>
-                    <th className="px-1 py-1.5 text-left font-semibold">Team</th>
-                    <th className="px-1 py-1.5 text-center font-semibold">Gr.</th>
-                    <HeadCells />
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* decided thirds ranked + highlighted (top 8 qualify), then one placeholder per open group → always 12 rows */}
-                  {thirds.map((t, i) => (
-                    <StandRow key={t.code} t={t} rank={i + 1} highlight={i < 8}
-                      extra={<td className="px-1 py-1.5 text-center font-semibold text-muted">{t.group}</td>} />
-                  ))}
-                  {pending.map((code) => <PendingThirdRow key={code} code={code} />)}
-                </tbody>
-              </table>
-            </div>
+            <Table variant="primary" aria-label="Beste Drittplatzierte" className="text-xs">
+              <Table.ScrollContainer>
+                <Table.Content aria-label="Beste Drittplatzierte">
+                  <Table.Header>
+                    <Table.Column className="px-2 py-1.5 text-left font-semibold text-muted">#</Table.Column>
+                    <Table.Column isRowHeader className="px-1 py-1.5 text-left font-semibold text-muted">Team</Table.Column>
+                    <Table.Column className="px-1 py-1.5 text-center font-semibold text-muted">Gr.</Table.Column>
+                    {statColumns()}
+                  </Table.Header>
+                  <Table.Body>
+                    {/* decided thirds ranked + highlighted (top 8 qualify), then one placeholder per open group → always 12 rows */}
+                    {[
+                      ...thirds.map((t, i) => (
+                        <Table.Row key={t.code} id={t.code} className={i < 8 ? "*:bg-app-accent/10" : ""}>
+                          {rowCells(t, i + 1, <Table.Cell key="gr" className="px-1 py-1.5 text-center font-semibold text-muted">{t.group}</Table.Cell>)}
+                        </Table.Row>
+                      )),
+                      ...pending.map((code) => (
+                        <Table.Row key={`p-${code}`} id={`p-${code}`} className="text-muted">
+                          {pendingCells(code)}
+                        </Table.Row>
+                      )),
+                    ]}
+                  </Table.Body>
+                </Table.Content>
+              </Table.ScrollContainer>
+            </Table>
           </Accordion.Body>
         </Accordion.Panel>
       </Accordion.Item>

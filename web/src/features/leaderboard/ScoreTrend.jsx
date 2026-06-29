@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Popover, Button, SearchField } from "@heroui/react";
-import { ChevronDown } from "lucide-react";
 import ProviderLogo from "@/components/ProviderLogo.jsx";
+import SubTabs from "@/components/SubTabs.jsx";
+import PlayerSelect from "@/features/stats/PlayerSelect.jsx";
 import { usePlayers } from "@/components/PlayerName.jsx";
 
 // Distinct line colours for the players (the current user always uses the app
@@ -43,8 +43,6 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
   const [mode, setMode] = useState("punkte");
   const [highlight, setHighlight] = useState(null); // player key, or null
   const [active, setActive] = useState(null);       // hovered matchday index, or null
-  const [pickOpen, setPickOpen] = useState(false);  // player-picker popover
-  const [query, setQuery] = useState("");           // player-picker search
   const pmeta = usePlayers();                        // hook: must run before any early return
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -159,54 +157,26 @@ export default function ScoreTrend({ matchdays = [], totals = [], me }) {
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs font-bold uppercase tracking-wider text-muted">{title}</div>
         <div className="flex items-center gap-1.5">
-          {/* searchable picker — only when the legend would get crowded */}
+          {/* searchable highlight picker — only when the legend would get crowded */}
           {shown.length > 6 && (
-            <Popover isOpen={pickOpen} onOpenChange={setPickOpen}>
-              <Button size="sm" variant="secondary" className="h-7 gap-1 px-2 text-[11px]">
-                {highlight ? pill(highlight, colorOf({ p: highlight }), "text-[10px]") : "Hervorheben"}
-                <ChevronDown size={13} />
-              </Button>
-              <Popover.Content className="w-56">
-                <Popover.Dialog className="p-1.5">
-                  <SearchField aria-label="Spieler suchen" value={query} onChange={setQuery} className="mb-1">
-                    <SearchField.Group>
-                      <SearchField.SearchIcon />
-                      <SearchField.Input autoFocus placeholder="Spieler suchen …" />
-                      <SearchField.ClearButton />
-                    </SearchField.Group>
-                  </SearchField>
-                  <ul className="max-h-56 overflow-y-auto">
-                    <li>
-                      <button onClick={() => { setHighlight(null); setPickOpen(false); setQuery(""); }}
-                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-overlay">
-                        <span className="size-2.5 rounded-full bg-muted/40" /> Alle anzeigen
-                      </button>
-                    </li>
-                    {shown.filter((pl) => `${pl.name} ${pl.p}`.toLowerCase().includes(query.toLowerCase())).map((pl) => (
-                      <li key={pl.p}>
-                        <button onClick={() => { setHighlight(pl.p); setPickOpen(false); setQuery(""); }}
-                          className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-overlay ${highlight === pl.p ? "bg-accent/15 font-semibold" : ""}`}>
-                          <span className="shrink-0">{pill(pl.p, colorOf(pl), "text-[10px]")}</span>
-                          {pmeta[pl.p]?.isAi && <ProviderLogo provider={pmeta[pl.p].provider} logo={pmeta[pl.p].logo} size={12} />}
-                          <span className="truncate">{pl.name}</span>
-                          {pmeta[pl.p]?.isAi && <span className="shrink-0 rounded bg-app-accent/15 px-1 text-[9px] font-bold uppercase text-app-accent">KI</span>}
-                          {pl.p === me && <span className="ml-auto text-[10px] text-app-accent">du</span>}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </Popover.Dialog>
-              </Popover.Content>
-            </Popover>
+            <PlayerSelect
+              players={shown}
+              value={highlight}
+              onChange={(v) => setHighlight(v || null)}
+              ariaLabel="Spieler hervorheben"
+              placeholder="Hervorheben"
+              noneLabel="Alle anzeigen"
+              className="w-36"
+              renderItem={(pl) => <>
+                <span className="shrink-0">{pill(pl.p, colorOf(pl), "text-[10px]")}</span>
+                {pmeta[pl.p]?.isAi && <ProviderLogo provider={pmeta[pl.p].provider} logo={pmeta[pl.p].logo} size={12} />}
+                <span className="truncate">{pl.name}</span>
+                {pmeta[pl.p]?.isAi && <span className="shrink-0 rounded bg-app-accent/15 px-1 text-[9px] font-bold uppercase text-app-accent">KI</span>}
+                {pl.p === me && <span className="ml-auto text-[10px] text-app-accent">du</span>}
+              </>}
+            />
           )}
-          <div className="inline-flex rounded-lg border border-border bg-overlay p-0.5 text-[11px]">
-            {MODES.map(([k, l]) => (
-              <button key={k} onClick={() => { setMode(k); setActive(null); }}
-                className={`rounded-md px-2 py-0.5 transition ${mode === k ? "bg-accent font-semibold text-accent-foreground" : "text-muted"}`}>
-                {l}
-              </button>
-            ))}
-          </div>
+          <SubTabs items={MODES} value={mode} ariaLabel="Diagramm-Modus" onChange={(k) => { setMode(k); setActive(null); }} />
         </div>
       </div>
 
