@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Drawer, Chip } from "@heroui/react";
-import { Lock, Info, AlarmClockOff } from "lucide-react";
+import { Drawer, Chip, ToggleButton, ToggleButtonGroup } from "@heroui/react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Lock, Info, AlarmClockOff, Check, Trophy } from "lucide-react";
 import { MATCHES } from "@/data";
 import Flag from "@/components/Flag.jsx";
+import WinnerFlag from "@/components/WinnerFlag.jsx";
 import PlayerName from "@/components/PlayerName.jsx";
 import Carousel from "@/components/Carousel.jsx";
 import AiReasoning from "./AiReasoning.jsx";
@@ -66,7 +68,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   const result = st.results[n];
   const hasResult = result && result.h !== "" && result.a !== "";
   const locked = (st.locks?.lockedMatches || []).includes(n);
-  const myTip = (st.tips[me] || {})[n] || { h: "", a: "" };
+  const myTip = (st.tips[me] || {})[n] || { h: "", a: "", w: "" };
   // Admin team overrides: nickname + logo (logo served via a versioned URL, not in state).
   const teamMetaFor = (code) => { const m = st.teamMeta?.[code]; return { nickname: m?.nickname, logo: m?.logoVer ? `/api/team-logo/${code}?v=${m.logoVer}` : undefined }; };
   const home = { label: teamLabel(match, "h"), code: teamCode(match, "h"), ...teamMetaFor(teamCode(match, "h")) };
@@ -74,6 +76,8 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   const ready = isConfirmed(match); // official pairing (api-football) → tippable; a provisional clinch is not
   const phaseLabel = PHASES.find((p) => p.code === match.ph)?.label || "";
   const knockout = ["R32", "R16", "QF", "SF", "P3", "FIN"].includes(match.ph); // group games (A–L) have no extra time
+  const isDrawTip = myTip.h !== "" && myTip.a !== "" && myTip.h === myTip.a;     // K.o. Remis-Tipp → braucht Sieger-Pick
+  const winTeam = myTip.w === "h" ? home : myTip.w === "a" ? away : null;        // getippter Sieger (h/a)
   const cd = !hasResult ? countdown(match.dt) : null;
   const past = hasResult || kickoffMs(match.dt) + 3 * 3600000 < Date.now(); // match over → hide "where to watch"
   const live = st.live?.[n];
@@ -84,9 +88,9 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   // Points score against the final result, or — while a match runs — provisionally
   // against the (delayed) live score. Powers the live tip comparison below.
   const effRes = hasResult ? result : (isLiveMatch ? { h: String(lh), a: String(la) } : null);
-  const myPoints = score(myTip, effRes);
+  const myPoints = score(myTip, effRes, st.resolved?.[n]);
   const tipped = (board || [])
-    .map((b) => ({ k: b.p, isMe: b.p === me, tip: (st.tips[b.p] || {})[n], pts: score((st.tips[b.p] || {})[n], effRes) }))
+    .map((b) => ({ k: b.p, isMe: b.p === me, tip: (st.tips[b.p] || {})[n], pts: score((st.tips[b.p] || {})[n], effRes, st.resolved?.[n]) }))
     .filter((o) => o.tip && (o.tip.h !== "" || o.tip.a !== ""));
   const displayList = effRes
     ? [...tipped].sort((a, b) => (b.pts ?? -1) - (a.pts ?? -1)) // live/final → leader first (incl. me)
@@ -112,6 +116,43 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
         <ScoreInput value={myTip.a} isDisabled={locked || !me || !ready} onChange={(v) => onTip(n, "a", v)} label="Tipp Gast" />
         {locked && myPoints !== null && <span className="ml-2"><PointsBadge points={myPoints} /></span>}
       </div>
+      {/* K.o.: a Remis tip needs the eventual winner — reveals as soon as a draw is entered */}
+      <AnimatePresence initial={false}>
+        {knockout && isDrawTip && (
+          <motion.div key="ko-winner" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: "easeOut" }} className="overflow-hidden">
+            <div className="mt-3 flex flex-col items-center gap-2 border-t border-border pt-3">
+              <span className="flex items-center gap-1.5 text-xs font-semibold">
+                <Trophy size={13} className="text-app-accent" /> Wer kommt weiter? <span className="font-normal text-muted">(n. Verl./Elfmeter)</span>
+              </span>
+              {locked ? (
+                winTeam
+                  ? <span className="flex items-center gap-1.5 rounded-lg bg-app-accent/15 px-2.5 py-1 text-sm font-semibold"><Flag code={winTeam.code} sm /> {winTeam.label} <Check size={14} className="text-app-accent" /></span>
+                  : <span className="text-sm text-muted">nicht festgelegt</span>
+              ) : (
+                <>
+                  <ToggleButtonGroup selectionMode="single" isDetached aria-label="Wer kommt weiter?" className="w-full gap-2" isDisabled={!me || !ready}
+                    selectedKeys={myTip.w ? new Set([myTip.w]) : new Set()}
+                    onSelectionChange={(keys) => onTip(n, "w", String([...keys][0] ?? ""))}>
+                    {[["h", home], ["a", away]].map(([side, t]) => (
+                      <ToggleButton key={side} id={side} variant="ghost"
+                        className="relative h-auto flex-1 flex-col gap-1.5 rounded-xl border border-border p-3 data-[selected=false]:opacity-60 data-[selected=true]:border-app-accent data-[selected=true]:bg-app-accent/15">
+                        {({ isSelected }) => (
+                          <>
+                            {isSelected && <Check size={15} className="absolute right-2 top-2 text-app-accent" />}
+                            <Flag code={t.code} lg />
+                            <span className="text-center text-xs font-semibold leading-tight">{t.label}</span>
+                          </>
+                        )}
+                      </ToggleButton>
+                    ))}
+                  </ToggleButtonGroup>
+                  {!myTip.w && <span className="text-[11px] font-medium text-warning">Bitte Sieger festlegen</span>}
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {!me && <p className="mt-2 text-center text-xs text-muted">Kein Kürzel zugewiesen.</p>}
       {me && !ready && <p className="mt-2 text-center text-xs text-muted">Paarung steht noch nicht fest – Tippen ab dann möglich.</p>}
     </div>
@@ -149,6 +190,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
                   <span className="flex shrink-0 items-center gap-2">
                     {isAi && <StrategyBadge strategy={aiStrategies[o.k]} />}
                     <span className="tabular-nums">{o.tip.h}:{o.tip.a}</span>
+                    <WinnerFlag tip={o.tip} resolved={st.resolved?.[n]} />
                     <PointsBadge points={o.pts} />
                   </span>
                 </div>

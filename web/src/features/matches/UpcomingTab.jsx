@@ -24,7 +24,7 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, isCo
   const now = Date.now();
   const hasResult = (m) => { const r = st.results[m.n]; return !!(r && r.h !== "" && r.a !== ""); };
   const isPast = (m) => hasResult(m) || kickoffMs(m.dt) <= now; // played, or already kicked off (live is excluded below)
-  const pts = (m) => score((st.tips[me] || {})[m.n], st.results[m.n]);
+  const pts = (m) => score((st.tips[me] || {})[m.n], st.results[m.n], st.resolved?.[m.n]);
 
   const card = (m) => {
     const result = st.results[m.n];
@@ -36,7 +36,7 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, isCo
         home={{ label: teamLabel(m, "h"), code: teamCode(m, "h") }}
         away={{ label: teamLabel(m, "a"), code: teamCode(m, "a") }}
         result={result}
-        points={score(myTip, result)}
+        points={score(myTip, result, st.resolved?.[m.n])}
         hasTip={!!(myTip && (myTip.h !== "" || myTip.a !== ""))}
         locked={(st.locks?.lockedMatches || []).includes(m.n)}
         inactive={!isConfirmed(m)}

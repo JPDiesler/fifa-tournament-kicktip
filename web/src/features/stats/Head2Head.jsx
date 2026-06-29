@@ -2,6 +2,7 @@ import { Swords } from "lucide-react";
 import { head2head } from "./stats.js";
 import PlayerSelect from "./PlayerSelect.jsx";
 import PointsBadge from "@/components/PointsBadge.jsx";
+import WinnerFlag from "@/components/WinnerFlag.jsx";
 
 // Direct comparison of two players. Selection (a/b) is controlled by the parent
 // (so the toolbar share button can reuse it). Data via head2head() — accurate on
@@ -68,16 +69,18 @@ export default function Head2Head({ st, board = [], teamLabel, a, b, onA, onB })
               const ta = st.tips[a][m.n], tb = st.tips[b][m.n], r = st.results[m.n];
               return (
                 <li key={m.n} className="flex items-center gap-2 px-3 py-2 text-xs">
-                  <div className="flex w-20 items-center justify-end gap-1.5">
+                  <div className="flex w-24 items-center justify-end gap-1">
                     <span className={`tabular-nums ${pa > pb ? "font-bold text-app-accent" : "text-muted"}`}>{ta.h}:{ta.a}</span>
+                    <WinnerFlag tip={ta} resolved={st.resolved?.[m.n]} arrow={false} />
                     <PointsBadge points={pa} />
                   </div>
                   <div className="min-w-0 flex-1 text-center">
                     <div className="truncate text-[11px]">{teamLabel(m, "h")} – {teamLabel(m, "a")}</div>
                     <div className="text-[10px] tabular-nums text-muted">{r.h}:{r.a}</div>
                   </div>
-                  <div className="flex w-20 items-center gap-1.5">
+                  <div className="flex w-24 items-center gap-1">
                     <PointsBadge points={pb} />
+                    <WinnerFlag tip={tb} resolved={st.resolved?.[m.n]} arrow={false} />
                     <span className={`tabular-nums ${pb > pa ? "font-bold text-app-accent" : "text-muted"}`}>{tb.h}:{tb.a}</span>
                   </div>
                 </li>

@@ -8,7 +8,7 @@ import { kickoffMs } from "@/lib/matchtime.js";
 export function playerStats(kuerzel, st) {
   const tips = st?.tips?.[kuerzel] || {};
   const results = st?.results || {};
-  const counts = { 3: 0, 2: 0, 1: 0, 0: 0 };
+  const counts = { 4: 0, 3: 0, 2: 0, 1: 0, 0: 0 }; // 4 = K.o. Remis-Tipp (exaktes 90'-Remis + Sieger)
   let tipped = 0, scored = 0, sum = 0;
   // chronological order so the "streak" reflects the real sequence of matches
   const chrono = [...MATCHES].sort((a, b) => kickoffMs(a.dt) - kickoffMs(b.dt));
@@ -16,10 +16,10 @@ export function playerStats(kuerzel, st) {
   for (const m of chrono) {
     const t = tips[m.n];
     if (t && (t.h !== "" || t.a !== "")) tipped++;
-    const pt = score(t, results[m.n]);
+    const pt = score(t, results[m.n], st?.resolved?.[m.n]);
     if (pt !== null) { counts[pt]++; scored++; sum += pt; seq.push(pt); }
   }
-  const hits = counts[3] + counts[2] + counts[1];
+  const hits = counts[4] + counts[3] + counts[2] + counts[1];
   let longest = 0, run = 0;
   for (const pt of seq) { if (pt >= 1) { run++; if (run > longest) longest = run; } else run = 0; }
   let current = 0;
@@ -27,7 +27,7 @@ export function playerStats(kuerzel, st) {
   return {
     total: MATCHES.length, tipped, scored, sum, counts, hits,
     hitRate: scored ? Math.round((hits / scored) * 100) : 0,
-    exactRate: scored ? Math.round((counts[3] / scored) * 100) : 0,
+    exactRate: scored ? Math.round(((counts[3] + counts[4]) / scored) * 100) : 0,
     avg: scored ? sum / scored : 0,
     longest, current,
   };
@@ -40,7 +40,7 @@ export function head2head(a, b, st, board = []) {
   const find = (k) => board.find((r) => r.p === k);
   const SA = playerStats(a, st), SB = playerStats(b, st);
   const duels = MATCHES
-    .map((m) => ({ m, pa: score(st.tips?.[a]?.[m.n], st.results?.[m.n]), pb: score(st.tips?.[b]?.[m.n], st.results?.[m.n]) }))
+    .map((m) => ({ m, pa: score(st.tips?.[a]?.[m.n], st.results?.[m.n], st.resolved?.[m.n]), pb: score(st.tips?.[b]?.[m.n], st.results?.[m.n], st.resolved?.[m.n]) }))
     .filter((d) => d.pa !== null && d.pb !== null)
     .sort((x, y) => kickoffMs(y.m.dt) - kickoffMs(x.m.dt));
   let aw = 0, bw = 0, tie = 0;

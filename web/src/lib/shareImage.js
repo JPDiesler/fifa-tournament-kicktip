@@ -4,7 +4,7 @@
 // fallback, download the file.
 
 const BG = "#0d0d0d", FG = "#fafafa", MUTED = "#a1a1aa", LINE = "#27272a";
-const DIST = { 3: "#10b981", 2: "#0ea5e9", 1: "#f59e0b", 0: "#52525b" }; // matches PT colours
+const DIST = { 4: "#8b5cf6", 3: "#10b981", 2: "#0ea5e9", 1: "#f59e0b", 0: "#52525b" }; // matches PT colours
 
 // Resolve a CSS custom property (e.g. the configurable app accent) to an rgb()
 // string the canvas can use.
@@ -140,12 +140,12 @@ export async function shareBilanz(s, { name, rank, total, boardLen, date } = {})
   const by = ty0 + 2 * (th + gap) + 6, bx = padX, bw = W - 2 * padX, bh = 14;
   const scored = s.scored || 1;
   let cx = bx;
-  [3, 2, 1, 0].forEach((k) => {
+  [4, 3, 2, 1, 0].forEach((k) => {
     const seg = (s.counts[k] / scored) * bw;
     if (seg > 0) { ctx.fillStyle = DIST[k]; ctx.fillRect(cx, by, seg, bh); cx += seg; }
   });
   ctx.fillStyle = MUTED; ctx.font = "500 11px system-ui, sans-serif";
-  ctx.fillText(`Verteilung · ${s.scored} gewertet · Volltreffer ${s.counts[3]} · Tordiff ${s.counts[2]} · Tendenz ${s.counts[1]} · daneben ${s.counts[0]}`, bx, by + bh + 18);
+  ctx.fillText(`Verteilung · ${s.scored} gewertet · ${s.counts[4] ? `Exakt+Sieger ${s.counts[4]} · ` : ""}Volltreffer ${s.counts[3]} · Tordiff ${s.counts[2]} · Tendenz ${s.counts[1]} · daneben ${s.counts[0]}`, bx, by + bh + 18);
 
   ctx.fillStyle = MUTED; ctx.font = "500 12px system-ui, sans-serif";
   ctx.fillText("Albert Weil · WM-Tippspiel", padX, H - 18);

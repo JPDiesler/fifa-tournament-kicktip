@@ -14,7 +14,7 @@ const Tile = ({ label, value, sub, valueClass = "" }) => (
 );
 
 // Distribution legend: point value → label. Colours come from PT (scoring.js).
-const DIST = [[3, "Volltreffer"], [2, "Tordifferenz"], [1, "Tendenz"], [0, "Daneben"]];
+const DIST = [[4, "Exakt + Sieger"], [3, "Volltreffer"], [2, "Tordifferenz"], [1, "Tendenz"], [0, "Daneben"]];
 const bg = (k) => PT[k].split(" ")[0]; // just the bg-* class of the point colour
 
 // "Bilanz": the current player's personal tipping record.
