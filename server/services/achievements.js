@@ -8,7 +8,7 @@
 // BIGGER points) — the fail badges act as a rubber-band equalizer: laggards earn them, leaders
 // don't, so the table tightens.
 import { MATCHES } from "../data.js";
-import { score } from "./scoring.js";
+import { scoreBase as score } from "./scoring.js"; // achievements count BASE points (jokers only affect the leaderboard total)
 
 // Chronological match order for streak detection (dt is ISO-ish "YYYY-MM-DDTHH:MM" → sorts
 // lexicographically = chronologically; tie-break on the static number).

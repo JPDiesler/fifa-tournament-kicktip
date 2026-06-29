@@ -1,5 +1,5 @@
 import { MATCHES } from "@/data";
-import { score } from "@/lib/scoring.js";
+import { score, scoreBase } from "@/lib/scoring.js";
 import { kickoffMs } from "@/lib/matchtime.js";
 
 // A player's tipping record, derived purely from the shared state. Reusable: the
@@ -16,8 +16,11 @@ export function playerStats(kuerzel, st) {
   for (const m of chrono) {
     const t = tips[m.n];
     if (t && (t.h !== "" || t.a !== "")) tipped++;
-    const pt = score(t, results[m.n], st?.resolved?.[m.n]);
-    if (pt !== null) { counts[pt]++; scored++; sum += pt; seq.push(pt); }
+    const res = results[m.n], resolved = st?.resolved?.[m.n];
+    // Quality metrics (counts/Quote/Serie) read BASE points → stable 0–4 buckets; the joker
+    // only swings the running total (matches the leaderboard, which scores with the joker).
+    const base = scoreBase(t, res, resolved);
+    if (base !== null) { counts[base]++; scored++; sum += score(t, res, resolved); seq.push(base); }
   }
   const hits = counts[4] + counts[3] + counts[2] + counts[1];
   let longest = 0, run = 0;
