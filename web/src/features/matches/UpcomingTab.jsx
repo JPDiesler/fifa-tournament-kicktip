@@ -37,6 +37,7 @@ export default function UpcomingTab({ matches, st, me, teamLabel, teamCode, isCo
         away={{ label: teamLabel(m, "a"), code: teamCode(m, "a") }}
         result={result}
         points={score(myTip, result, st.resolved?.[m.n])}
+        joker={myTip?.joker}
         hasTip={!!(myTip && (myTip.h !== "" || myTip.a !== ""))}
         locked={(st.locks?.lockedMatches || []).includes(m.n)}
         inactive={!isConfirmed(m)}

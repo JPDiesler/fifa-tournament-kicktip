@@ -2,6 +2,7 @@ import { Card } from "@heroui/react";
 import { Lock, Check } from "lucide-react";
 import Flag from "@/components/Flag.jsx";
 import PointsBadge from "@/components/PointsBadge.jsx";
+import JokerBadge from "@/components/JokerBadge.jsx";
 import { GoalIcon, CardIcon } from "@/components/MatchIcons.jsx";
 import BroadcastPill from "@/features/broadcasts/BroadcastPill.jsx";
 import LiveBadge, { LiveTag, LivePhase } from "./LiveBadge.jsx";
@@ -37,7 +38,7 @@ function EventLine({ e, align }) {
 // sm+ only) opens the broadcast drawer. On mobile the services live in the detail.
 // `live` = delayed in-play state ({ h,a,phase,minute,injury }) from st.live[n];
 // shown (score + phase) once a match has kicked off, until the final result lands.
-export default function MatchCard({ match, home, away, result, points, hasTip, locked, onOpen, onOpenBroadcasts, compact, inactive, live, detail, broadcasts, serverNow, liveMinuteOn }) {
+export default function MatchCard({ match, home, away, result, points, hasTip, joker, locked, onOpen, onOpenBroadcasts, compact, inactive, live, detail, broadcasts, serverNow, liveMinuteOn }) {
   const hasResult = result && result.h !== "" && result.a !== "";
   const cd = !hasResult ? countdown(match.dt) : null;
   // "Wo zu sehen?" only makes sense for upcoming/running matches — hide it once a
@@ -59,6 +60,7 @@ export default function MatchCard({ match, home, away, result, points, hasTip, l
                 <Check size={11} />
               </span>
             )}
+            <JokerBadge joker={joker} />
             {locked && <Lock size={12} className="text-muted" />}
             <PointsBadge points={points} />
           </span>

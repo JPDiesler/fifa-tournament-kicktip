@@ -129,6 +129,7 @@ export default function GroupStage({ groupCodes, matches, teams, st, me, teamLab
                         away={{ label: teamLabel(m, "a"), short: (teamCode(m, "a") || teamLabel(m, "a")).toUpperCase(), code: teamCode(m, "a") }}
                         result={result}
                         points={score(myTip, result)}
+                        joker={myTip?.joker}
                         hasTip={!!(myTip && (myTip.h !== "" || myTip.a !== ""))}
                         locked={(st.locks?.lockedMatches || []).includes(m.n)}
                         live={st.live?.[m.n]}

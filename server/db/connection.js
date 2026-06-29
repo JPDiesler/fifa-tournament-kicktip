@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS tips (
   h TEXT NOT NULL DEFAULT '',
   a TEXT NOT NULL DEFAULT '',
   w TEXT NOT NULL DEFAULT '',   -- K.o. Remis-Tipp: getippter Sieger 'h'/'a' (sonst '')
+  joker TEXT NOT NULL DEFAULT '', -- Joker auf diesem Spiel: 'risk' (Schwert) | 'safe' (Schild) | ''
   PRIMARY KEY (user_id, match_n)
 );
 CREATE TABLE IF NOT EXISTS champs (
@@ -194,6 +195,8 @@ if (!db.prepare("PRAGMA table_info(resolved)").all().some((c) => c.name === "win
   if (!rcols.includes("reg_away")) db.exec("ALTER TABLE resolved ADD COLUMN reg_away TEXT");
   if (!db.prepare("PRAGMA table_info(tips)").all().some((c) => c.name === "w"))
     db.exec("ALTER TABLE tips ADD COLUMN w TEXT NOT NULL DEFAULT ''");
+  if (!db.prepare("PRAGMA table_info(tips)").all().some((c) => c.name === "joker"))
+    db.exec("ALTER TABLE tips ADD COLUMN joker TEXT NOT NULL DEFAULT ''");
 }
 // Migration for DBs created before per-user notification prefs existed.
 if (!db.prepare("PRAGMA table_info(users)").all().some((c) => c.name === "notif_prefs")) {

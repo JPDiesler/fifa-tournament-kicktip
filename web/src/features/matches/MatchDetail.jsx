@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Drawer, Chip, ToggleButton, ToggleButtonGroup } from "@heroui/react";
+import { Drawer, Chip, ToggleButton, ToggleButtonGroup, Tooltip, Button } from "@heroui/react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Lock, Info, AlarmClockOff, Check, Trophy } from "lucide-react";
+import { Lock, Info, AlarmClockOff, Check, Trophy, Swords, Shield } from "lucide-react";
 import { MATCHES } from "@/data";
 import Flag from "@/components/Flag.jsx";
 import WinnerFlag from "@/components/WinnerFlag.jsx";
+import JokerBadge from "@/components/JokerBadge.jsx";
 import PlayerName from "@/components/PlayerName.jsx";
 import Carousel from "@/components/Carousel.jsx";
 import AiReasoning from "./AiReasoning.jsx";
@@ -78,6 +79,10 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
   const knockout = ["R32", "R16", "QF", "SF", "P3", "FIN"].includes(match.ph); // group games (A–L) have no extra time
   const isDrawTip = myTip.h !== "" && myTip.a !== "" && myTip.h === myTip.a;     // K.o. Remis-Tipp → braucht Sieger-Pick
   const winTeam = myTip.w === "h" ? home : myTip.w === "a" ? away : null;        // getippter Sieger (h/a)
+  // Joker budget: the phase (group / K.o. round) allows 1 joker → is it already on another match?
+  const phaseJokerMatch = MATCHES.find((mm) => mm.ph === match.ph && mm.n !== n && (st.tips[me] || {})[mm.n]?.joker);
+  const phaseJokerN = phaseJokerMatch?.n;
+  const phaseJokerType = phaseJokerN ? (st.tips[me] || {})[phaseJokerN]?.joker : "";
   const cd = !hasResult ? countdown(match.dt) : null;
   const past = hasResult || kickoffMs(match.dt) + 3 * 3600000 < Date.now(); // match over → hide "where to watch"
   const live = st.live?.[n];
@@ -153,6 +158,60 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
           </motion.div>
         )}
       </AnimatePresence>
+      {/* Joker — 1 pro Phase (Gruppe / K.o.-Runde); hier gesperrt, wenn der Phasen-Joker woanders liegt */}
+      {st.jokersEnabled && me && ready && (
+        <div className="mt-3 flex flex-col items-center gap-2 border-t border-border pt-3">
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-muted">
+            Joker <span className="font-normal">· {myTip.joker || phaseJokerN ? 0 : 1} verfügbar</span>
+            <Tooltip delay={150}>
+              <Button isIconOnly size="sm" variant="tertiary" aria-label="Joker erklärt" className="size-5 min-w-5 rounded-md text-muted">
+                <Info size={13} />
+              </Button>
+              <Tooltip.Content showArrow className="max-w-[16rem]">
+                <Tooltip.Arrow />
+                <div className="flex flex-col gap-1.5 px-1 py-0.5 text-xs">
+                  <p>Pro {phaseLabel} darfst du auf <b>ein</b> Spiel einen Joker legen.</p>
+                  <p className="flex items-start gap-1.5"><Swords size={12} className="mt-0.5 shrink-0 text-amber-500" /><span><b>Zweischneidiges Schwert:</b> exakter Treffer zählt doppelt (3→6, 4→8), sonst −3 Punkte.</span></p>
+                  <p className="flex items-start gap-1.5"><Shield size={12} className="mt-0.5 shrink-0 text-sky-400" /><span><b>Schutzschild:</b> exakter Treffer gibt +1 Punkt, ganz ohne Risiko.</span></p>
+                </div>
+              </Tooltip.Content>
+            </Tooltip>
+          </span>
+          {locked ? (
+            myTip.joker
+              ? <span className="flex items-center gap-1.5 text-sm font-semibold"><JokerBadge joker={myTip.joker} /> {myTip.joker === "risk" ? "Zweischneidiges Schwert" : "Schutzschild"}</span>
+              : <span className="text-xs text-muted">kein Joker gesetzt</span>
+          ) : phaseJokerN ? (
+            <span className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs">
+              <JokerBadge joker={phaseJokerType} />
+              <span className="text-muted">liegt auf <b className="text-foreground">Spiel {phaseJokerN}</b> · zum Verschieben dort entfernen</span>
+            </span>
+          ) : (
+            <ToggleButtonGroup selectionMode="single" isDetached aria-label="Joker" className="w-full gap-2"
+              selectedKeys={myTip.joker ? new Set([myTip.joker]) : new Set()}
+              onSelectionChange={(keys) => onTip(n, "joker", String([...keys][0] ?? ""))}>
+              {[
+                { id: "risk", Icon: Swords, name: "Zweischneidiges Schwert", color: "text-amber-500",
+                  effect: <>exakt <span className="font-bold text-success">×2</span> · sonst <span className="font-bold text-danger">−3</span></> },
+                { id: "safe", Icon: Shield, name: "Schutzschild", color: "text-sky-400",
+                  effect: <>exakt <span className="font-bold text-success">+1</span> · sonst <span className="text-muted">±0</span></> },
+              ].map(({ id, Icon, name, effect, color }) => (
+                <ToggleButton key={id} id={id} variant="ghost"
+                  className="relative h-auto flex-1 flex-col gap-1 rounded-lg border border-border p-2 data-[selected=false]:opacity-60 data-[selected=true]:border-app-accent data-[selected=true]:bg-app-accent/15">
+                  {({ isSelected }) => (
+                    <>
+                      {isSelected && <Check size={13} className="absolute right-1.5 top-1.5 text-app-accent" />}
+                      <Icon size={17} className={color} />
+                      <span className="text-center text-[11px] font-semibold leading-tight">{name}</span>
+                      <span className="text-center text-[10px] text-muted">{effect}</span>
+                    </>
+                  )}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+          )}
+        </div>
+      )}
       {!me && <p className="mt-2 text-center text-xs text-muted">Kein Kürzel zugewiesen.</p>}
       {me && !ready && <p className="mt-2 text-center text-xs text-muted">Paarung steht noch nicht fest – Tippen ab dann möglich.</p>}
     </div>
@@ -191,6 +250,7 @@ export default function MatchDetail({ match, isOpen, onClose, st, board, me, tea
                     {isAi && <StrategyBadge strategy={aiStrategies[o.k]} />}
                     <span className="tabular-nums">{o.tip.h}:{o.tip.a}</span>
                     <WinnerFlag tip={o.tip} resolved={st.resolved?.[n]} />
+                    <JokerBadge joker={o.tip.joker} />
                     <PointsBadge points={o.pts} />
                   </span>
                 </div>

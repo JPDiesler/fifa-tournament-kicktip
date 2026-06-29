@@ -3,6 +3,7 @@ import { head2head } from "./stats.js";
 import PlayerSelect from "./PlayerSelect.jsx";
 import PointsBadge from "@/components/PointsBadge.jsx";
 import WinnerFlag from "@/components/WinnerFlag.jsx";
+import JokerBadge from "@/components/JokerBadge.jsx";
 
 // Direct comparison of two players. Selection (a/b) is controlled by the parent
 // (so the toolbar share button can reuse it). Data via head2head() — accurate on
@@ -72,6 +73,7 @@ export default function Head2Head({ st, board = [], teamLabel, a, b, onA, onB })
                   <div className="flex w-24 items-center justify-end gap-1">
                     <span className={`tabular-nums ${pa > pb ? "font-bold text-app-accent" : "text-muted"}`}>{ta.h}:{ta.a}</span>
                     <WinnerFlag tip={ta} resolved={st.resolved?.[m.n]} arrow={false} />
+                    <JokerBadge joker={ta.joker} />
                     <PointsBadge points={pa} />
                   </div>
                   <div className="min-w-0 flex-1 text-center">
@@ -81,6 +83,7 @@ export default function Head2Head({ st, board = [], teamLabel, a, b, onA, onB })
                   <div className="flex w-24 items-center gap-1">
                     <PointsBadge points={pb} />
                     <WinnerFlag tip={tb} resolved={st.resolved?.[m.n]} arrow={false} />
+                    <JokerBadge joker={tb.joker} />
                     <span className={`tabular-nums ${pb > pa ? "font-bold text-app-accent" : "text-muted"}`}>{tb.h}:{tb.a}</span>
                   </div>
                 </li>

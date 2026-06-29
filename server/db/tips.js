@@ -1,5 +1,6 @@
-import { db } from "./connection.js";
+import { db, getSetting } from "./connection.js";
 import { ensureUserByKuerzel } from "./_shared.js";
+import { getUserByKuerzel } from "./users.js";
 import { MATCHES } from "../data.js";
 import { isTipLocked } from "../services/locks.js";
 
@@ -19,9 +20,13 @@ const cleanScore = (v) => {
   return Number.isInteger(n) && n >= 0 && n <= 99 ? String(n) : null; // null = invalid → reject
 };
 const cleanWinner = (v) => (v === "h" || v === "a" ? v : ""); // K.o. Remis-Tipp: getippter Sieger
+const cleanJoker = (v) => (v === "risk" || v === "safe" ? v : ""); // 'risk' (Schwert) | 'safe' (Schild)
+const PHASE_MATCHES = {}; for (const m of MATCHES) (PHASE_MATCHES[m.ph] ||= []).push(m.n); // ph → matches (1 Joker/Phase)
+const phaseOf = Object.fromEntries(MATCHES.map((m) => [m.n, m.ph]));
 export function setUserTips(kuerzel, tipsObj) {
   const u = ensureUserByKuerzel(kuerzel);
-  const ins = db.prepare("INSERT OR REPLACE INTO tips(user_id,match_n,h,a,w) VALUES(?,?,?,?,?)");
+  const jokersOn = getSetting("jokersEnabled", false);
+  const ins = db.prepare("INSERT OR REPLACE INTO tips(user_id,match_n,h,a,w,joker) VALUES(?,?,?,?,?,?)");
   let rejected = 0;
   db.transaction(() => {
     for (const [n, t] of Object.entries(tipsObj || {})) {
@@ -32,10 +37,35 @@ export function setUserTips(kuerzel, tipsObj) {
       if (h === null || a === null) { rejected++; continue; }                           // garbage score
       // winner pick only kept for a draw tip on a K.o. match; cleared otherwise
       const w = (KO_MATCH_NS.has(mn) && h !== "" && h === a) ? cleanWinner(t?.w) : "";
-      ins.run(u.id, mn, h, a, w);
+      const joker = jokersOn ? cleanJoker(t?.joker) : ""; // ignored entirely while jokers are off
+      ins.run(u.id, mn, h, a, w, joker);
+      // budget: at most one joker per phase → clear it on the player's OTHER matches of that phase
+      if (joker) {
+        const others = (PHASE_MATCHES[phaseOf[mn]] || []).filter((x) => x !== mn);
+        if (others.length) db.prepare(`UPDATE tips SET joker='' WHERE user_id=? AND joker!='' AND match_n IN (${others.join(",")})`).run(u.id);
+      }
     }
   })();
   return { rejected };
+}
+// One user's stored tip for a match → { h, a, w, joker } (joker blanked while the feature is off),
+// or null. Used by the AI-reasoning route to show the actually-placed tip incl. winner + joker.
+export function getUserTip(userId, matchN) {
+  const r = db.prepare("SELECT h,a,w,joker FROM tips WHERE user_id=? AND match_n=?").get(Number(userId), Number(matchN));
+  if (!r) return null;
+  return { h: r.h, a: r.a, w: r.w, joker: getSetting("jokersEnabled", false) ? r.joker : "" };
+}
+
+// AI joker budget for (player, match): is the phase's single joker still free here? `enabled` =
+// global toggle; `available` = no joker already sits on ANOTHER match of this match's phase. The
+// scheduler hands this to the LLM (so it won't propose a joker it can't place) and clamps with it.
+export function aiJokerContext(kuerzel, matchN) {
+  const enabled = getSetting("jokersEnabled", false) === true;
+  const u = getUserByKuerzel(kuerzel);
+  if (!enabled || !u) return { enabled, available: false };
+  const others = (PHASE_MATCHES[phaseOf[Number(matchN)]] || []).filter((x) => x !== Number(matchN));
+  const taken = others.length && db.prepare(`SELECT 1 FROM tips WHERE user_id=? AND joker!='' AND match_n IN (${others.join(",")}) LIMIT 1`).get(u.id);
+  return { enabled, available: !taken };
 }
 export function setChamp(kuerzel, code) {
   const u = ensureUserByKuerzel(kuerzel);

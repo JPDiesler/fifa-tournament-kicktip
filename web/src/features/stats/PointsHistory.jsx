@@ -4,6 +4,7 @@ import { score, PHASES } from "@/lib/scoring.js";
 import { kickoffMs } from "@/lib/matchtime.js";
 import PointsBadge from "@/components/PointsBadge.jsx";
 import WinnerFlag from "@/components/WinnerFlag.jsx";
+import JokerBadge from "@/components/JokerBadge.jsx";
 
 // Expandable per-match breakdown — "where do my points come from?". Lists every
 // scored tip (tip + result both present) grouped by tournament phase, with a
@@ -53,6 +54,7 @@ export default function PointsHistory({ me, st, teamLabel }) {
                           <span className="shrink-0 text-xs tabular-nums text-muted">
                             dein {t.h}:{t.a}<WinnerFlag tip={t} resolved={st.resolved?.[m.n]} arrow={false} className="mx-1 align-middle" /> → <span className="text-foreground">{r.h}:{r.a}</span>
                           </span>
+                          <JokerBadge joker={t.joker} />
                           <PointsBadge points={pt} />
                         </li>
                       );

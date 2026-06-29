@@ -20,10 +20,11 @@ function recapWithDay() {
 // ---------- legacy state shape (keeps the current /api/state contract) ----------
 export function legacyState() {
   const kOf = kuerzelById();
+  const jokersOn = getSetting("jokersEnabled", false);
   const tips = {};
-  for (const row of db.prepare("SELECT user_id,match_n,h,a,w FROM tips").all()) {
+  for (const row of db.prepare("SELECT user_id,match_n,h,a,w,joker FROM tips").all()) {
     const k = kOf[row.user_id]; if (!k) continue;
-    (tips[k] ||= {})[row.match_n] = { h: row.h, a: row.a, w: row.w };
+    (tips[k] ||= {})[row.match_n] = { h: row.h, a: row.a, w: row.w, joker: jokersOn ? row.joker : "" };
   }
   const champs = {};
   for (const row of db.prepare("SELECT user_id,code FROM champs").all()) { const k = kOf[row.user_id]; if (k) champs[k] = row.code; }
@@ -42,11 +43,12 @@ export function stateForUser(meKuerzel) {
   const lockedSet = new Set(lockedMatches);
   const champLocked = isChampLocked(now);
   const kOf = kuerzelById();
+  const jokersOn = getSetting("jokersEnabled", false);
 
   const tips = {};
-  for (const row of db.prepare("SELECT user_id,match_n,h,a,w FROM tips").all()) {
+  for (const row of db.prepare("SELECT user_id,match_n,h,a,w,joker FROM tips").all()) {
     const k = kOf[row.user_id]; if (!k) continue;
-    if (k === meKuerzel || lockedSet.has(row.match_n)) (tips[k] ||= {})[row.match_n] = { h: row.h, a: row.a, w: row.w };
+    if (k === meKuerzel || lockedSet.has(row.match_n)) (tips[k] ||= {})[row.match_n] = { h: row.h, a: row.a, w: row.w, joker: jokersOn ? row.joker : "" };
   }
   const champs = {};
   for (const row of db.prepare("SELECT user_id,code FROM champs").all()) {
@@ -67,6 +69,7 @@ export function stateForUser(meKuerzel) {
     details: det,
     teamMeta: teamMetaState(),
     players: playersMeta(),
+    jokersEnabled: jokersOn,
     championActual: getSetting("championActual", ""),
     // Achievements for the current player — computed from the FULL state (others' tips are
     // needed for lone-wolf/contrarian, but only ever on scored = long-locked matches).
