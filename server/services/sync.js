@@ -85,7 +85,7 @@ export async function sync(reason = "cron") {
         // is known even when the fulltime score is level).
         if (rec.homeName && rec.awayName) {
           const winner = rec.winner === "home" || rec.winner === "away" ? rec.winner : null;
-          setResolved(n, { homeName: rec.homeName, awayName: rec.awayName, homeCode: codeForName(rec.homeName), awayCode: codeForName(rec.awayName), winner });
+          setResolved(n, { homeName: rec.homeName, awayName: rec.awayName, homeCode: codeForName(rec.homeName), awayCode: codeForName(rec.awayName), regHome: rec.regHome != null ? String(rec.regHome) : null, regAway: rec.regAway != null ? String(rec.regAway) : null, winner });
           resolvedCount++;
         }
       } else {

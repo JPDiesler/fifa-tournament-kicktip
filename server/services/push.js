@@ -157,7 +157,7 @@ export async function notifyFinal(n, h, a) {
   await dispatch("fulltime", (r) => {
     const base = { tag: `match-${n}`, url: "/", requireInteraction: true, vibrate: [200, 100, 200], actions: OPEN };
     if (!r.kuerzel) return { title: `🏁 Endstand: ${home} ${h}:${a} ${away}`, ...base };
-    const pt = score((st.tips[r.kuerzel] || {})[n], res);
+    const pt = score((st.tips[r.kuerzel] || {})[n], res, st.resolved[n]);
     return { title: `🏁 ${home} ${h}:${a} ${away}`, body: `Dein Tipp: ${ptLabel(pt)}`, ...base };
   });
 }
@@ -249,7 +249,7 @@ export async function runDailySummary(now = Date.now()) {
       if (r.prefs.dailySummary === false || !r.kuerzel) continue;
       if (!markSentOnce(`dailySummary:${day}:${r.userId}`)) continue;
       let pts = 0;
-      for (const m of ms) { const p = score((st.tips[r.kuerzel] || {})[m.n], st.results[m.n]); if (p != null) pts += p; }
+      for (const m of ms) { const p = score((st.tips[r.kuerzel] || {})[m.n], st.results[m.n], st.resolved[m.n]); if (p != null) pts += p; }
       const rank = rankOf[r.kuerzel];
       await sendToUser(r.userId, { title: "📊 Spieltag ausgewertet", body: `Heute ${pts === 1 ? "1 Punkt" : `${pts} Punkte`}${rank ? ` · Platz ${rank}` : ""}.`, tag: `day-${day}`, url: "/", actions: OPEN });
     }

@@ -65,7 +65,7 @@ export function buildRecapContext(ms, st, board, det = {}, erfolge = []) {
     return `${teamName(m.h, m.n, "h", st)} ${r.h}:${r.a} ${teamName(m.a, m.n, "a", st)}`;
   });
   const tagespunkte = board
-    .map((row) => { let pts = 0; for (const m of ms) { const p = score((st.tips[row.p] || {})[m.n], st.results[m.n]); if (p != null) pts += p; } return { name: row.name, pts }; })
+    .map((row) => { let pts = 0; for (const m of ms) { const p = score((st.tips[row.p] || {})[m.n], st.results[m.n], st.resolved[m.n]); if (p != null) pts += p; } return { name: row.name, pts }; })
     .filter((x) => x.pts > 0).sort((a, b) => b.pts - a.pts);
   return {
     ergebnisse,

@@ -28,6 +28,10 @@ export function mapApiFootballFixture(f) {
     awayName: f.teams?.away?.name || null,
     homeGoals: f.goals?.home,
     awayGoals: f.goals?.away,
+    // Score after 90' (regulation) — distinct from goals (the final incl. extra time). Drives
+    // the K.o. Remis-Tipp rule ("was it a draw after 90'?"). Level for matches that went to ET.
+    ftHome: f.score?.fulltime?.home ?? null,
+    ftAway: f.score?.fulltime?.away ?? null,
     // Penalty-shootout tally (K.o.): live during status "P", final at "PEN". Separate from
     // goals (which stays the level fulltime/ET score). null when there's no shootout.
     penHome: f.score?.penalty?.home ?? null,

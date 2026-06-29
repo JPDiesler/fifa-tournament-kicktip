@@ -79,6 +79,8 @@ export function effectiveConfig() {
 const oriented = (fx) => ({
   homeGoals: fx.swap ? fx.awayGoals : fx.homeGoals,
   awayGoals: fx.swap ? fx.homeGoals : fx.awayGoals,
+  regHome: fx.swap ? fx.ftAway : fx.ftHome,
+  regAway: fx.swap ? fx.ftHome : fx.ftAway,
   penHome: fx.swap ? fx.penAway : fx.penHome,
   penAway: fx.swap ? fx.penHome : fx.penAway,
   homeName: fx.swap ? fx.awayName : fx.homeName,
@@ -132,11 +134,11 @@ export function mergeFixtures(byProvider, fetched, routing) {
     const idFx = resFx || lsFx || phFx || mnFx || anyFx(n);
     if (!idFx) continue;
     const idO = oriented(idFx);
-    const rec = { n, ko: idFx.ko, finished: false, live: false, homeGoals: null, awayGoals: null, penHome: null, penAway: null, phase: null, statusShort: idFx.statusShort ?? null, minute: null, injuryTime: null, duration: null, winner: null, homeName: idO.homeName, awayName: idO.awayName, extIds: {} };
+    const rec = { n, ko: idFx.ko, finished: false, live: false, homeGoals: null, awayGoals: null, regHome: null, regAway: null, penHome: null, penAway: null, phase: null, statusShort: idFx.statusShort ?? null, minute: null, injuryTime: null, duration: null, winner: null, homeName: idO.homeName, awayName: idO.awayName, extIds: {} };
     for (const id of fetched) if (byProvider[id]?.[n]) rec.extIds[id] = byProvider[id][n].extId;
     if (resFx) {
       const o = oriented(resFx);
-      rec.finished = true; rec.homeGoals = o.homeGoals; rec.awayGoals = o.awayGoals; rec.penHome = o.penHome; rec.penAway = o.penAway; rec.winner = o.winner; rec.homeName = o.homeName; rec.awayName = o.awayName;
+      rec.finished = true; rec.homeGoals = o.homeGoals; rec.awayGoals = o.awayGoals; rec.regHome = o.regHome; rec.regAway = o.regAway; rec.penHome = o.penHome; rec.penAway = o.penAway; rec.winner = o.winner; rec.homeName = o.homeName; rec.awayName = o.awayName;
       rec.duration = resFx.duration || "REGULAR"; // play length (REGULAR | EXTRA_TIME | PENALTY) for the final clock
       rec.minute = resFx.minute ?? null; rec.injuryTime = resFx.injuryTime ?? null; // FT elapsed + added time (api-football status.extra) → real final clock
     } else if (lsFx) {

@@ -21,9 +21,9 @@ function recapWithDay() {
 export function legacyState() {
   const kOf = kuerzelById();
   const tips = {};
-  for (const row of db.prepare("SELECT user_id,match_n,h,a FROM tips").all()) {
+  for (const row of db.prepare("SELECT user_id,match_n,h,a,w FROM tips").all()) {
     const k = kOf[row.user_id]; if (!k) continue;
-    (tips[k] ||= {})[row.match_n] = { h: row.h, a: row.a };
+    (tips[k] ||= {})[row.match_n] = { h: row.h, a: row.a, w: row.w };
   }
   const champs = {};
   for (const row of db.prepare("SELECT user_id,code FROM champs").all()) { const k = kOf[row.user_id]; if (k) champs[k] = row.code; }
@@ -31,7 +31,7 @@ export function legacyState() {
   for (const row of db.prepare("SELECT match_n,h,a FROM results").all()) results[row.match_n] = { h: row.h, a: row.a };
   const resolved = {};
   for (const row of db.prepare("SELECT * FROM resolved").all())
-    resolved[row.match_n] = { homeName: row.home_name, awayName: row.away_name, homeCode: row.home_code, awayCode: row.away_code, winner: row.winner };
+    resolved[row.match_n] = { homeName: row.home_name, awayName: row.away_name, homeCode: row.home_code, awayCode: row.away_code, regHome: row.reg_home, regAway: row.reg_away, winner: row.winner };
   return { tips, champs, results, resolved, live: liveByMatch(), broadcasts: broadcastsByMatch(), championActual: getSetting("championActual", ""), meta: getSetting("meta", {}) };
 }
 
@@ -44,9 +44,9 @@ export function stateForUser(meKuerzel) {
   const kOf = kuerzelById();
 
   const tips = {};
-  for (const row of db.prepare("SELECT user_id,match_n,h,a FROM tips").all()) {
+  for (const row of db.prepare("SELECT user_id,match_n,h,a,w FROM tips").all()) {
     const k = kOf[row.user_id]; if (!k) continue;
-    if (k === meKuerzel || lockedSet.has(row.match_n)) (tips[k] ||= {})[row.match_n] = { h: row.h, a: row.a };
+    if (k === meKuerzel || lockedSet.has(row.match_n)) (tips[k] ||= {})[row.match_n] = { h: row.h, a: row.a, w: row.w };
   }
   const champs = {};
   for (const row of db.prepare("SELECT user_id,code FROM champs").all()) {
@@ -57,7 +57,7 @@ export function stateForUser(meKuerzel) {
   for (const row of db.prepare("SELECT match_n,h,a FROM results").all()) results[row.match_n] = { h: row.h, a: row.a };
   const resolved = {};
   for (const row of db.prepare("SELECT * FROM resolved").all())
-    resolved[row.match_n] = { homeName: row.home_name, awayName: row.away_name, homeCode: row.home_code, awayCode: row.away_code, winner: row.winner };
+    resolved[row.match_n] = { homeName: row.home_name, awayName: row.away_name, homeCode: row.home_code, awayCode: row.away_code, regHome: row.reg_home, regAway: row.reg_away, winner: row.winner };
 
   const det = detailByMatch(); // Spielverlauf (scorers/cards/shootout) — for both the UI and detail-based achievements
 
@@ -88,8 +88,8 @@ export function leaderboard() {
     .map(({ kuerzel, name }) => {
       let sum = 0, exact = 0;
       for (const m of MATCHES) {
-        const pt = score((st.tips[kuerzel] || {})[m.n], st.results[m.n]);
-        if (pt !== null) { sum += pt; if (pt === 3) exact++; }
+        const pt = score((st.tips[kuerzel] || {})[m.n], st.results[m.n], st.resolved[m.n]);
+        if (pt !== null) { sum += pt; if (pt >= 3) exact++; } // 4 (K.o. exact-draw+winner) also counts as a Volltreffer
       }
       const champHit = !!(championActual && st.champs[kuerzel] === championActual);
       if (champHit) sum += CHAMP_BONUS;
@@ -165,7 +165,7 @@ export function matchdayBreakdown() {
       .map(({ kuerzel, name }) => {
         let pts = 0, any = false;
         for (const m of matches) {
-          const p = score((st.tips[kuerzel] || {})[m.n], st.results[m.n]);
+          const p = score((st.tips[kuerzel] || {})[m.n], st.results[m.n], st.resolved[m.n]);
           if (p !== null) { pts += p; any = true; }
         }
         return { p: kuerzel, name: name || kuerzel, pts, achPts: ach[kuerzel] || 0, any };

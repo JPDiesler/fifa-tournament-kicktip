@@ -19,11 +19,26 @@ export const flagUrl = (code) =>
 
 export const known = (c) => !!TEAMS[c];
 
-// Classic 3/2/1 scoring: 3 = exact score, 2 = correct goal difference,
-// 1 = correct tendency (winner/draw), 0 = wrong. null = not yet scorable.
-export function score(tip, res) {
+// Scoring — kept identical to the server's services/scoring.js.
+// 3 = exact, 2 = goal difference, 1 = tendency, 0 = wrong, scored against the (final) result.
+// K.o. Remis-Tipp: scored on the 90' stand + the eventual winner (see below) → up to 4.
+// null = not yet scorable. `resolved` (optional) = the K.o. entry { winner, regHome, regAway };
+// pass it for K.o. matches, omit for group games.
+export function score(tip, res, resolved) {
   if (!res || res.h === "" || res.a === "" || !tip || tip.h === "" || tip.a === "") return null;
   const th = +tip.h, ta = +tip.a, rh = +res.h, ra = +res.a;
+  // K.o. Remis-Tipp: the eventual winner matters (no draw in the end) → the 6-case table.
+  if (resolved && resolved.winner && th === ta) {
+    const regH = resolved.regHome != null ? +resolved.regHome : rh; // 90' stand (fallback: final)
+    const regA = resolved.regAway != null ? +resolved.regAway : ra;
+    const drawAt90 = regH === regA;
+    const exactDraw = drawAt90 && th === regH;
+    const winSide = resolved.winner === "home" ? "h" : resolved.winner === "away" ? "a" : null;
+    const winnerRight = !!winSide && tip.w === winSide;
+    if (exactDraw) return winnerRight ? 4 : 3;
+    if (drawAt90) return winnerRight ? 3 : 2;
+    return winnerRight ? 1 : 0;
+  }
   if (th === rh && ta === ra) return 3;
   if (th - ta === rh - ra) return 2;
   if (Math.sign(th - ta) === Math.sign(rh - ra)) return 1;
@@ -31,8 +46,10 @@ export function score(tip, res) {
 }
 
 // Explicit point-badge colors (independent of the monochrome theme accent) so
-// scoring stays legible: 3 = green, 2 = blue, 1 = amber, 0 = grey.
+// scoring stays legible: 4 = violet (rare K.o. exact-draw + winner), 3 = green,
+// 2 = blue, 1 = amber, 0 = grey.
 export const PT = {
+  4: "bg-violet-500 text-violet-50",
   3: "bg-emerald-500 text-emerald-950",
   2: "bg-sky-500 text-sky-950",
   1: "bg-amber-500 text-amber-950",

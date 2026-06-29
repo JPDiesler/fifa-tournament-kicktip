@@ -9,14 +9,19 @@ import { isTipLocked } from "../services/locks.js";
 // Server-side tip validation (never trust the client): a score is "" (clear) or a whole
 // number 0–99; the match must be a real, unlocked fixture. Anything else is rejected.
 const VALID_MATCH_NS = new Set(MATCHES.map((m) => m.n));
+// Single-elimination K.o. matches (no draw in the final outcome) → a Remis-Tipp must also name
+// the eventual winner. Group games (A–L) and anything else never carry a winner pick.
+const KO_PHASES = new Set(["R32", "R16", "QF", "SF", "P3", "FIN"]);
+const KO_MATCH_NS = new Set(MATCHES.filter((m) => KO_PHASES.has(m.ph)).map((m) => m.n));
 const cleanScore = (v) => {
   if (v === "" || v == null) return "";
   const n = Number(v);
   return Number.isInteger(n) && n >= 0 && n <= 99 ? String(n) : null; // null = invalid → reject
 };
+const cleanWinner = (v) => (v === "h" || v === "a" ? v : ""); // K.o. Remis-Tipp: getippter Sieger
 export function setUserTips(kuerzel, tipsObj) {
   const u = ensureUserByKuerzel(kuerzel);
-  const ins = db.prepare("INSERT OR REPLACE INTO tips(user_id,match_n,h,a) VALUES(?,?,?,?)");
+  const ins = db.prepare("INSERT OR REPLACE INTO tips(user_id,match_n,h,a,w) VALUES(?,?,?,?,?)");
   let rejected = 0;
   db.transaction(() => {
     for (const [n, t] of Object.entries(tipsObj || {})) {
@@ -25,7 +30,9 @@ export function setUserTips(kuerzel, tipsObj) {
       if (isTipLocked(mn)) { rejected++; continue; }                                   // locked
       const h = cleanScore(t?.h), a = cleanScore(t?.a);
       if (h === null || a === null) { rejected++; continue; }                           // garbage score
-      ins.run(u.id, mn, h, a);
+      // winner pick only kept for a draw tip on a K.o. match; cleared otherwise
+      const w = (KO_MATCH_NS.has(mn) && h !== "" && h === a) ? cleanWinner(t?.w) : "";
+      ins.run(u.id, mn, h, a, w);
     }
   })();
   return { rejected };
@@ -39,9 +46,9 @@ export function setResult(n, h, a) {
     .run(Number(n), String(h ?? ""), String(a ?? ""));
 }
 export function setResolved(n, rv) {
-  db.prepare(`INSERT INTO resolved(match_n,home_name,away_name,home_code,away_code,winner) VALUES(?,?,?,?,?,?)
-    ON CONFLICT(match_n) DO UPDATE SET home_name=excluded.home_name,away_name=excluded.away_name,home_code=excluded.home_code,away_code=excluded.away_code,winner=excluded.winner`)
-    .run(Number(n), rv.homeName ?? null, rv.awayName ?? null, rv.homeCode ?? null, rv.awayCode ?? null, rv.winner ?? null);
+  db.prepare(`INSERT INTO resolved(match_n,home_name,away_name,home_code,away_code,reg_home,reg_away,winner) VALUES(?,?,?,?,?,?,?,?)
+    ON CONFLICT(match_n) DO UPDATE SET home_name=excluded.home_name,away_name=excluded.away_name,home_code=excluded.home_code,away_code=excluded.away_code,reg_home=excluded.reg_home,reg_away=excluded.reg_away,winner=excluded.winner`)
+    .run(Number(n), rv.homeName ?? null, rv.awayName ?? null, rv.homeCode ?? null, rv.awayCode ?? null, rv.regHome ?? null, rv.regAway ?? null, rv.winner ?? null);
 }
 export const clearResolved = (n) => db.prepare("DELETE FROM resolved WHERE match_n=?").run(Number(n));
 export const getResolved = (n) => db.prepare("SELECT * FROM resolved WHERE match_n=?").get(Number(n));

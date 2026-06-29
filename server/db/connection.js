@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS tips (
   match_n INTEGER NOT NULL,
   h TEXT NOT NULL DEFAULT '',
   a TEXT NOT NULL DEFAULT '',
+  w TEXT NOT NULL DEFAULT '',   -- K.o. Remis-Tipp: getippter Sieger 'h'/'a' (sonst '')
   PRIMARY KEY (user_id, match_n)
 );
 CREATE TABLE IF NOT EXISTS champs (
@@ -48,6 +49,8 @@ CREATE TABLE IF NOT EXISTS results (
 CREATE TABLE IF NOT EXISTS resolved (
   match_n   INTEGER PRIMARY KEY,
   home_name TEXT, away_name TEXT, home_code TEXT, away_code TEXT,
+  reg_home  TEXT, reg_away TEXT,  -- score after 90' (regulation), oriented to our home/away;
+                                  -- null = not captured / decided in 90'. Used for K.o. Remis-Tipp scoring.
   winner    TEXT   -- 'home' | 'away' | null; set for K.o. matches so a
                    -- penalty-shootout winner is known even when the score is level
 );
@@ -183,6 +186,14 @@ if (!db.prepare("PRAGMA table_info(users)").all().some((c) => c.name === "is_sup
 // Migration for DBs created before resolved.winner existed.
 if (!db.prepare("PRAGMA table_info(resolved)").all().some((c) => c.name === "winner")) {
   db.exec("ALTER TABLE resolved ADD COLUMN winner TEXT");
+}
+// Migration for the K.o. Remis-Tipp scoring: 90' (regulation) score + the tipped winner.
+{
+  const rcols = db.prepare("PRAGMA table_info(resolved)").all().map((c) => c.name);
+  if (!rcols.includes("reg_home")) db.exec("ALTER TABLE resolved ADD COLUMN reg_home TEXT");
+  if (!rcols.includes("reg_away")) db.exec("ALTER TABLE resolved ADD COLUMN reg_away TEXT");
+  if (!db.prepare("PRAGMA table_info(tips)").all().some((c) => c.name === "w"))
+    db.exec("ALTER TABLE tips ADD COLUMN w TEXT NOT NULL DEFAULT ''");
 }
 // Migration for DBs created before per-user notification prefs existed.
 if (!db.prepare("PRAGMA table_info(users)").all().some((c) => c.name === "notif_prefs")) {
