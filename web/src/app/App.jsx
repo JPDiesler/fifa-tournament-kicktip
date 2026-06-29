@@ -182,18 +182,30 @@ export default function App() {
     }
     return map;
   }, [st.results]);
+  const byN = useMemo(() => Object.fromEntries(MATCHES.map((m) => [m.n, m])), []);
 
   // Effective team code / label per match side. K.o. sides are filled by api-football
-  // (st.resolved); failing that, by the local group resolution above; until then the slot
-  // shows its placeholder ("Sieger Gruppe A").
+  // (st.resolved); failing that, locally — group winners/runners-up AND "Sieger Spiel N"
+  // (the winner of a decided K.o. match) — so the tree self-seeds ahead of the API; until
+  // then the slot shows its placeholder.
   const teamCode = (m, side) => {
     const r = st.resolved[m.n];
     const rc = r && (side === "h" ? r.homeCode : r.awayCode);
     if (rc) return rc;
     const own = side === "h" ? m.h : m.a;
     if (known(own)) return own;
-    return groupSlots[own] || null;
+    if (groupSlots[own]) return groupSlots[own];
+    const fx = /Spiel (\d+)/.exec(own || ""); // "Sieger Spiel N" → winner of match N
+    return fx ? koWinnerCode(Number(fx[1])) : null;
   };
+  // Advancing team's code from a decided K.o. match (a level score needs a shootout winner).
+  function koWinnerCode(n) {
+    const fm = byN[n], r = st.results[n];
+    if (!fm || !(r && r.h !== "" && r.a !== "")) return null;
+    const koW = st.resolved[n]?.winner;
+    if (+r.h === +r.a && koW !== "home" && koW !== "away") return null; // level + no shootout winner yet
+    return teamCode(fm, koW === "home" ? "h" : koW === "away" ? "a" : +r.h > +r.a ? "h" : "a");
+  }
   const teamLabel = (m, side) => {
     const code = teamCode(m, side);
     if (code) return TEAMS[code].name;

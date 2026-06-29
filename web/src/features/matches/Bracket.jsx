@@ -130,6 +130,7 @@ export default function Bracket({ matches, me, st, teamLabel, teamCode, isConfir
           ds.push({ d: connectorPath(fx, F.cy, px, P.cy), won: decided(f) }); // green once that feeder is decided
         }
       }
+      ds.sort((a, b) => (a.won ? 1 : 0) - (b.won ? 1 : 0)); // draw green (won) paths last → on top
       setPaths(ds);
       setSize({ w: wrap.scrollWidth, h: wrap.scrollHeight });
     };
