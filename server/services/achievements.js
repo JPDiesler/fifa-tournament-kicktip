@@ -127,18 +127,18 @@ function metrics(kuerzel, st, details = {}) {
   const firstPlaus = [];
   for (const m of CHRONO) {
     const t = tips[m.n], res = results[m.n], pl = plausible(t), tipped_ = t && t.h !== "" && t.a !== "" && t.h != null && t.a != null;
-    const pt = score(t, res);
+    const pt = score(t, res, st.resolved?.[m.n]);
     // Fehlstart membership is fixed at TIP time (first 3 plausibly-tipped CHRONO matches), so
     // out-of-order settlement can never reshuffle it; pt stays null until played → the unlock
     // (all 3 === 0) only fires once all three are settled, and once earned it can't be displaced.
     if (pl && firstPlaus.length < 3) firstPlaus.push(pt);
     if (pt === null) { if (tipped_) { pRun = 0; eRun = 0; zRun = 0; zStreak = 0; } continue; } // a pending tipped match breaks every run
     tipped++;
-    if (pt === 3) exact++;
+    if (pt >= 3) exact++; // 4 (K.o. exact-draw + winner) counts as a Volltreffer too
     pRun = pt >= 1 ? pRun + 1 : 0; if (pRun > pBest) pBest = pRun; pCur = pRun;
-    eRun = pt === 3 ? eRun + 1 : 0; if (eRun > eBest) eBest = eRun; eCur = eRun;
+    eRun = pt >= 3 ? eRun + 1 : 0; if (eRun > eBest) eBest = eRun; eCur = eRun;
     // Phönix: a Volltreffer directly after ≥5 pointless tips (the run resets on any non-zero too)
-    if (pt === 0) zStreak++; else { if (pt === 3 && zStreak >= 5) phoenix = 1; zStreak = 0; }
+    if (pt === 0) zStreak++; else { if (pt >= 3 && zStreak >= 5) phoenix = 1; zStreak = 0; }
     const mt = tendency(t), rt = tendency(res);
     // zero-run = consecutive GENUINE (plausible) pointless games. ONLY a plausible 0-pointer advances
     // it; a scored game OR an implausible (non-genuine) tip BREAKS it — so a nailed blowout tip (6:0)
@@ -152,7 +152,7 @@ function metrics(kuerzel, st, details = {}) {
     // and lastGoalMinute/hadRedCard only ever grow, so they're monotonic; comeback depends on goal
     // ORDER and is gated on a COMPLETE goal log so a partial timeline can't unlock-then-flip.
     const h = Number(res.h), a = Number(res.a), d = details[m.n];
-    if (pt === 3) {
+    if (pt >= 3) {
       if (h === 0 && a === 0) zeroZero = 1;
       if (h + a >= 5) torfest = 1;
       if (Math.abs(h - a) >= 3) blowout = 1;
@@ -172,14 +172,14 @@ function metrics(kuerzel, st, details = {}) {
   // FAIL aggregates (leer-ausgegangen tiers + the CONSECUTIVE Nullrunden-Abo run, PLAUSIBLE tips only).
   const byDay = {};
   for (const m of CHRONO) (byDay[m.dt.slice(0, 10)] ||= []).push(m);
-  const dayPts = (k, ms) => { let pts = 0, any = false; for (const m of ms) { const p = score(st.tips[k]?.[m.n], results[m.n]); if (p !== null) { pts += p; any = true; } } return any ? pts : null; };
+  const dayPts = (k, ms) => { let pts = 0, any = false; for (const m of ms) { const p = score(st.tips[k]?.[m.n], results[m.n], st.resolved?.[m.n]); if (p !== null) { pts += p; any = true; } } return any ? pts : null; };
   let matchdayWins = 0, perfectDays = 0, bestDayPts = 0, badDays = 0, bigBadDays = 0, loneLoserDay = 0;
   let zdRun = 0, zdBest = 0, zdCur = 0; // consecutive blank-day run (gap-aware, like the match streaks)
   for (const dk of Object.keys(byDay).sort()) {
     const ms = byDay[dk];
     let myPts = 0, myScored = 0, failScored = 0; // failScored = plausible scored tips (the anti-farm qualifier)
     for (const m of ms) {
-      const p = score(tips[m.n], results[m.n]);
+      const p = score(tips[m.n], results[m.n], st.resolved?.[m.n]);
       if (p !== null) { myPts += p; myScored++; if (plausible(tips[m.n])) failScored++; }
     }
     if (myScored > 0 && myPts > bestDayPts) bestDayPts = myPts; // monotonic on its own: a day's points only accrue
@@ -205,8 +205,8 @@ function metrics(kuerzel, st, details = {}) {
       }
     }
     if (ms.length >= 2) {
-      const scored = ms.map((m) => score(tips[m.n], results[m.n])).filter((p) => p !== null);
-      if (scored.length >= 2 && scored.every((p) => p === 3)) perfectDays++;
+      const scored = ms.map((m) => score(tips[m.n], results[m.n], st.resolved?.[m.n])).filter((p) => p !== null);
+      if (scored.length >= 2 && scored.every((p) => p >= 3)) perfectDays++;
     }
   }
 
@@ -215,8 +215,8 @@ function metrics(kuerzel, st, details = {}) {
   let loneWolf = 0, contrarian = 0, herd = 0;
   for (const m of CHRONO) {
     const res = results[m.n]; if (!hasResult(res)) continue;
-    const myPt = score(tips[m.n], res), pl = plausible(tips[m.n]);
-    const oth = others.map((k) => score(st.tips[k]?.[m.n], res)).filter((p) => p != null);
+    const myPt = score(tips[m.n], res, st.resolved?.[m.n]), pl = plausible(tips[m.n]);
+    const oth = others.map((k) => score(st.tips[k]?.[m.n], res, st.resolved?.[m.n])).filter((p) => p != null);
     if (myPt != null && myPt > 0 && oth.length && !oth.some((p) => p > 0)) loneWolf++;
     const myTen = tendency(tips[m.n]), resTen = tendency(res);
     if (myTen != null) {
