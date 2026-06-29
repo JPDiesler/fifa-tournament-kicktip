@@ -31,6 +31,14 @@ export async function refreshDetails() {
 export async function getRefreshStatus() {
   return j(await fetch("/api/admin/refresh-details/status"), "Status nicht ladbar"); // → { running, total, done, fetched, … }
 }
+// ---- game rules (global feature toggles) ----
+export async function getGameConfig() {
+  return j(await fetch("/api/admin/game-config"), "Spielregeln nicht ladbar"); // { jokersEnabled }
+}
+export async function setGameConfig(body) {
+  return j(await post("/api/admin/game-config", body), "Speichern fehlgeschlagen"); // { jokersEnabled }
+}
+
 export async function createBasic(body) {
   return j(await post("/api/admin/users/basic", body), "Anlegen fehlgeschlagen"); // { user, password }
 }

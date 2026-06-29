@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Modal, Tabs } from "@heroui/react";
-import { Database, Users, Bot, Shield } from "lucide-react";
+import { Database, Users, Bot, Shield, Dices } from "lucide-react";
 import AdminUsersTab from "./AdminUsersTab.jsx";
 import AiAdminTab from "./AiAdminTab.jsx";
 import AdminTeamsTab from "./AdminTeamsTab.jsx";
+import GameRulesTab from "./GameRulesTab.jsx";
 import SourcePanel from "./SourcePanel.jsx";
 
 // Admin in two tabs: "API & Ergebnisse" (result source, token, capabilities,
@@ -36,6 +37,9 @@ export default function AdminModal({ isOpen, onClose, onSync, entra, meId, onFla
                   <Tabs.Tab id="teams" className="flex flex-1 items-center justify-center gap-1.5">
                     <Shield size={15} /> Mannschaften <Tabs.Indicator />
                   </Tabs.Tab>
+                  <Tabs.Tab id="rules" className="flex flex-1 items-center justify-center gap-1.5">
+                    <Dices size={15} /> Regeln <Tabs.Indicator />
+                  </Tabs.Tab>
                 </Tabs.List>
               </Tabs.ListContainer>
 
@@ -52,6 +56,9 @@ export default function AdminModal({ isOpen, onClose, onSync, entra, meId, onFla
               </Tabs.Panel>
               <Tabs.Panel id="teams" className="h-[26rem] overflow-y-auto pr-1 pt-4">
                 {isOpen && <AdminTeamsTab onFlash={onFlash} />}
+              </Tabs.Panel>
+              <Tabs.Panel id="rules" className="h-[26rem] overflow-y-auto pr-1 pt-4">
+                {isOpen && <GameRulesTab onFlash={onFlash} />}
               </Tabs.Panel>
             </Tabs>
           </Modal.Body>

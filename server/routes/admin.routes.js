@@ -279,6 +279,13 @@ router.post("/admin/ai-config", requireAdmin, (req, res) => {
   if (mode) setSetting("aiReasoningVisibleAfter", mode);
   res.json({ ok: true, reasoningVisibleAfter: REASONING_DEFAULT() });
 });
+// Game-rule config — global feature toggles (currently just the per-phase joker).
+router.get("/admin/game-config", requireAdmin, (req, res) =>
+  res.json({ jokersEnabled: getSetting("jokersEnabled", false) === true }));
+router.post("/admin/game-config", requireAdmin, (req, res) => {
+  if (typeof req.body?.jokersEnabled === "boolean") setSetting("jokersEnabled", req.body.jokersEnabled);
+  res.json({ jokersEnabled: getSetting("jokersEnabled", false) === true });
+});
 router.post("/admin/ai-players", requireAdmin, (req, res) => {
   const b = req.body || {};
   const kuerzel = cleanKuerzel(b.kuerzel);
