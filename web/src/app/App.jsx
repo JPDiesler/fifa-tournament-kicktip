@@ -10,6 +10,7 @@ import LoginScreen from "@/features/auth/LoginScreen.jsx";
 import Navbar from "@/components/Navbar.jsx";
 import AdminModal from "@/features/admin/AdminModal.jsx";
 import HelpModal from "@/components/HelpModal.jsx";
+import WhatsNewModal, { WHATS_NEW_VERSION } from "@/components/WhatsNewModal.jsx";
 import ChampionBar from "@/features/champion/ChampionBar.jsx";
 import OpenTipsBanner from "@/features/matches/OpenTipsBanner.jsx";
 import UpcomingTab from "@/features/matches/UpcomingTab.jsx";
@@ -57,6 +58,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [adminOpen, setAdminOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [tab, setTab] = useState("anstehend");
   const [st, setSt] = useState(EMPTY_STATE);
   const stView = useMemo(() => withDebugPen(st), [st]); // debug-pen overlay (no-op unless ?debugpen=1)
@@ -119,6 +121,11 @@ export default function App() {
       setAuthChecked(true);
     })();
   }, []);
+  // Show the "Neu im Tippspiel" overlay once per release, after login.
+  useEffect(() => {
+    if (!user) return;
+    try { if (localStorage.getItem("whatsNewSeen") !== WHATS_NEW_VERSION) setWhatsNewOpen(true); } catch { /* ignore */ }
+  }, [user]);
   // Background refresh while logged in (fallback / live-minute ticking).
   useEffect(() => {
     if (!user) return;
@@ -379,6 +386,11 @@ export default function App() {
         champBonus={CHAMP_BONUS}
         lockOffsetMin={st.locks?.offsetMin || 5}
         isAdmin={user.isAdmin}
+      />
+
+      <WhatsNewModal
+        isOpen={whatsNewOpen}
+        onClose={() => { setWhatsNewOpen(false); try { localStorage.setItem("whatsNewSeen", WHATS_NEW_VERSION); } catch { /* ignore */ } }}
       />
 
       <Toast.Provider placement="bottom" />
