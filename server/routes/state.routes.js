@@ -1,6 +1,6 @@
 // Player-facing data: state, leaderboard, matchdays, tips, champion. Mounted at /api.
 import { Router } from "express";
-import { stateForUser, leaderboard, matchdayBreakdown, setUserTips, setChamp, getUserByKuerzel, getAiPrediction, aiStrategiesForMatch, getSetting, liveByMatch, getTeamMetaRow } from "../db.js";
+import { stateForUser, leaderboard, matchdayBreakdown, setUserTips, setChamp, getUserByKuerzel, getUserTip, getAiPrediction, aiStrategiesForMatch, getSetting, liveByMatch, getTeamMetaRow } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { isChampLocked, kickoff, isTipLocked } from "../services/locks.js";
 import { addClient } from "../services/liveStream.js";
@@ -75,7 +75,10 @@ router.get("/ai-prediction", requireAuth, (req, res) => {
   if (!visible) return res.status(403).json({ error: "Begründung erst nach Anpfiff sichtbar" });
   const pred = getAiPrediction(u.id, matchN);
   if (!pred || pred.status !== "done" || !pred.prediction) return res.status(404).json({ error: "Keine Begründung vorhanden" });
-  res.json({ player: kuerzel, provider: pred.provider, model: pred.model, tip: { h: pred.tip_h, a: pred.tip_a }, prediction: pred.prediction });
+  // The authoritative tip (incl. K.o. winner + joker, both post-budget) lives in the tips table.
+  const stored = getUserTip(u.id, matchN);
+  const tip = stored ? { h: stored.h, a: stored.a, w: stored.w, joker: stored.joker } : { h: pred.tip_h, a: pred.tip_a, w: "", joker: "" };
+  res.json({ player: kuerzel, provider: pred.provider, model: pred.model, tip, prediction: pred.prediction });
 });
 
 // All AI players' chosen strategy for one match → { kuerzel: strategy } (for the per-tip

@@ -4,7 +4,7 @@
 // teasing of the leader, nothing below the belt). Free-text path (no JSON schema).
 import { MATCHES, TEAMS } from "../../data.js";
 import { kickoff } from "../locks.js";
-import { score } from "../scoring.js";
+import { score, scoreBase } from "../scoring.js";
 import {
   legacyState, leaderboard, getSetting, getAiProviderKey, getAiProviderModel,
   getMatchdayRecap, setMatchdayRecap, detailByMatch,
@@ -28,7 +28,11 @@ const SYSTEM = "Du bist der Kommentator eines kleinen, privaten WM-Tippspiels un
   + "Schreibe einen kurzen, lockeren deutschen Spieltags-Rückblick (2–4 Sätze). Sei humorvoll und "
   + "necke den Tabellenführer freundlich. Greif ruhig auffällige Spielereignisse (späte Tore, "
   + "Eigentore, Platzverweise, Elfmeterschießen) und frisch freigeschaltete Erfolge der Tipper auf, "
-  + "wenn sie zum Erzählen taugen. STRIKT verboten: Beleidigungen, Verletzendes, alles unter der "
+  + "wenn sie zum Erzählen taugen. Sind im Kontext `joker`-Einsätze gelistet, darfst du Glück (exakt "
+  + "getroffen, Punkte verdoppelt) oder Pech (daneben, −3) mit dem Zweischneidigen Schwert bzw. dem "
+  + "Schutzschild aufgreifen. Bei `ko_entscheidungen` (K.o.-Spiele, die erst in der Verlängerung oder "
+  + "im Elfmeterschießen fielen) sind Tipper, die das Remis samt richtigem Sieger vorhergesagt haben, "
+  + "eine Erwähnung wert. STRIKT verboten: Beleidigungen, Verletzendes, alles unter der "
   + "Gürtellinie, politische oder sensible Themen. Bleib bei Fußball und den Tipps. Keine Hashtags, "
   + "höchstens ein, zwei Emojis. Antworte nur mit dem Rückblick-Text, ohne Vorrede.";
 
@@ -67,6 +71,33 @@ export function buildRecapContext(ms, st, board, det = {}, erfolge = []) {
   const tagespunkte = board
     .map((row) => { let pts = 0; for (const m of ms) { const p = score((st.tips[row.p] || {})[m.n], st.results[m.n], st.resolved[m.n]); if (p != null) pts += p; } return { name: row.name, pts }; })
     .filter((x) => x.pts > 0).sort((a, b) => b.pts - a.pts);
+
+  // Jokers played on a match scored today + how they panned out (base ≥ 3 = exact scoreline → the
+  // joker fired). Empty while the feature is off (legacyState blanks joker), so no extra gate needed.
+  const jokerEinsaetze = [];
+  for (const m of ms) {
+    for (const row of board) {
+      const t = (st.tips[row.p] || {})[m.n];
+      if (!t?.joker) continue;
+      const base = scoreBase(t, st.results[m.n], st.resolved[m.n]);
+      if (base == null) continue;
+      const typ = t.joker === "risk" ? "Zweischneidiges Schwert" : "Schutzschild";
+      jokerEinsaetze.push(`${row.name}: ${typ} auf ${teamName(m.h, m.n, "h", st)}–${teamName(m.a, m.n, "a", st)} → ${base >= 3 ? "exakt getroffen" : "daneben"} (${score(t, st.results[m.n], st.resolved[m.n])} P)`);
+    }
+  }
+
+  // K.o. games today that were level after 90' and only decided in extra time / on penalties — the new
+  // Remis-Tipp mechanic in action, plus the tippers who nailed the 90' draw AND the eventual winner.
+  const koEntscheidungen = [];
+  for (const m of ms) {
+    const rv = st.resolved[m.n];
+    if (!rv?.winner || rv.regHome == null || rv.regHome !== rv.regAway) continue;
+    const winSide = rv.winner === "home" ? "h" : "a";
+    const winName = teamName(winSide === "h" ? m.h : m.a, m.n, winSide, st);
+    const treffer = board.filter((row) => { const t = (st.tips[row.p] || {})[m.n]; return t && t.h !== "" && t.h === t.a && t.w === winSide; }).map((row) => row.name);
+    koEntscheidungen.push(`${teamName(m.h, m.n, "h", st)}–${teamName(m.a, m.n, "a", st)}: 90' ${rv.regHome}:${rv.regAway}, weiter nach Verlängerung/Elfmeter: ${winName}${treffer.length ? ` — Remis + Sieger richtig getippt: ${treffer.join(", ")}` : ""}`);
+  }
+
   return {
     ergebnisse,
     verlaeufe: ms.map((m) => matchVerlauf(m, st, det)),
@@ -74,6 +105,8 @@ export function buildRecapContext(ms, st, board, det = {}, erfolge = []) {
     tabellenfuehrer: board[0]?.name || null,
     tagesbeste: tagespunkte.slice(0, 3).map((x) => `${x.name} ${x.pts}`),
     ...(erfolge.length ? { erfolge } : {}),
+    ...(jokerEinsaetze.length ? { joker: jokerEinsaetze } : {}),
+    ...(koEntscheidungen.length ? { ko_entscheidungen: koEntscheidungen } : {}),
   };
 }
 

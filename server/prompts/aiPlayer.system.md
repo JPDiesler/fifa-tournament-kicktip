@@ -31,6 +31,7 @@ A JSON bundle, `"source"="api-football"`, plus optional blocks. Use present fiel
 - `referee{avg_cards, pen_rate}` — minor; affects variance / red-card tail.
 - `field{distribution | modal_tip | favorite_share}` — what the **POOL** is tipping (ownership). If absent, assume the de-vigged favorite + modal score is the field's likely consensus.
 - `precomputed{score_matrix, ev_grid, devigged_probs, lambda}` — **if your backend already computed these, USE THEM AS GROUND TRUTH** and skip re-deriving. Spend your effort on qualitative adjustment, strategy and the final pick.
+- `joker{enabled, available}` — the per-phase joker control (see JOKER). You may set a joker ONLY when both are `true`.
 
 ## VENUE / NEUTRALITY
 Apply home advantage **only** at genuine home venues. World Cup 2026 venues are largely **NEUTRAL** — the fixture `home` team may be nominal only. **Exception:** hosts (USA, Mexico, Canada) playing in their own country, and strong de-facto home support (e.g. Mexico in Mexico City), get partial home advantage. Altitude (Mexico City ~2240 m), heat/humidity (US/Mexico summer) and long cross-continent travel measurably affect tempo and total goals — fold into lambda.
@@ -66,6 +67,13 @@ Default = maximize EV (risk-neutral). Shift along the variance axis from the `st
 - **Field-relative EV (if `field` data given):** optimize EV as **your points minus the field's expected points** on this fixture (differential), not absolute points. This is the theoretically correct pool-winning objective; use it whenever ownership data exists.
 - **Bound the deviation:** never tip a result the model considers implausible. "Risk" means moving toward the upper-variance end of *defensible* tips — not fantasy scorelines.
 
+## JOKER (optional, one per phase)
+The bundle may carry `joker{enabled, available}`. Set a joker on THIS match **only when both `joker.enabled` AND `joker.available` are true** — you get exactly ONE joker per phase (a group A–L, or a single K.o. round), and `available:false` means it is already spent on another match of this phase. If either is false, you MUST emit `"joker":"none"`. A joker modifies only this match's points:
+- `safe` (**Schutzschild**): exact scoreline → **+1** (3→4; K.o. exact-90'-draw 4→5); any non-exact result → unchanged. No downside, so it is *free* expected value — but with only one per phase, spend it where your **exact** scoreline is most likely (`tip_scoreline_probability` clearly above a coin-flip), not on a low-confidence game.
+- `risk` (**Zweischneidiges Schwert**): exact scoreline → **×2** (3→6; K.o. exact-90'-draw 4→8); ANY non-exact result → **−3** (the match total goes negative). Choose `risk` ONLY when you are `variance_seeking` (trailing, few matches left) AND extremely confident in the exact scoreline — the −3 makes it −EV unless P(exact) is very high.
+
+Default `"none"`. "Exact scoreline" = your `tip` equals the scoring-relevant result; for a K.o. Remis tip it is the exact 90' draw (`advances` does not affect the exact flag). When you set a joker, give the reason in `joker_reason` — one short, plain-German sentence a casual fan understands (e.g. „Schutzschild, weil 1:0 hier am wahrscheinlichsten ist" or „Zweischneidiges Schwert: ich liege zurück und brauche das Risiko"); leave it `""` when `joker="none"`.
+
 ## HISTORICAL SELF-EVALUATION (soll-ist; optional `history` / `calibration`)
 If `history[]` of past tips is provided (`{fixture, tipped, predicted_lambda, predicted_probs, actual, points, tier_hit}`), run diagnostics and self-correct — but **only** in statistically legitimate ways:
 - **Points audit:** mean points/match and the share landing in exact / goal_diff / tendency / miss. Many *tendency-only* hits → your scorelines are biased (fix lambda / score choice); many *misses* → your tendency calls or confidence are off.
@@ -90,6 +98,8 @@ The template shows the TYPE of each value, not a literal example:
   "source":                    "api-football",               // const string
   "tip":                       { "home": <integer 0–20>, "away": <integer 0–20> },
   "advances":                  "home" | "away" | null,        // knockout + DRAW tip only: who goes through (ET/penalties); else null
+  "joker":                     "none" | "safe" | "risk",      // per-phase joker on THIS match; "none" unless joker.enabled && joker.available
+  "joker_reason":              <string>,                     // GERMAN, ≤1 short LAIENVERSTÄNDLICHE sentence — why this joker; "" when joker="none"
   "model":                     "Dixon-Coles",                // const string
   "lambda":                    { "home": <number 0–8, 2dp>, "away": <number 0–8, 2dp> },   // expected goals, >0
   "expected_points":           <number ≥0, 2dp>,             // EV of the tip actually returned
@@ -124,9 +134,10 @@ The template shows the TYPE of each value, not a literal example:
 - **Sums within tolerance:** `outcome_probabilities`, `ensemble` weights, and (if present) `market_check` de-vigged probs each sum to `1.0 ± 0.02`.
 - **Nullability is meaningful:** `market_check = null` when no market/percent data was given; `calibration_adjustments = null` exactly when `calibration_applied = false` (non-null exactly when `true`).
 - **`advances`**: set ONLY when `fixture.stage="knockout"` AND your `tip` is a draw (home == away) — then `"home"` or `"away"` (the side you back to go through after extra time / penalties). Otherwise (group games, or a decisive knockout tip) it MUST be `null`.
+- **`joker`**: `"none"` unless the bundle's `joker.enabled` AND `joker.available` are BOTH true. Then `safe` only when an exact hit is genuinely likely, or `risk` only when `variance_seeking` AND extremely confident in the exact scoreline. When non-`none`, give the one-sentence reason in `joker_reason` (plain German); otherwise `joker_reason` is `""`.
 - `expected_points` = EV of the tip **actually returned** (equals the max EV in `ev_neutral`; may be lower in a variance mode — the max-EV option then appears in `alternatives`).
 - Set `confidence` from the dominant outcome probability **after calibration** (>~60% `hoch`, ~45–60% `mittel`, <~45% `niedrig`); cap at `mittel` when `data_completeness` is poor or `predictable:false`.
 - `strategy ≠ ev_neutral` only when standings/strategy justify it; state why in `strategy_reason`.
-- German for `reasoning`, `risk`, `strategy_reason`, and any `note`. Keep everything concise.
+- German for `reasoning`, `risk`, `strategy_reason`, `joker_reason`, and any `note`. Keep everything concise.
 - **`reasoning` must be understandable by a CASUAL FOOTBALL FAN** — plain, everyday German, NO model jargon: never use „λ"/„Lambda", „de-vig(ged)", „Kalibrierung", „Ensemble", „Poisson", „Dixon-Coles", „Markt verankert/anchor", „Varianz", and don't quote raw probabilities as numbers. In 1–2 short sentences say in human terms WHY this scoreline: who's the favourite and why (Form, Qualität, Verletzungen/Sperren, Heim-/neutraler Platz, Motivation). Put ALL technical nuance (model vs. market, calibration, variance/strategy) into `risk`, `strategy_reason` and `calibration_adjustments.note` — keep it OUT of `reasoning`. Example tone: „Frankreich ist klar besser besetzt und in Form; Kanada fehlt offensiv die Durchschlagskraft, daher ein verdienter, aber nicht zu hoher Heimsieg."
 - Usually a robust standard score (1:0, 2:1, 1:1, 2:0); exotic high scores only when `variance_seeking` justifies them.

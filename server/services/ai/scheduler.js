@@ -9,7 +9,7 @@ import {
   hasAiPrediction, claimAiPrediction, finishAiPrediction,
   hasAiChamp, claimAiChamp, finishAiChamp,
   getAiPlayerById, getAiPrediction, deleteAiPrediction, calibrationFor,
-  historyFor, poolStandingsByKuerzel,
+  historyFor, poolStandingsByKuerzel, aiJokerContext,
 } from "../../db.js";
 import { getAiAdapter } from "./index.js";
 import { matchSystemPrompt, championSystemPrompt } from "./prompt.js";
@@ -63,12 +63,17 @@ async function tipOne(p, matchN, bundle) {
     finishAiPrediction(p.id, matchN, { status: "failed", error: adapter ? "Kein API-Key" : "Unbekannter Provider" });
     return;
   }
+  // Joker gate for this (player, phase): the global toggle + whether the phase's single joker is still free.
+  // Handed to the LLM so it won't propose a joker it can't place, and used to clamp the result (greedy: in
+  // kickoff order the first match that takes the joker keeps it; later matches can never steal it).
+  const joker = aiJokerContext(p.kuerzel, matchN);
   try {
-    const { prediction, latencyMs, tokens } = await predictWithRetry(adapter, { systemPrompt: matchSystemPrompt(), bundle, apiKey, model: p.ai_model }, p.ai_provider);
+    const { prediction, latencyMs, tokens } = await predictWithRetry(adapter, { systemPrompt: matchSystemPrompt(), bundle: { ...bundle, joker }, apiKey, model: p.ai_model }, p.ai_provider);
     const { tip } = validateMatchPrediction(prediction);
-    setUserTips(p.kuerzel, { [matchN]: tip }); // normal tip path (server re-checks the lock)
+    tip.joker = joker.enabled && joker.available ? tip.joker : ""; // never place a joker when off / budget spent
+    setUserTips(p.kuerzel, { [matchN]: tip }); // normal tip path (server re-checks the lock + joker budget)
     finishAiPrediction(p.id, matchN, { status: "done", tip, prediction, latencyMs, tokens });
-    console.log(`KI ${p.kuerzel} Spiel ${matchN}: ${tip.h}:${tip.a} (${p.ai_provider}/${p.ai_model || "default"})`);
+    console.log(`KI ${p.kuerzel} Spiel ${matchN}: ${tip.h}:${tip.a}${tip.joker ? ` [${tip.joker === "risk" ? "Schwert" : "Schild"}]` : ""} (${p.ai_provider}/${p.ai_model || "default"})`);
   } catch (e) {
     finishAiPrediction(p.id, matchN, { status: "failed", error: redact(e?.message || e, apiKey) });
     if (FALLBACK) setUserTips(p.kuerzel, { [matchN]: { h: "1", a: "1" } }); // deterministic, non-LLM

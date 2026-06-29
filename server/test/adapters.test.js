@@ -23,5 +23,5 @@ test("registry exposes all four providers with a uniform interface", async () =>
 test("adapter output pipeline: fenced model text → canonical tip", () => {
   const modelText = '```json\n{"match_id":9,"tip":{"home":2,"away":1},"outcome_probabilities":{"home_win":0.7,"draw":0.2,"away_win":0.1},"reasoning":"Heimstark."}\n```';
   const { tip } = validateMatchPrediction(extractJson(modelText));
-  assert.deepEqual(tip, { h: "2", a: "1", w: "" }); // no `advances` → no K.o. winner pick
+  assert.deepEqual(tip, { h: "2", a: "1", w: "", joker: "" }); // no `advances`/`joker` → no winner pick, no joker
 });

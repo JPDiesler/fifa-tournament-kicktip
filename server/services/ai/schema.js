@@ -12,6 +12,9 @@ const toScore = (x) => {
 };
 // Knockout draw tip → who advances ("home"/"away" or "h"/"a") mapped to our 'h'/'a'; "" otherwise.
 const toWinner = (x) => { const s = String(x ?? "").trim().toLowerCase(); return s === "home" || s === "h" ? "h" : s === "away" || s === "a" ? "a" : ""; };
+// Per-phase joker the model wants on this match → 'risk' (Schwert) | 'safe' (Schild); "" otherwise
+// ("none"/absent/anything else). The scheduler still gates it on the global toggle + 1-per-phase budget.
+const toJoker = (x) => { const s = String(x ?? "").trim().toLowerCase(); return s === "risk" || s === "safe" ? s : ""; };
 
 // Match tip: integer scores >= 0, probabilities in [0,1] summing to ~1.
 export function validateMatchPrediction(p) {
@@ -27,7 +30,7 @@ export function validateMatchPrediction(p) {
   if (Math.abs(sum - 1) > 0.05) throw new Error(`outcome_probabilities summieren nicht ~1 (${sum.toFixed(3)})`);
   if (p.tip_scoreline_probability != null && !inUnit(p.tip_scoreline_probability))
     throw new Error("tip_scoreline_probability muss in [0,1] liegen");
-  return { tip: { h: String(h), a: String(a), w: toWinner(p.advances) } }; // app stores scores as strings; w = K.o. Remis-Sieger
+  return { tip: { h: String(h), a: String(a), w: toWinner(p.advances), joker: toJoker(p.joker) } }; // scores as strings; w = K.o. Remis-Sieger; joker = gewünschter Joker
 }
 
 // Champion tip: a valid team code (must be one of the bundle's codes) + sane prob.

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal, Spinner } from "@heroui/react";
 import ProviderLogo from "@/components/ProviderLogo.jsx";
 import Flag from "@/components/Flag.jsx";
+import JokerBadge from "@/components/JokerBadge.jsx";
 import { Trophy } from "lucide-react";
 import StrategyBadge from "./aiStrategy.jsx";
 
@@ -192,6 +193,18 @@ export default function AiReasoning({ matchN, player, providerMeta, home, away, 
                     <Trophy size={13} className="text-app-accent" /> kommt weiter:
                     <Flag code={(data.tip.w === "h" ? home : away).code} sm />
                     <span className="font-semibold text-foreground">{(data.tip.w === "h" ? home : away).label}</span>
+                  </div>
+                )}
+
+                {/* joker the AI placed on this match (1 per phase) + why */}
+                {(data.tip?.joker === "risk" || data.tip?.joker === "safe") && (
+                  <div className="-mt-2 rounded-xl border border-border bg-overlay/40 px-3 py-2.5 text-xs">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <JokerBadge joker={data.tip.joker} />
+                      <span className="font-semibold">{data.tip.joker === "risk" ? "Zweischneidiges Schwert" : "Schutzschild"}</span>
+                      <span className="text-muted">{data.tip.joker === "risk" ? "exakt ×2 · sonst −3" : "exakt +1"}</span>
+                    </div>
+                    {p?.joker_reason && <p className="mt-1.5 text-center leading-snug text-muted">{p.joker_reason}</p>}
                   </div>
                 )}
 
