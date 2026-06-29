@@ -67,3 +67,17 @@ test("precompute: null when odds are absent", () => {
   assert.equal(precompute(null, SCORING), null);
   assert.equal(precompute({ home: 2.0 }, SCORING), null); // incomplete 1X2
 });
+
+const SC_KO = { exact: 3, goal_diff: 2, tendency: 1, exact_draw_win: 4 };
+test("precompute knockout: advance_probs + draw tips name the favoured advancer", () => {
+  const pc = precompute({ home: 1.6, draw: 3.8, away: 5.5 }, SC_KO, true); // clear home favourite
+  assert.ok(near(pc.advance_probs.home + pc.advance_probs.away, 1, 0.01), "advance probs sum to ~1");
+  assert.ok(pc.advance_probs.home > pc.advance_probs.away, "home is the favoured advancer");
+  const draws = pc.ev_grid.filter((c) => c.home === c.away);
+  assert.ok(draws.length > 0 && draws.every((c) => c.advances === "home"), "draw tips back the favourite to advance");
+});
+test("precompute knockout: a draw tip is worth at least its classic EV (winner bonus only adds)", () => {
+  const odds = { home: 2.5, draw: 3.1, away: 2.8 }; // fairly even → a draw ranks among the top tips
+  const topDrawEv = (pc) => { const c = pc.ev_grid.find((x) => x.home === x.away); return c ? c.ev : 0; };
+  assert.ok(topDrawEv(precompute(odds, SC_KO, true)) >= topDrawEv(precompute(odds, SC_KO, false)));
+});

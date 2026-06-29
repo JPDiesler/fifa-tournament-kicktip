@@ -70,25 +70,43 @@ export function lambdaFromMarket(dv) {
 
 // EV grid: every candidate tip 0..6 scored by EV over the FULL result distribution, using
 // the real (staggered, non-additive) Kicktipp tiers. Returns the top `top` tips, EV desc.
-export function evGrid(M, scoring, top = 6) {
+// `ko` (optional, knockout matches) = { pAdvHome } = P(home advances incl. ET/penalties): then a
+// DRAW tip is scored on the 90' result + the picked advancer (the 6-case table), so its EV reflects
+// the winner bonus and the entry carries the optimal `advances`. Decisive tips stay classic (scored
+// vs the result = the Endstand) — the agreed rule gives them no winner rescue.
+export function evGrid(M, scoring, top = 6, ko = null) {
   const pts = (th, ta, rh, ra) => {
     if (th === rh && ta === ra) return scoring.exact;
     if (th - ta === rh - ra) return scoring.goal_diff;
     if (Math.sign(th - ta) === Math.sign(rh - ra)) return scoring.tendency;
     return 0;
   };
+  let pDraw90 = 0;
+  if (ko) for (let r = 0; r < M.length; r++) pDraw90 += M[r]?.[r] ?? 0;
+  const pWinRight = ko ? Math.max(ko.pAdvHome, 1 - ko.pAdvHome) : 0; // back the likelier advancer
   const cands = [];
   for (let th = 0; th < GRID; th++) for (let ta = 0; ta < GRID; ta++) {
-    let ev = 0;
-    for (let rh = 0; rh < M.length; rh++) for (let ra = 0; ra < M[rh].length; ra++) ev += M[rh][ra] * pts(th, ta, rh, ra);
-    cands.push({ home: th, away: ta, ev: +ev.toFixed(2), scoreline_probability: +(M[th]?.[ta] ?? 0).toFixed(3) });
+    const slp = +(M[th]?.[ta] ?? 0).toFixed(3);
+    if (ko && th === ta) {
+      const pExact = M[th]?.[ta] ?? 0, pDrawNeq = Math.max(0, pDraw90 - pExact), pNon = Math.max(0, 1 - pDraw90);
+      const evRight = scoring.exact_draw_win * pExact + scoring.exact * pDrawNeq + scoring.tendency * pNon; // winner right: 4/3/1
+      const evWrong = scoring.exact * pExact + scoring.goal_diff * pDrawNeq;                                // winner wrong: 3/2/0
+      const ev = pWinRight * evRight + (1 - pWinRight) * evWrong;
+      cands.push({ home: th, away: ta, ev: +ev.toFixed(2), scoreline_probability: slp, advances: ko.pAdvHome >= 0.5 ? "home" : "away" });
+    } else {
+      let ev = 0;
+      for (let rh = 0; rh < M.length; rh++) for (let ra = 0; ra < M[rh].length; ra++) ev += M[rh][ra] * pts(th, ta, rh, ra);
+      cands.push({ home: th, away: ta, ev: +ev.toFixed(2), scoreline_probability: slp });
+    }
   }
   return cands.sort((a, b) => b.ev - a.ev).slice(0, top);
 }
 
-// Full deterministic precompute for a match from its (cached) 1X2 odds + the scoring
-// values. null when the market data is insufficient to anchor it.
-export function precompute(odds, scoring) {
+// Full deterministic precompute for a match from its (cached) 1X2 odds + the scoring values.
+// `knockout=true` → the EV grid uses the K.o. Remis rule and the result carries `advance_probs`
+// (P(home/away goes through) ≈ win in 90' OR level then take it in ET/pens, split by strength).
+// null when the market data is insufficient to anchor it.
+export function precompute(odds, scoring, knockout = false) {
   const dv = devig(odds?.home, odds?.draw, odds?.away);
   if (!dv) return null;
   const lambda = lambdaFromMarket(dv);
@@ -97,13 +115,18 @@ export function precompute(odds, scoring) {
   const r3 = (x) => +x.toFixed(3);
   const score_matrix = [];
   for (let h = 0; h < GRID; h++) { score_matrix[h] = []; for (let a = 0; a < GRID; a++) score_matrix[h][a] = r3(M[h][a]); }
-  return {
+  const pAdvHome = knockout ? dv.home + dv.draw * (dv.home / (dv.home + dv.away || 1)) : null;
+  const out = {
     lambda,
     devigged_probs: { home: r3(dv.home), draw: r3(dv.draw), away: r3(dv.away) },
     model_probs: { home_win: r3(model.home_win), draw: r3(model.draw), away_win: r3(model.away_win) },
     score_matrix,
-    ev_grid: evGrid(M, scoring),
+    ev_grid: evGrid(M, scoring, 6, knockout ? { pAdvHome } : null),
     rho: RHO,
-    note: "Markt-verankert (de-vigged 1X2 → λ → Dixon-Coles). Als Grundwahrheit nutzen; nur qualitativ anpassen.",
+    note: knockout
+      ? "Markt-verankert; K.o.: Remis-Tipps inkl. Sieger-Bonus bewertet, advance_probs = Weiterkommen (n. Verl./Elfmeter). Grundwahrheit, nur qualitativ anpassen."
+      : "Markt-verankert (de-vigged 1X2 → λ → Dixon-Coles). Als Grundwahrheit nutzen; nur qualitativ anpassen.",
   };
+  if (knockout) out.advance_probs = { home: r3(pAdvHome), away: r3(1 - pAdvHome) };
+  return out;
 }

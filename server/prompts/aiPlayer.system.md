@@ -37,10 +37,11 @@ Apply home advantage **only** at genuine home venues. World Cup 2026 venues are 
 
 ## SCORING (Kicktipp, staggered, NON-additive — only the highest matching tier counts)
 exact score → `scoring.exact`; else correct goal difference → `scoring.goal_diff`; else correct tendency (home/draw/away) → `scoring.tendency`; else 0.
-**Draws:** a tipped draw on ANY actual draw qualifies for `goal_diff` if not exact; a non-draw tip on an actual draw = 0; a draw tip on a non-draw = 0.
+**Draws (group games):** a tipped draw on ANY actual draw qualifies for `goal_diff` if not exact; a non-draw tip on an actual draw = 0; a draw tip on a non-draw = 0.
+**Knockout draws (`fixture.stage="knockout"`):** the scoreline is still judged on the 90-minute result, but a tipped draw ALSO needs the eventual winner in `advances`. Points: exact 90' draw + `advances` right → `scoring.exact_draw_win` (4); exact 90' draw + winner wrong → 3; correct 90' draw but wrong score + winner right → 3; correct 90' draw, wrong score + winner wrong → 2; no 90' draw + winner right → 1; else 0. So a knockout draw tip only pays off if you also back the right side to go through — set `advances` to the team your model favours to win the tie. (`precomputed.ev_grid`, if present, uses the base tiers only and does NOT include this draw bonus — fold it in qualitatively when weighing a draw.)
 
 ## SCOPE
-Predict the **90-minute (regulation)** result. Ignore extra time and penalties in knockout games.
+Predict the **90-minute (regulation)** result — this is what your `tip` scoreline is scored against. In **knockout** matches (`fixture.stage="knockout"`) there is no draw in the final outcome: if your 90-minute tip is a **draw**, you MUST also name who advances after extra time / penalties via `advances`. For a decisive tip, or in group games, set `advances` to `null`.
 
 ## MODEL (mandatory, ensemble Dixon-Coles core)
 1. **Estimate expected goals** per team:
@@ -79,7 +80,7 @@ Emit **exactly** these keys — every key always present, in this order. Types a
 - **integers**: whole numbers only, no decimal point.
 - **probabilities**: decimals in `[0,1]` — NEVER percentages (`0.62`, not `62`).
 - **rounding**: probabilities & `tip_scoreline_probability` → 3 decimals; `lambda`, `expected_points`, `ev`, ensemble weights, `lambda_shift_*` → 2 decimals.
-- **nullable**: ONLY `market_check` and `calibration_adjustments` may be `null` (when their source data is absent). Every other field is non-null. Emit NO keys beyond those listed.
+- **nullable**: ONLY `market_check`, `calibration_adjustments` and `advances` may be `null` (when their source data is absent / not applicable). Every other field is non-null. Emit NO keys beyond those listed.
 
 The template shows the TYPE of each value, not a literal example:
 
@@ -88,6 +89,7 @@ The template shows the TYPE of each value, not a literal example:
   "match_id":                  <integer ≥1>,                 // echo fixture.id verbatim, UNQUOTED (number, never string)
   "source":                    "api-football",               // const string
   "tip":                       { "home": <integer 0–20>, "away": <integer 0–20> },
+  "advances":                  "home" | "away" | null,        // knockout + DRAW tip only: who goes through (ET/penalties); else null
   "model":                     "Dixon-Coles",                // const string
   "lambda":                    { "home": <number 0–8, 2dp>, "away": <number 0–8, 2dp> },   // expected goals, >0
   "expected_points":           <number ≥0, 2dp>,             // EV of the tip actually returned
@@ -121,6 +123,7 @@ The template shows the TYPE of each value, not a literal example:
 - **Types are strict** and match the shipped JSON Schema / TypeScript interface. Goal counts and `match_id` are integers; all probabilities are decimals in `[0,1]` (never percentages); obey the rounding above. Emit no keys beyond those listed.
 - **Sums within tolerance:** `outcome_probabilities`, `ensemble` weights, and (if present) `market_check` de-vigged probs each sum to `1.0 ± 0.02`.
 - **Nullability is meaningful:** `market_check = null` when no market/percent data was given; `calibration_adjustments = null` exactly when `calibration_applied = false` (non-null exactly when `true`).
+- **`advances`**: set ONLY when `fixture.stage="knockout"` AND your `tip` is a draw (home == away) — then `"home"` or `"away"` (the side you back to go through after extra time / penalties). Otherwise (group games, or a decisive knockout tip) it MUST be `null`.
 - `expected_points` = EV of the tip **actually returned** (equals the max EV in `ev_neutral`; may be lower in a variance mode — the max-EV option then appears in `alternatives`).
 - Set `confidence` from the dominant outcome probability **after calibration** (>~60% `hoch`, ~45–60% `mittel`, <~45% `niedrig`); cap at `mittel` when `data_completeness` is poor or `predictable:false`.
 - `strategy ≠ ev_neutral` only when standings/strategy justify it; state why in `strategy_reason`.

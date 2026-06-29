@@ -20,7 +20,7 @@ const matchByN = new Map(MATCHES.map((m) => [m.n, m]));
 const teamName = (code) => TEAMS[code]?.name || code;
 const isGroupMatch = (m) => known(m.h) && known(m.a);
 // Real Kicktipp scoring values for EV maximization (single source of truth).
-const SCORING = { exact: POINTS.exact, goal_diff: POINTS.goal_diff, tendency: POINTS.tendency };
+const SCORING = { exact: POINTS.exact, goal_diff: POINTS.goal_diff, tendency: POINTS.tendency, exact_draw_win: POINTS.exact_draw_win };
 
 // Resolve a match's actual home/away. Group pairings are static; K.o. pairings come
 // from the `resolved` table once the bracket fills in — null until then (the match
@@ -62,7 +62,7 @@ export async function buildBundle(matchN) {
     },
     ...(odds ? { odds } : {}),
   };
-  if (PRECOMPUTE && odds) { const pc = precompute(odds, SCORING); if (pc) base.precomputed = pc; }
+  if (PRECOMPUTE && odds) { const pc = precompute(odds, SCORING, !isGroupMatch(m)); if (pc) base.precomputed = pc; }
 
   const apiAd = getAdapter("apifootball");
   if (apiAd?.configured?.() && ext.apifootball) {

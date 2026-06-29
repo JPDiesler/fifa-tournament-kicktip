@@ -10,6 +10,8 @@ const toScore = (x) => {
   const n = typeof x === "string" && x.trim() !== "" ? Number(x) : x;
   return Number.isInteger(n) && n >= 0 ? n : null;
 };
+// Knockout draw tip → who advances ("home"/"away" or "h"/"a") mapped to our 'h'/'a'; "" otherwise.
+const toWinner = (x) => { const s = String(x ?? "").trim().toLowerCase(); return s === "home" || s === "h" ? "h" : s === "away" || s === "a" ? "a" : ""; };
 
 // Match tip: integer scores >= 0, probabilities in [0,1] summing to ~1.
 export function validateMatchPrediction(p) {
@@ -25,7 +27,7 @@ export function validateMatchPrediction(p) {
   if (Math.abs(sum - 1) > 0.05) throw new Error(`outcome_probabilities summieren nicht ~1 (${sum.toFixed(3)})`);
   if (p.tip_scoreline_probability != null && !inUnit(p.tip_scoreline_probability))
     throw new Error("tip_scoreline_probability muss in [0,1] liegen");
-  return { tip: { h: String(h), a: String(a) } }; // app stores scores as strings
+  return { tip: { h: String(h), a: String(a), w: toWinner(p.advances) } }; // app stores scores as strings; w = K.o. Remis-Sieger
 }
 
 // Champion tip: a valid team code (must be one of the bundle's codes) + sane prob.

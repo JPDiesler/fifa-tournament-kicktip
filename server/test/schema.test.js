@@ -5,10 +5,15 @@ import { validateMatchPrediction, validateChampionPrediction } from "../services
 const okMatch = { tip: { home: 2, away: 1 }, outcome_probabilities: { home_win: 0.6, draw: 0.25, away_win: 0.15 }, tip_scoreline_probability: 0.13 };
 
 test("match: valid → string scores", () => {
-  assert.deepEqual(validateMatchPrediction(okMatch).tip, { h: "2", a: "1" });
+  assert.deepEqual(validateMatchPrediction(okMatch).tip, { h: "2", a: "1", w: "" });
 });
 test("match: accepts a whole-number score given as a string (e.g. Gemini)", () => {
-  assert.deepEqual(validateMatchPrediction({ ...okMatch, tip: { home: "2", away: "0" } }).tip, { h: "2", a: "0" });
+  assert.deepEqual(validateMatchPrediction({ ...okMatch, tip: { home: "2", away: "0" } }).tip, { h: "2", a: "0", w: "" });
+});
+test("match: knockout draw → advances maps to winner side w (home→h, away→a, absent→'')", () => {
+  assert.equal(validateMatchPrediction({ ...okMatch, tip: { home: 1, away: 1 }, advances: "away" }).tip.w, "a");
+  assert.equal(validateMatchPrediction({ ...okMatch, tip: { home: 1, away: 1 }, advances: "home" }).tip.w, "h");
+  assert.equal(validateMatchPrediction({ ...okMatch, tip: { home: 1, away: 1 } }).tip.w, "");
 });
 test("match: rejects non-integer tip", () => {
   assert.throws(() => validateMatchPrediction({ ...okMatch, tip: { home: 1.5, away: 0 } }));

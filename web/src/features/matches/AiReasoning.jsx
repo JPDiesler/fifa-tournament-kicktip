@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal, Spinner } from "@heroui/react";
 import ProviderLogo from "@/components/ProviderLogo.jsx";
 import Flag from "@/components/Flag.jsx";
+import { Trophy } from "lucide-react";
 import StrategyBadge from "./aiStrategy.jsx";
 
 const pct = (x) => (x == null ? "—" : `${Math.round(x * 100)}%`);
@@ -184,6 +185,15 @@ export default function AiReasoning({ matchN, player, providerMeta, home, away, 
                   </div>
                   <TeamCol team={away} />
                 </div>
+
+                {/* knockout: who the AI backs to advance (only set on a K.o. Remis tip) */}
+                {(data.tip?.w === "h" || data.tip?.w === "a") && (
+                  <div className="-mt-2 flex items-center justify-center gap-1.5 text-xs text-muted">
+                    <Trophy size={13} className="text-app-accent" /> kommt weiter:
+                    <Flag code={(data.tip.w === "h" ? home : away).code} sm />
+                    <span className="font-semibold text-foreground">{(data.tip.w === "h" ? home : away).label}</span>
+                  </div>
+                )}
 
                 {/* plain-language reasoning — the takeaway */}
                 {p?.reasoning && (
