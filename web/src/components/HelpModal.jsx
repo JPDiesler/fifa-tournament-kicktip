@@ -29,6 +29,21 @@ export default function HelpModal({ isOpen, onClose, champBonus, lockOffsetMin =
             </section>
 
             <section>
+              <H>K.o.-Phase</H>
+              <p className="mb-2 text-muted">In der K.o.-Phase gibt es kein Unentschieden im Endergebnis.</p>
+              <p className="mb-1"><b className="text-foreground">Kein Remis getippt:</b> <span className="text-muted">normales 3/2/1/0 gegen den Endstand (nach 90 bzw. 120 Minuten).</span></p>
+              <p className="mb-1.5"><b className="text-foreground">Remis getippt:</b> <span className="text-muted">leg zusätzlich fest, wer weiterkommt (nach Verlängerung/Elfmeter):</span></p>
+              <div className="flex flex-col gap-1.5">
+                <Pt p={4}>Exaktes Remis (90′) + Sieger richtig</Pt>
+                <Pt p={3}>Exaktes Remis (90′), Sieger falsch</Pt>
+                <Pt p={3}>Remis (90′), falsches Ergebnis, Sieger richtig</Pt>
+                <Pt p={2}>Remis (90′), falsches Ergebnis, Sieger falsch</Pt>
+                <Pt p={1}>Kein Remis (90′), aber Sieger richtig</Pt>
+                <Pt p={0}>Kein Remis (90′), Sieger falsch</Pt>
+              </div>
+            </section>
+
+            <section>
               <H>Tippen</H>
               <p className="text-muted">
                 Tippe per Klick auf ein Spiel. Du kannst deinen Tipp jederzeit bis <b className="text-foreground">{lockOffsetMin} Minuten vor Anpfiff</b> ändern.
