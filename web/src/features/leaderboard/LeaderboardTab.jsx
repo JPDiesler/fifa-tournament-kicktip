@@ -25,7 +25,7 @@ const SORT_VAL = { sum: (t) => t.sum, exact: (t) => t.exact };
 // "Punktstand" tab: Gesamt (table + chart), Persönlich (Bilanz + history), Duell
 // (head-to-head). One toolbar share button (next to the sub-tabs) exports the
 // active view as a PNG.
-export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, championActual, teamLabel }) {
+export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, championActual, eliminated, teamLabel }) {
   const [mode, setMode] = useState("gesamt");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -138,8 +138,8 @@ export default function LeaderboardTab({ totals, matchdays = [], me, st, teams, 
                       <Table.Cell className="px-2 sm:px-4">
                         {t.champ ? (
                           <span className="inline-flex items-center gap-1.5">
-                            {known(t.champ) && <Flag code={t.champ} sm />}
-                            <span className="font-medium">{t.champ}</span>
+                            {known(t.champ) && <Flag code={t.champ} sm className={eliminated?.has(t.champ) ? "opacity-50 grayscale" : ""} />}
+                            <span className={`font-medium ${eliminated?.has(t.champ) ? "text-danger line-through" : ""}`}>{t.champ}</span>
                             {championActual && (t.champHit ? <Check size={14} className="text-success" /> : <X size={14} className="text-muted" />)}
                           </span>
                         ) : (

@@ -6,8 +6,9 @@ import { known } from "@/lib/scoring.js";
 
 // Persistent Weltmeister-Tipp bar shown ABOVE the tabs. (The admin "actual
 // champion" control lives in the admin modal now.)
-export default function ChampionBar({ me, teams, champ, onSetChamp, champBonus, champLocked, championActual, champs, board }) {
+export default function ChampionBar({ me, teams, champ, onSetChamp, champBonus, champLocked, championActual, champs, board, eliminated }) {
   const teamName = (c) => (teams[c] ? teams[c].name : c);
+  const isOut = (c) => !!eliminated?.has(c); // team already knocked out → cross the pick out
   // All players' picks grouped by country (no names), most-backed first — revealed at K.o. start.
   const byCountry = {};
   if (champLocked) for (const b of board || []) { const c = champs?.[b.p]; if (c && known(c)) byCountry[c] = (byCountry[c] || 0) + 1; }
@@ -28,11 +29,9 @@ export default function ChampionBar({ me, teams, champ, onSetChamp, champBonus, 
             {champLocked ? (
               champ ? (
                 <span className="flex items-center gap-2 text-sm">
-                  {known(champ) && <Flag code={champ} />}
-                  <span className="font-semibold">{teamName(champ)}</span>
-                  {championActual && (champ === championActual
-                    ? <Check size={15} className="text-success" />
-                    : <X size={15} className="text-muted" />)}
+                  {known(champ) && <Flag code={champ} className={isOut(champ) ? "opacity-50 grayscale" : ""} />}
+                  <span className={`font-semibold ${isOut(champ) ? "text-danger line-through" : ""}`}>{teamName(champ)}</span>
+                  {championActual && (champ === championActual ? <Check size={15} className="text-success" /> : <X size={15} className="text-muted" />)}
                 </span>
               ) : <span className="text-sm text-muted">Kein Weltmeister-Tipp abgegeben.</span>
             ) : (
@@ -51,10 +50,11 @@ export default function ChampionBar({ me, teams, champ, onSetChamp, champBonus, 
           <div className="mt-2 flex flex-wrap gap-1.5 border-t border-border pt-2 text-xs">
             {grouped.map(([code, n]) => {
               const isActual = championActual && code === championActual;
+              const out = isOut(code);
               return (
-                <span key={code} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 ${isActual ? "bg-success/15" : "bg-overlay"}`}>
-                  <Flag code={code} sm />
-                  <span className="font-semibold uppercase">{code}</span>
+                <span key={code} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 ${isActual ? "bg-success/15" : out ? "bg-danger/10" : "bg-overlay"}`}>
+                  <Flag code={code} sm className={out ? "opacity-50 grayscale" : ""} />
+                  <span className={`font-semibold uppercase ${out ? "text-danger line-through" : ""}`}>{code}</span>
                   {n > 1 && <span className="tabular-nums text-muted">×{n}</span>}
                   {isActual && <Check size={12} className="text-success" />}
                 </span>

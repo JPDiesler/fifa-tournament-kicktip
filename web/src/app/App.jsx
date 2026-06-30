@@ -220,6 +220,32 @@ export default function App() {
   // A pairing is fixed (tippable) only when BOTH sides are known.
   const isConfirmed = (m) => !!(teamCode(m, "h") && teamCode(m, "a"));
 
+  // Teams whose run is over → used to cross out dead Weltmeister-Tipps. A team is out if it lost a
+  // decided K.o. match, or — once the whole R32 is seeded — it didn't qualify from the group stage.
+  const eliminated = (() => {
+    const out = new Set();
+    for (const m of MATCHES) {
+      if (known(m.h)) continue;                 // group match → no K.o. elimination here
+      const h = teamCode(m, "h"), a = teamCode(m, "a");
+      if (!h || !a) continue;
+      const w = koWinnerCode(m.n);
+      if (w) out.add(w === h ? a : h);          // the side that didn't advance is out
+    }
+    const r32 = MATCHES.filter((m) => m.ph === "R32");
+    const qual = new Set();
+    let seeded = r32.length > 0;
+    for (const m of r32) {
+      const h = teamCode(m, "h"), a = teamCode(m, "a");
+      if (h) qual.add(h); else seeded = false;
+      if (a) qual.add(a); else seeded = false;
+    }
+    if (seeded) for (const m of MATCHES) {        // group teams not in the R32 didn't qualify
+      if (known(m.h) && !qual.has(m.h)) out.add(m.h);
+      if (known(m.a) && !qual.has(m.a)) out.add(m.a);
+    }
+    return out;
+  })();
+
   const setTip = (n, side, val) => {
     setSt((prev) => {
       const mine = { ...(prev.tips[me] || {}) };
@@ -341,6 +367,7 @@ export default function App() {
                 champLocked={!!st.locks?.champLocked}
                 champs={st.champs}
                 board={board}
+                eliminated={eliminated}
               />
             </div>
             <Bracket
@@ -356,7 +383,7 @@ export default function App() {
           </Tabs.Panel>
 
           <Tabs.Panel id="rang" className="pt-3">
-            <LeaderboardTab totals={board} matchdays={matchdays} me={me} st={stView} teams={TEAMS} championActual={st.championActual} teamLabel={teamLabel} />
+            <LeaderboardTab totals={board} matchdays={matchdays} me={me} st={stView} teams={TEAMS} championActual={st.championActual} eliminated={eliminated} teamLabel={teamLabel} />
           </Tabs.Panel>
         </Tabs>
       </main>
